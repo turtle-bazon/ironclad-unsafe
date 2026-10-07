@@ -70,8 +70,10 @@
    #:generate-key-pair
    #:make-signature #:destructure-signature
    #:make-message #:destructure-message
-   #:generate-signature-nonce
-   #:sign-message #:verify-signature
+    #:generate-signature-nonce
+    #:compute-deterministic-nonce #:rfc6979-generate-k
+    #:*ecdsa-rfc6979-digest* #:ecdsa-curve-order
+    #:sign-message #:verify-signature
    #:encrypt-message #:decrypt-message
    #:diffie-hellman
 

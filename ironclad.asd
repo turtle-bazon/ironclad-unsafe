@@ -96,7 +96,8 @@
                               :serial t
                               :components ((:file "public-key")
                                            (:file "pkcs1")
-                                           (:file "elliptic-curve")))))))
+                                           (:file "elliptic-curve")
+                                           (:file "rfc6979")))))))
 
 (define-ironclad-subsystems "ironclad/ciphers" "cipher" #p"src/ciphers/"
   "aes"
@@ -407,6 +408,7 @@
                                            (:test-vector-file "curve448")
                                            (:test-vector-file "dsa")
                                            (:test-vector-file "ecdsa-dh")
+                                           (:test-vector-file "ecdsa-rfc6979")
                                            (:test-vector-file "ecdsa-sig")
                                            (:test-vector-file "ed25519")
                                            (:test-vector-file "ed448")

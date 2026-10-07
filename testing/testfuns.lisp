@@ -684,6 +684,35 @@
       (error "shared secret computation failed for ~A on curve ~A skey ~A, pkey ~A, secret ~A"
              name curve skey2 pkey1 shared-secret))))
 
+(defparameter *ecdsa-rfc6979-keys*
+  ;; RFC 6979 Appendix A private keys, as hex strings.
+  '((:secp256k1 . "C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721")
+    (:secp256r1 . "C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721")
+    (:secp384r1 . "6B9D3DAD2E1B8C1C05B19875B6659F4DE23C3B667BF297BA9AA47740787137D896D5724E4C70A825F872C9EA60D2EDF5")
+    (:secp521r1 . "00FAD06DAA62BA3B25D2FB40133DA757205DE67F5BB0018FEE8C86E1B68C7E75CAA896EB32F1F47C70855836A6D16FCC1466F6D8FBEC67DB89EC0C08B0E996B83538")))
+
+(defun ecdsa-rfc6979-test (name curve digest message r s k)
+  (let* ((x (hex-string-to-byte-array (cdr (assoc curve *ecdsa-rfc6979-keys*))))
+         (sk (ironclad:make-private-key :ecdsa :curve curve :x x))
+         (pk (ironclad:make-public-key :ecdsa :curve curve
+                                       :y (getf (ironclad:destructure-private-key sk) :y)))
+         (h (ironclad:digest-sequence digest message))
+         (k-computed (ironclad:compute-deterministic-nonce sk h :digest digest)))
+    (unless (= k-computed k)
+      (error "RFC 6979 nonce mismatch for ~A on curve ~A digest ~A: got ~X, expected ~X"
+             name curve digest k-computed k))
+    ;; End-to-end: deterministic signing must reproduce the RFC
+    ;; signature exactly, twice in a row.
+    (let ((expected (ironclad:make-signature curve :r r :s s)))
+      (dotimes (i 2)
+        (let ((sig (ironclad:sign-message sk h :digest digest)))
+          (when (mismatch sig expected)
+            (error "RFC 6979 signature mismatch for ~A on curve ~A digest ~A (try ~A)"
+                   name curve digest i))
+          (unless (ironclad:verify-signature pk h sig)
+            (error "RFC 6979 signature verification failed for ~A on curve ~A digest ~A"
+                   name curve digest)))))))
+
 (defparameter *public-key-encryption-tests*
   (list (cons :rsa-oaep-encryption-test 'rsa-oaep-encryption-test)
         (cons :elgamal-encryption-test 'elgamal-encryption-test)))
@@ -698,7 +727,8 @@
         (cons :secp256r1-signature-test 'secp256r1-signature-test)
         (cons :secp384r1-signature-test 'secp384r1-signature-test)
         (cons :secp521r1-signature-test 'secp521r1-signature-test)
-        (cons :ecdsa-signature-test 'ecdsa-signature-test)))
+        (cons :ecdsa-signature-test 'ecdsa-signature-test)
+        (cons :ecdsa-rfc6979-test 'ecdsa-rfc6979-test)))
 
 (defparameter *public-key-diffie-hellman-tests*
   (list (cons :curve25519-dh-test 'curve25519-dh-test)

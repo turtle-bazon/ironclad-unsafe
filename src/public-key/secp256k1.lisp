@@ -232,22 +232,26 @@
           (list :r r :s s)))))
 
 (defmethod generate-signature-nonce ((key secp256k1-private-key) message &optional parameters)
-  (declare (ignore key message parameters))
   (or *signature-nonce-for-test*
-      (1+ (strong-random (1- +secp256k1-l+)))))
+      (rfc6979-generate-k (secp256k1-key-x key)
+                          message
+                          +secp256k1-l+
+                          (integer-length +secp256k1-l+)
+                          (ceiling (integer-length +secp256k1-l+) 8)
+                          :digest (or parameters *ecdsa-rfc6979-digest*))))
 
 ;;; Note that hashing is not performed here.
-(defmethod sign-message ((key secp256k1-private-key) message &key (start 0) end &allow-other-keys)
+(defmethod sign-message ((key secp256k1-private-key) message &key (start 0) end (digest *ecdsa-rfc6979-digest*) &allow-other-keys)
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((end (min (or end (length message)) (/ +secp256k1-bits+ 8)))
          (sk (ec-decode-scalar :secp256k1 (secp256k1-key-x key)))
-         (k (generate-signature-nonce key message))
+         (h (subseq message start end))
+         (k (generate-signature-nonce key h digest))
          (invk (modular-inverse-with-blinding k +secp256k1-l+))
          (r (ec-scalar-mult +secp256k1-g+ k))
          (x (subseq (ec-encode-point r) 1 (1+ (/ +secp256k1-bits+ 8))))
          (r (ec-decode-scalar :secp256k1 x))
          (r (mod r +secp256k1-l+))
-         (h (subseq message start end))
          (e (ec-decode-scalar :secp256k1 h))
          (s (mod (* invk (+ e (* sk r))) +secp256k1-l+)))
     (if (not (or (zerop r) (zerop s)))

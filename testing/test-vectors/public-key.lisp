@@ -14,6 +14,7 @@
 (rtest:deftest :secp384r1-signature (run-test-vector-file :secp384r1-sig *public-key-signature-tests*) t)
 (rtest:deftest :secp521r1-signature (run-test-vector-file :secp521r1-sig *public-key-signature-tests*) t)
 (rtest:deftest :ecdsa-signature (run-test-vector-file :ecdsa-sig *public-key-signature-tests*) t)
+(rtest:deftest :ecdsa-rfc6979 (run-test-vector-file :ecdsa-rfc6979 *public-key-signature-tests*) t)
 (rtest:deftest :curve25519-dh (run-test-vector-file :curve25519 *public-key-diffie-hellman-tests*) t)
 (rtest:deftest :curve448-dh (run-test-vector-file :curve448 *public-key-diffie-hellman-tests*) t)
 (rtest:deftest :elgamal-dh (run-test-vector-file :elgamal-dh *public-key-diffie-hellman-tests*) t)

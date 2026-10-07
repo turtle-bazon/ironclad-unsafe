@@ -131,3 +131,50 @@ KEY must be one of the concrete SEC curve key objects."
 
 (defmethod make-signature ((kind (eql :ecdsa)) &key (curve :secp256r1) r s &allow-other-keys)
   (make-signature (resolve-ecdsa-curve curve) :r r :s s))
+
+
+;;; RFC 6979 deterministic nonces
+
+(defun ecdsa-curve-order (curve)
+  "Return the group order of the ECDSA CURVE (a canonical curve kind)."
+  (ecase curve
+    (:secp256k1 +secp256k1-l+)
+    (:secp256r1 +secp256r1-l+)
+    (:secp384r1 +secp384r1-l+)
+    (:secp521r1 +secp521r1-l+)))
+
+(defun ecdsa-field-octets (curve)
+  "Number of message-hash octets consumed by SIGN-MESSAGE for CURVE."
+  (ecase curve
+    (:secp256k1 32)
+    (:secp256r1 32)
+    (:secp384r1 48)
+    (:secp521r1 66)))
+
+(defun ecdsa-key-x-octets (key)
+  "Return the private-key octets of the ECDSA private KEY."
+  (let ((curve (ecdsa-curve-for-key key)))
+    (ecase curve
+      (:secp256k1 (secp256k1-key-x key))
+      (:secp256r1 (secp256r1-key-x key))
+      (:secp384r1 (secp384r1-key-x key))
+      (:secp521r1 (secp521r1-key-x key)))))
+
+(defun compute-deterministic-nonce (key message &key (digest *ecdsa-rfc6979-digest*)
+                                                      (start 0) end)
+  "RFC 6979 deterministic signature nonce for ECDSA private KEY over
+the MESSAGE octets between START and END.  MESSAGE is the message
+hash (hashing is not performed here), exactly as passed to
+SIGN-MESSAGE.  DIGEST selects the HMAC hash (default
+*ECDSA-RFC6979-DIGEST*).  Returns an integer K with 1 <= K < N.
+Redefine GENERATE-SIGNATURE-NONCE to use this (it is the default for
+the SEC curves) or to restore random nonces."
+  (let* ((curve (ecdsa-curve-for-key key))
+         (order (ecdsa-curve-order curve))
+         (qlen (integer-length order))
+         (rolen (ceiling qlen 8))
+         (end (min (or end (length message))
+                   (+ start (ecdsa-field-octets curve))))
+         (h1 (subseq message start (min end (length message)))))
+    (rfc6979-generate-k (ecdsa-key-x-octets key) h1
+                        order qlen rolen :digest digest)))
