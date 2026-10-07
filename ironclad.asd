@@ -200,7 +200,11 @@
   "secp256k1"
   "secp256r1"
   "secp384r1"
-  "secp521r1")
+  "secp521r1"
+  ("ecdsa" :depends-on ("ironclad/public-key/secp256k1"
+                        "ironclad/public-key/secp256r1"
+                        "ironclad/public-key/secp384r1"
+                        "ironclad/public-key/secp521r1")))
 
 (defsystem "ironclad"
   :class ironclad-system
@@ -402,6 +406,8 @@
                                            (:test-vector-file "curve25519")
                                            (:test-vector-file "curve448")
                                            (:test-vector-file "dsa")
+                                           (:test-vector-file "ecdsa-dh")
+                                           (:test-vector-file "ecdsa-sig")
                                            (:test-vector-file "ed25519")
                                            (:test-vector-file "ed448")
                                            (:test-vector-file "elgamal-dh")

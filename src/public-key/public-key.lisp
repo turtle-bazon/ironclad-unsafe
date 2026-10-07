@@ -5,8 +5,9 @@
 
 
 (defun list-all-key-pair-kinds ()
-  (copy-list '(:curve25519 :curve448 :dsa :ed25519 :ed448 :elgamal
-               :rsa :secp256k1 :secp256r1 :secp384r1 :secp521r1)))
+  (copy-list '(:curve25519 :curve448 :dsa :ecdsa :ed25519 :ed448 :elgamal
+               :rsa :secp256k1 :secp256r1 :secp384r1 :secp521r1
+               :p-256 :prime256v1 :p-384 :p-521)))
 
 
 ;;; class definitions

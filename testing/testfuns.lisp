@@ -560,6 +560,18 @@
       (error "signature verification failed for ~A on pkey ~A, input ~A, signature ~A"
              name pkey input signature))))
 
+(defun ecdsa-signature-test (name curve skey pkey input k signature)
+  (let* ((ironclad::*signature-nonce-for-test* k)
+         (sk (ironclad:make-private-key :ecdsa :curve curve :x skey :y pkey))
+         (pk (ironclad:make-public-key :ecdsa :curve curve :y pkey))
+         (s (ironclad:sign-message sk input)))
+    (when (mismatch s signature)
+      (error "signature failed for ~A on curve ~A skey ~A, input ~A, signature ~A"
+             name curve skey input signature))
+    (unless (ironclad:verify-signature pk input signature)
+      (error "signature verification failed for ~A on curve ~A pkey ~A, input ~A, signature ~A"
+             name curve pkey input signature))))
+
 (defun curve25519-dh-test (name skey1 pkey1 skey2 pkey2 shared-secret)
   (let* ((sk1 (ironclad:make-private-key :curve25519 :x skey1 :y pkey1))
          (pk1 (ironclad:make-public-key :curve25519 :y pkey1))
@@ -658,6 +670,20 @@
       (error "shared secret computation failed for ~A on skey ~A, pkey ~A, secret ~A"
              name skey2 pkey1 shared-secret))))
 
+(defun ecdsa-dh-test (name curve skey1 pkey1 skey2 pkey2 shared-secret)
+  (let* ((sk1 (ironclad:make-private-key :ecdsa :curve curve :x skey1 :y pkey1))
+         (pk1 (ironclad:make-public-key :ecdsa :curve curve :y pkey1))
+         (sk2 (ironclad:make-private-key :ecdsa :curve curve :x skey2 :y pkey2))
+         (pk2 (ironclad:make-public-key :ecdsa :curve curve :y pkey2))
+         (ss1 (ironclad:diffie-hellman sk1 pk2))
+         (ss2 (ironclad:diffie-hellman sk2 pk1)))
+    (when (mismatch ss1 shared-secret)
+      (error "shared secret computation failed for ~A on curve ~A skey ~A, pkey ~A, secret ~A"
+             name curve skey1 pkey2 shared-secret))
+    (when (mismatch ss2 shared-secret)
+      (error "shared secret computation failed for ~A on curve ~A skey ~A, pkey ~A, secret ~A"
+             name curve skey2 pkey1 shared-secret))))
+
 (defparameter *public-key-encryption-tests*
   (list (cons :rsa-oaep-encryption-test 'rsa-oaep-encryption-test)
         (cons :elgamal-encryption-test 'elgamal-encryption-test)))
@@ -671,7 +697,8 @@
         (cons :secp256k1-signature-test 'secp256k1-signature-test)
         (cons :secp256r1-signature-test 'secp256r1-signature-test)
         (cons :secp384r1-signature-test 'secp384r1-signature-test)
-        (cons :secp521r1-signature-test 'secp521r1-signature-test)))
+        (cons :secp521r1-signature-test 'secp521r1-signature-test)
+        (cons :ecdsa-signature-test 'ecdsa-signature-test)))
 
 (defparameter *public-key-diffie-hellman-tests*
   (list (cons :curve25519-dh-test 'curve25519-dh-test)
@@ -680,7 +707,8 @@
         (cons :secp256k1-dh-test 'secp256k1-dh-test)
         (cons :secp256r1-dh-test 'secp256r1-dh-test)
         (cons :secp384r1-dh-test 'secp384r1-dh-test)
-        (cons :secp521r1-dh-test 'secp521r1-dh-test)))
+        (cons :secp521r1-dh-test 'secp521r1-dh-test)
+        (cons :ecdsa-dh-test 'ecdsa-dh-test)))
 
 
 ;;; authenticated encryption testing routines
