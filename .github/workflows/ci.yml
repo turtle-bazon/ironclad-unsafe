@@ -14,10 +14,18 @@ jobs:
         # current releases, except Allegro: bare `allegro` resolves to
         # the withdrawn 10.1express (Franz now ships 11.0), which breaks
         # the Roswell install step, so it is pinned to 11.0express.
-        lisp: [abcl-bin, allegro/11.0express, ccl-bin, ccl-bin READTABLE_CASE_INVERT=1, ecl, sbcl-bin]
+        lisp: [abcl-bin, allegro/11.0express, ccl-bin, ecl, sbcl-bin]
         os: [ubuntu-latest]
+        include:
+          # CCL again with an :invert readtable, via a real env var
+          # (the old "ccl-bin READTABLE_CASE_INVERT=1" entry never
+          # actually exported it, so the check below never fired).
+          - lisp: ccl-bin
+            invert-readtable: 1
       fail-fast: false
     runs-on: ${{matrix.os}}
+    env:
+      READTABLE_CASE_INVERT: ${{ matrix.invert-readtable }}
     steps:
       - uses: actions/checkout@v4
       - name: Install Roswell
@@ -44,4 +52,4 @@ jobs:
 
       - name: Run tests
         shell: bash
-        run: ros -e '(setf *debugger-hook* (lambda (&rest ignorable) (declare (ignore ignorable)) (uiop:quit -1)))' -e '(when (uiop:getenvp "READTABLE_CASE_INVERT") (format t "changing readtable-case to :invert~%") (setq *readtable* (let ((rt (copy-readtable))) (setf (readtable-case rt) :invert) rt)))' -e '(ql:quickload "ironclad/tests")' -e '(unless (rt:do-tests) (uiop:quit -1))'
+        run: ros -e '(setf *debugger-hook* (lambda (&rest ignorable) (declare (ignore ignorable)) (uiop:quit -1)))' -e '(when (plusp (length (or (uiop:getenv "READTABLE_CASE_INVERT") ""))) (format t "changing readtable-case to :invert~%") (setq *readtable* (let ((rt (copy-readtable))) (setf (readtable-case rt) :invert) rt)))' -e '(ql:quickload "ironclad/tests")' -e '(unless (rt:do-tests) (uiop:quit -1))'
