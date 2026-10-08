@@ -178,6 +178,7 @@
   ("eax" :depends-on ("ironclad/mac/cmac"))
   "etm"
   ("gcm" :depends-on ("ironclad/mac/gmac"))
+  ("ccm" :depends-on ("ironclad/cipher/aes"))
   ("chacha-poly" :depends-on ("ironclad/cipher/chacha"
                               "ironclad/cipher/xchacha"
                               "ironclad/mac/poly1305")))
@@ -274,6 +275,7 @@
                                            (:test-vector-file "gcm")
                                            (:test-vector-file "chacha-poly")
                                            (:test-vector-file "xchacha-poly")
+                                           (:test-vector-file "ccm")
                                            ;; ciphers
                                            (:file "ciphers")
                                            (:file "modes")

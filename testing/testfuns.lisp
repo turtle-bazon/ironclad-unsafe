@@ -785,6 +785,11 @@
                          :xchacha-poly xchacha-poly crypto:xchacha-poly)
                         (list :key (car args)
                               :initialization-vector (cadr args)))
+                       ((:ccm ccm crypto:ccm)
+                        (list :key (car args)
+                              :initialization-vector (cadr args)
+                              :tag-length (caddr args)
+                              :message-length (cadddr args)))
                        ((:etm etm crypto:etm)
                         (destructuring-bind (cipher-name ckey mode iv mac-name mkey mparam) args
                           (let ((cipher (crypto:make-cipher cipher-name
@@ -805,6 +810,8 @@
                          parameters)
                         ((:chacha-poly chacha-poly crypto:chacha-poly
                           :xchacha-poly xchacha-poly crypto:xchacha-poly)
+                         parameters)
+                        ((:ccm ccm crypto:ccm)
                          parameters)
                        ((:etm etm crypto:etm)
                         (destructuring-bind (cipher-name ckey mode iv mac-name mkey mparam) args
@@ -832,6 +839,11 @@
                          :xchacha-poly xchacha-poly crypto:xchacha-poly)
                         (list :key (car args)
                               :initialization-vector (cadr args)))
+                       ((:ccm ccm crypto:ccm)
+                        (list :key (car args)
+                              :initialization-vector (cadr args)
+                              :tag-length (caddr args)
+                              :message-length (cadddr args)))
                        ((:etm etm crypto:etm)
                         (destructuring-bind (cipher-name ckey mode iv mac-name mkey mparam) args
                           (let ((cipher (crypto:make-cipher cipher-name
@@ -860,6 +872,8 @@
                          parameters)
                         ((:chacha-poly chacha-poly crypto:chacha-poly
                           :xchacha-poly xchacha-poly crypto:xchacha-poly)
+                         parameters)
+                        ((:ccm ccm crypto:ccm)
                          parameters)
                        ((:etm etm crypto:etm)
                         (destructuring-bind (cipher-name ckey mode iv mac-name mkey mparam) args

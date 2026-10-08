@@ -834,6 +834,7 @@ tell you the names of all the supported modes. They are:
  - eax (Encrypt then authenticate then translate)
  - etm (Encrypt then MAC)
  - gcm (Galois counter mode)
+ - ccm (Counter with CBC-MAC, RFC 3610, AES only)
  - chacha-poly (ChaCha20-Poly1305, RFC 8439)
  - xchacha-poly (XChaCha20-Poly1305)
 
@@ -845,6 +846,7 @@ tell you the names of all the supported modes. They are:
 (make-authenticated-encryption-mode :eax &key tag cipher-name key initialization-vector)
 (make-authenticated-encryption-mode :etm &key tag cipher mac)
 (make-authenticated-encryption-mode :gcm &key tag cipher-name key initialization-vector)
+(make-authenticated-encryption-mode :ccm &key tag key initialization-vector tag-length message-length)
 (make-authenticated-encryption-mode :chacha-poly &key tag key initialization-vector)
 (make-authenticated-encryption-mode :xchacha-poly &key tag key initialization-vector)
 #+END_EXAMPLE
@@ -862,6 +864,15 @@ When using ETM, /cipher/ must be a cipher object created by [[make-cipher][make-
 
 When using GCM, /cipher-name/ must have a [[block-length][block-length]] of 16 bytes. /key/ must be a suitable key
 for the chosen cipher.
+
+When using CCM, /key/ must be 16, 24 or 32 bytes long (AES-128, AES-192
+or AES-256), /initialization-vector/ (the nonce) must be 7 to 13 bytes
+long, /tag-length/ must be one of 4, 6, 8, 10, 12, 14 or 16 (16 by
+default), and /message-length/ is the total number of plaintext octets.
+[[encrypt-message][encrypt-message]] and [[decrypt-message][decrypt-message]] infer /message-length/
+from the message when it is omitted; incremental [[encrypt][encrypt]] and
+[[decrypt][decrypt]] calls require it up front (as does CCM itself, since
+block B0 encodes it).
 
 When using Chacha-poly, /key/ must be 32 bytes long and /initialization-vector/
 must be 12 bytes long. When using Xchacha-poly, /key/ must be 32 bytes long
@@ -930,7 +941,7 @@ Ironclad comes with a few key derivation functions:
  - PBKDF1
  - PBKDF2
  - Scrypt
- - HMAC
+ - HKDF (also known as HMAC-KDF)
 
 
 #+NAME: derive-key
@@ -949,6 +960,16 @@ Scrypt and HMAC ignore the /iteration-count/ parameter.
 
 For bcrypt-pbkdf, the /key-length/ must be between 1 and 1024.
 
+For HKDF (RFC 5869, ~:hkdf~ or ~:hmac-kdf~), /passphrase/ is the input
+keying material, /salt/ is the salt and /iteration-count/ is ignored.
+The lower-level [[hkdf-extract][hkdf-extract]] and [[hkdf-expand][hkdf-expand]] functions are also
+available:
+
+#+BEGIN_EXAMPLE
+(hkdf-extract digest salt input-keying-material) => pseudorandom-key
+(hkdf-expand digest pseudorandom-key info key-length) => output-keying-material
+#+END_EXAMPLE
+
 
 #+NAME: make-kdf
 #+BEGIN_SRC lisp
@@ -966,7 +987,7 @@ Returns a key derivation function instance.
  - pbkdf1
  - pbkdf2
  - scrypt-kdf
- - hmac-kdf
+ - hmac-kdf (also known as hkdf)
 
 /kind/ can be a symbol in the ~keyword~  or ~ironclad~ packages.
 
