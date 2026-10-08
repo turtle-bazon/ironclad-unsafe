@@ -424,6 +424,8 @@ by calling [[list-all-digests][list-all-digests]]. They are:
  - sha3/384
  - sha384
  - sha512
+ - sha512/224
+ - sha512/256
  - shake128
  - shake256
  - skein1024

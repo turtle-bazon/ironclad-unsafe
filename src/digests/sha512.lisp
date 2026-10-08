@@ -16,6 +16,30 @@
 
 (defconst +pristine-sha384-registers+ (initial-sha384-regs))
 
+(define-digest-registers (sha512/224 :endian :big :size 8)
+  (a #x8C3D37C819544DA2)
+  (b #x73E1996689DCD4D6)
+  (c #x1DFAB7AE32FF9C82)
+  (d #x679DD514582F9FCF)
+  (e #x0F6D2B697BD44DA8)
+  (f #x77E36F7304C48942)
+  (g #x3F9D85A86A1D36C8)
+  (h #x1112E6AD91D692A1))
+
+(defconst +pristine-sha512/224-registers+ (initial-sha512/224-regs))
+
+(define-digest-registers (sha512/256 :endian :big :size 8)
+  (a #x22312194FC2BF72C)
+  (b #x9F555FA3C84C64C2)
+  (c #x2393B86B6F53B151)
+  (d #x963877195940EABD)
+  (e #x96283EE2A88EFFE3)
+  (f #xBE5E1E2553863992)
+  (g #x2B0199FC2C85B8AA)
+  (h #x0EB72DDC81C52CA2))
+
+(defconst +pristine-sha512/256-registers+ (initial-sha512/256-regs))
+
 (define-digest-registers (sha512 :endian :big :size 8)
   (a #x6A09E667F3BCC908)
   (b #xBB67AE8584CAA73B)
@@ -121,6 +145,24 @@
   ;; No slots.
   )
 
+(defstruct (sha512/224
+             (:include sha512)
+             (:constructor %make-sha512/224-digest
+              (&aux (regs (initial-sha512/224-regs))
+                    (buffer (make-array 128 :element-type '(unsigned-byte 8)))))
+             (:copier nil))
+  ;; No slots.
+  )
+
+(defstruct (sha512/256
+             (:include sha512)
+             (:constructor %make-sha512/256-digest
+              (&aux (regs (initial-sha512/256-regs))
+                    (buffer (make-array 128 :element-type '(unsigned-byte 8)))))
+             (:copier nil))
+  ;; No slots.
+  )
+
 (defmethod reinitialize-instance ((state sha512) &rest initargs)
   (declare (ignore initargs))
   ;; Some versions of Clozure CCL have a bug where the elements of
@@ -151,11 +193,37 @@
         (sha384-buffer-index state) 0)
   state)
 
+(defmethod reinitialize-instance ((state sha512/224) &rest initargs)
+  (declare (ignore initargs))
+  #+ccl
+  (let ((regs (sha512/224-regs state)))
+    (dotimes (i (length +pristine-sha512/224-registers+))
+      (setf (aref regs i) (ldb (byte 64 0) (aref +pristine-sha512/224-registers+ i)))))
+  #-ccl
+  (replace (sha512/224-regs state) +pristine-sha512/224-registers+)
+  (setf (sha512/224-amount state) 0
+        (sha512/224-buffer-index state) 0)
+  state)
+
+(defmethod reinitialize-instance ((state sha512/256) &rest initargs)
+  (declare (ignore initargs))
+  #+ccl
+  (let ((regs (sha512/256-regs state)))
+    (dotimes (i (length +pristine-sha512/256-registers+))
+      (setf (aref regs i) (ldb (byte 64 0) (aref +pristine-sha512/256-registers+ i)))))
+  #-ccl
+  (replace (sha512/256-regs state) +pristine-sha512/256-registers+)
+  (setf (sha512/256-amount state) 0
+        (sha512/256-buffer-index state) 0)
+  state)
+
 (defmethod copy-digest ((state sha512) &optional copy)
   (check-type copy (or null sha512))
   (let ((copy (if copy
                   copy
                   (etypecase state
+                    (sha512/224 (%make-sha512/224-digest))
+                    (sha512/256 (%make-sha512/256-digest))
                     (sha384 (%make-sha384-digest))
                     (sha512 (%make-sha512-digest))))))
     (declare (type sha512 copy))
@@ -175,7 +243,7 @@
     (declare (notinline mdx-updater))
     (mdx-updater state #'compress sequence start end)))
 
-(define-digest-finalizer ((sha512 64) (sha384 48))
+(define-digest-finalizer ((sha512 64) (sha384 48) (sha512/256 32))
   (let ((regs (sha512-regs state))
         (block (sha512-block state))
         (buffer (sha512-buffer state))
@@ -208,5 +276,53 @@
     (update-sha512-block regs block)
     (finalize-registers state regs)))
 
+(defmethod produce-digest ((state sha512/224) &key digest (digest-start 0))
+  ;; 28 octets is not a multiple of the 8-octet register size, so the
+  ;; stock finalizer (which unpacks whole registers) cannot be used.
+  ;; Finalize exactly like SHA-512 into a scratch buffer, then take 28.
+  (let ((state-copy (copy-digest state))
+        (full (make-array 64 :element-type '(unsigned-byte 8))))
+    (let ((regs (sha512-regs state-copy))
+          (block (sha512-block state-copy))
+          (buffer (sha512-buffer state-copy))
+          (buffer-index (sha512-buffer-index state-copy))
+          (total-length (* 8 (sha512-amount state-copy))))
+      (declare (type sha512-regs regs)
+               (type (integer 0 127) buffer-index)
+               (type (simple-array (unsigned-byte 64) (80)) block)
+               (type (simple-array (unsigned-byte 8) (128)) buffer))
+      (setf (aref buffer buffer-index) #x80)
+      (when (> buffer-index 111)
+        (loop for index of-type (integer 0 128)
+           from (1+ buffer-index) below 128
+           do (setf (aref buffer index) #x00))
+        (fill-block-ub8-be/64 block buffer 0)
+        (sha512-expand-block block)
+        (update-sha512-block regs block)
+        (loop for index of-type (integer 0 16)
+           from 0 below 16
+           do (setf (aref block index) #x00000000)))
+      (when (<= buffer-index 111)
+        (loop for index of-type (integer 0 128)
+           from (1+ buffer-index) below 128
+           do (setf (aref buffer index) #x00))
+        (fill-block-ub8-be/64 block buffer 0))
+      (setf (aref block 15) total-length)
+      (sha512-expand-block block)
+      (update-sha512-block regs block)
+      (sha512-regs-digest regs full 0))
+    (etypecase digest
+      (simple-octet-vector
+       (if (<= 28 (- (length digest) digest-start))
+           (progn (replace digest full :start1 digest-start :end2 28) digest)
+           (error 'insufficient-buffer-space
+                  :buffer digest
+                  :start digest-start
+                  :length 28)))
+      (null
+       (subseq full 0 28)))))
+
 (defdigest sha512 :digest-length 64 :block-length 128)
 (defdigest sha384 :digest-length 48 :block-length 128)
+(defdigest sha512/256 :digest-length 32 :block-length 128)
+(defdigest sha512/224 :digest-length 28 :block-length 128)
