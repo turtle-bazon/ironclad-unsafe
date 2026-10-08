@@ -392,6 +392,7 @@ by calling [[list-all-digests][list-all-digests]]. They are:
  - blake2s/128
  - blake2s/160
  - blake2s/224
+ - blake3
  - crc24
  - crc32
  - crc32c
@@ -454,6 +455,15 @@ any size. The size of the digest in bytes can be specified with the
 
 #+BEGIN_EXAMPLE
 (make-digest :shake256 :output-length 123)
+#+END_EXAMPLE
+
+BLAKE3 also produces digests of any size via /output-length/ (32 by
+default), and supports keyed hashing and key derivation:
+
+#+BEGIN_EXAMPLE
+(make-digest :blake3 :output-length 64)
+(make-digest :blake3 :key key) ; 32-octet secret, e.g. for MACs
+(make-digest :blake3 :context "example.com 2026-10-07 session keys v1")
 #+END_EXAMPLE
 
 

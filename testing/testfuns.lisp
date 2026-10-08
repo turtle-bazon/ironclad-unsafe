@@ -269,10 +269,22 @@
     (when (mismatch result expected-digest)
       (error "one-shot ~A xof digest of ~S failed" digest-name input))))
 
+(defun blake3-keyed-test (name key input expected-digest)
+  (let ((result (crypto:digest-sequence (crypto:make-digest :blake3 :key key) input)))
+    (when (mismatch result expected-digest)
+      (error "one-shot keyed BLAKE3 digest of ~S failed" input))))
+
+(defun blake3-derive-test (name context input expected-digest)
+  (let ((result (crypto:digest-sequence (crypto:make-digest :blake3 :context context) input)))
+    (when (mismatch result expected-digest)
+      (error "one-shot BLAKE3 key derivation of ~S failed" input))))
+
 (defparameter *digest-tests*
   (list (cons :digest-test 'digest-test/base)
         (cons :digest-bit-test 'digest-bit-test)
-        (cons :xof-digest-test 'xof-digest-test)))
+        (cons :xof-digest-test 'xof-digest-test)
+        (cons :blake3-keyed-test 'blake3-keyed-test)
+        (cons :blake3-derive-test 'blake3-derive-test)))
 
 (defun ignore-test (&rest args)
   (declare (ignore args))

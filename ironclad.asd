@@ -135,6 +135,7 @@
   "adler32"
   "blake2"
   "blake2s"
+  "blake3"
   "crc24"
   "crc32"
   "groestl"
@@ -336,6 +337,8 @@
                                            (:test-vector-file "blake2s-128")
                                            (:test-vector-file "blake2s-160")
                                            (:test-vector-file "blake2s-224")
+                                           (:test-vector-file "blake3")
+                                           (:test-vector-file "blake3-keyed")
                                            (:test-vector-file "crc24")
                                            (:test-vector-file "crc32")
                                            (:test-vector-file "crc32c")

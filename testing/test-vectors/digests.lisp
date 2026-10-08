@@ -151,3 +151,5 @@
         (error () nil)
         (:no-error () (return nil)))))
   t)
+
+(rtest:deftest :blake3-keyed (run-test-vector-file :blake3-keyed *digest-tests*) t)
