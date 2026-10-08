@@ -4,7 +4,7 @@
 
 (defun list-all-kdfs ()
   (copy-list '(:argon2i :argon2d :bcrypt :bcrypt-pbkdf
-               :hmac-kdf :pbkdf1 :pbkdf2 :scrypt-kdf)))
+               :hkdf :hmac-kdf :pbkdf1 :pbkdf2 :scrypt-kdf)))
 
 (defun make-kdf (kind &key digest
                       (n 4096) (r 8) (p 2)
@@ -25,11 +25,11 @@ argon2"
        (unless (digestp digest-name)
          (error 'unsupported-digest :name digest))
        (make-instance 'pbkdf2 :digest digest-name)))
-    (hmac-kdf
-     (let ((digest-name (massage-symbol digest)))
-       (unless (digestp digest-name)
-         (error 'unsupported-digest :name digest))
-       (make-instance 'hmac-kdf :digest digest-name :info additional-data)))
+     ((hmac-kdf hkdf)
+      (let ((digest-name (massage-symbol digest)))
+        (unless (digestp digest-name)
+          (error 'unsupported-digest :name digest))
+        (make-instance 'hmac-kdf :digest digest-name :info additional-data)))
     (scrypt-kdf
      (when (or (<= n 1)
                (not (zerop (logand n (1- n))))

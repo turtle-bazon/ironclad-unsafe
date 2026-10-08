@@ -50,13 +50,14 @@
    #:make-authenticated-encryption-mode
    #:process-associated-data
    #:produce-tag
-    #:gcm #:etm #:eax #:chacha-poly #:xchacha-poly
+    #:gcm #:etm #:eax #:ccm #:chacha-poly #:xchacha-poly
 
-   ;; KDFs
-   #:list-all-kdfs
-   #:pbkdf1 #:pbkdf2 #:hmac-kdf #:scrypt-kdf #:argon2i #:argon2d #:argon2id
-   #:bcrypt #:bcrypt-pbkdf
-   #:make-kdf #:derive-key
+    ;; KDFs
+    #:list-all-kdfs
+    #:pbkdf1 #:pbkdf2 #:hmac-kdf #:hkdf #:scrypt-kdf #:argon2i #:argon2d #:argon2id
+    #:bcrypt #:bcrypt-pbkdf
+    #:hkdf-extract #:hkdf-expand
+    #:make-kdf #:derive-key
 
    ;; KDF convenience functions
    #:make-random-salt #:pbkdf2-hash-password
