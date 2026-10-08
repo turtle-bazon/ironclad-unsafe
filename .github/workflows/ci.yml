@@ -10,12 +10,17 @@ jobs:
     name: ${{matrix.lisp}} on ${{matrix.os}}
     strategy:
       matrix:
-        lisp: [abcl-bin, allegro, ccl-bin, ccl-bin READTABLE_CASE_INVERT=1, ecl, sbcl-bin]
+        # Pinned to modern versions installable via Roswell (checked
+        # 2026-10-08): Allegro 11.0 is current at Franz (10.1 no longer
+        # resolves); ABCL 1.9.3 (note: download moved hosts, old URL
+        # 301-redirects); CCL 1.13 (latest stable, avoids -pre lottery);
+        # ECL 24.5.10; SBCL 2.6.9.
+        lisp: [abcl-bin/1.9.3, allegro/11.0express, ccl-bin/1.13, ccl-bin/1.13 READTABLE_CASE_INVERT=1, ecl/24.5.10, sbcl-bin/2.6.9]
         os: [ubuntu-latest]
       fail-fast: false
     runs-on: ${{matrix.os}}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Install Roswell
         shell: bash
         env:
@@ -34,7 +39,7 @@ jobs:
         # Compiling and testing can fail on Allegro CL Express Free edition
         # because of the 50 MB heap size limitation, so let's try to split
         # the work in two as a possible workaround...
-        if: ${{matrix.lisp == 'allegro'}}
+        if: ${{matrix.lisp == 'allegro/11.0express'}}
         shell: bash
         run: ros -e '(setf *debugger-hook* (lambda (&rest ignorable) (declare (ignore ignorable)) (uiop:quit 0)))' -e '(ql:quickload "ironclad/tests")'
 
