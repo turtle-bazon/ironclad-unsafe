@@ -199,6 +199,13 @@ missing in a call to MAKE-SIGNATURE."))
                      (kind condition))))
   (:documentation "Signaled when providing keys that are not compatible to DIFFIE-HELLMAN."))
 
+(define-condition invalid-private-key (ironclad-error)
+  ((kind :initarg :kind :reader kind))
+  (:report (lambda (condition stream)
+             (format stream "Invalid private key for ~A." (kind condition))))
+  (:documentation "Signaled when a private key outside its valid range is
+provided to MAKE-PRIVATE-KEY."))
+
 (define-condition invalid-curve-point (ironclad-error)
   ((kind :initarg :kind :reader kind))
   (:report (lambda (condition stream)

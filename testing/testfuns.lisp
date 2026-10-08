@@ -713,6 +713,35 @@
             (error "RFC 6979 signature verification failed for ~A on curve ~A digest ~A"
                    name curve digest)))))))
 
+(defun ecdsa-der-test (name der r s)
+  (multiple-value-bind (dr ds) (ironclad:ecdsa-der-decode der)
+    (unless (and (= dr r) (= ds s))
+      (error "DER decode mismatch for ~A: got (~X, ~X), expected (~X, ~X)"
+             name dr ds r s))
+    (let ((enc (ironclad:ecdsa-der-encode r s)))
+      (when (mismatch enc der)
+        (error "DER re-encode mismatch for ~A" name)))))
+
+(defun ecdsa-der-invalid-test (name der)
+  (handler-case
+      (progn (ironclad:ecdsa-der-decode der)
+             (error "expected a decode error for malformed DER ~A" name))
+    (ironclad:ironclad-error () t)))
+
+(defun ecdsa-compressed-point-test (name curve uncompressed compressed)
+  (let ((p (ironclad:ec-decode-point curve uncompressed)))
+    (unless (ironclad:ec-point-on-curve-p p)
+      (error "decoded point off curve for ~A" name))
+    (let ((c (ironclad:ec-encode-point-compressed p)))
+      (when (mismatch c compressed)
+        (error "compressed encoding mismatch for ~A" name)))
+    (let ((p2 (ironclad:ec-decode-point curve compressed)))
+      (unless (ironclad:ec-point-equal p p2)
+        (error "compressed roundtrip mismatch for ~A" name))
+      (let ((u2 (ironclad:ec-encode-point p2)))
+        (when (mismatch u2 uncompressed)
+          (error "uncompressed roundtrip mismatch for ~A" name))))))
+
 (defparameter *public-key-encryption-tests*
   (list (cons :rsa-oaep-encryption-test 'rsa-oaep-encryption-test)
         (cons :elgamal-encryption-test 'elgamal-encryption-test)))
@@ -728,7 +757,10 @@
         (cons :secp384r1-signature-test 'secp384r1-signature-test)
         (cons :secp521r1-signature-test 'secp521r1-signature-test)
         (cons :ecdsa-signature-test 'ecdsa-signature-test)
-        (cons :ecdsa-rfc6979-test 'ecdsa-rfc6979-test)))
+        (cons :ecdsa-rfc6979-test 'ecdsa-rfc6979-test)
+        (cons :ecdsa-der-test 'ecdsa-der-test)
+        (cons :ecdsa-der-invalid-test 'ecdsa-der-invalid-test)
+        (cons :ecdsa-compressed-point-test 'ecdsa-compressed-point-test)))
 
 (defparameter *public-key-diffie-hellman-tests*
   (list (cons :curve25519-dh-test 'curve25519-dh-test)

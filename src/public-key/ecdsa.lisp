@@ -178,3 +178,184 @@ the SEC curves) or to restore random nonces."
          (h1 (subseq message start (min end (length message)))))
     (rfc6979-generate-k (ecdsa-key-x-octets key) h1
                         order qlen rolen :digest digest)))
+
+
+;;; SEC 1 / DER interoperability
+;;;
+;;; Ironclad signatures are raw R || S concatenations.  Most of the
+;;; outside world (X.509, TLS, Bitcoin, ...) uses DER-encoded
+;;; ASN.1 SEQUENCEs of two INTEGERs instead.  Ironclad points are
+;;; uncompressed (0x04 || X || Y); the outside world often uses
+;;; compressed (0x02/0x03 || X) form.  This section bridges both gaps.
+
+(defun ecdsa-point-curve (point)
+  "Return the canonical curve kind of the SEC POINT object."
+  (etypecase point
+    (secp256k1-point :secp256k1)
+    (secp256r1-point :secp256r1)
+    (secp384r1-point :secp384r1)
+    (secp521r1-point :secp521r1)))
+
+(defun ecdsa-field-prime (curve)
+  "Return the field prime of the ECDSA CURVE (a canonical curve kind)."
+  (ecase curve
+    (:secp256k1 +secp256k1-p+)
+    (:secp256r1 +secp256r1-p+)
+    (:secp384r1 +secp384r1-p+)
+    (:secp521r1 +secp521r1-p+)))
+
+(defun ec-encode-point-compressed (point)
+  "SEC 1 compressed encoding (0x02/0x03 || X) of the EC POINT.
+Decoding is handled by EC-DECODE-POINT, which already accepts
+compressed points."
+  (let* ((curve (ecdsa-point-curve point))
+         (coordinates (ec-destructure-point point))
+         (prefix (if (oddp (getf coordinates :y)) 3 2)))
+    (concatenate '(simple-array (unsigned-byte 8) (*))
+                 (vector prefix)
+                 (integer-to-octets (getf coordinates :x)
+                                    :n-bits (* 8 (ecdsa-field-octets curve))
+                                    :big-endian t))))
+
+(defun %der-encode-length (length)
+  "DER length octets for LENGTH."
+  (declare (type (integer 0 *) length))
+  (if (< length 128)
+      (vector length)
+      (let ((bytes (integer-to-octets length :big-endian t)))
+        (concatenate '(simple-array (unsigned-byte 8) (*))
+                     (vector (logior #x80 (length bytes)))
+                     bytes))))
+
+(defun %der-encode-integer (n)
+  "DER TLV for the non-negative integer N."
+  (declare (type integer n))
+  (unless (and (integerp n) (not (minusp n)))
+    (error 'ironclad-error
+           :format-control "Cannot DER-encode negative signature element ~A."
+           :format-arguments (list n)))
+  (let* ((magnitude (if (zerop n)
+                        (vector 0)
+                        (integer-to-octets n :n-bits (integer-length n)
+                                             :big-endian t)))
+         ;; A set high bit would flip the sign; pad with a zero octet,
+         ;; counted in the length.
+         (pad (if (logbitp 7 (aref magnitude 0)) 1 0)))
+    (concatenate '(simple-array (unsigned-byte 8) (*))
+                 (vector #x02)
+                 (%der-encode-length (+ (length magnitude) pad))
+                 (if (plusp pad) (vector 0) #())
+                 magnitude)))
+
+(defun ecdsa-der-encode (r s)
+  "Encode ECDSA signature integers R and S as a DER octet vector
+\(ASN.1 SEQUENCE of two INTEGERs, as used by X.509, TLS, etc.)."
+  (declare (type integer r s))
+  (let ((rb (%der-encode-integer r))
+        (sb (%der-encode-integer s)))
+    (concatenate '(simple-array (unsigned-byte 8) (*))
+                 (vector #x30)
+                 (%der-encode-length (+ (length rb) (length sb)))
+                 rb sb)))
+
+(defun ecdsa-der-decode (der &key (start 0) end)
+  "Decode a DER ECDSA signature between START and END.
+Returns (VALUES R S) as integers.  Malformed input -- wrong tags,
+bad lengths, negative or non-minimal integers, trailing data --
+signals IRONCLAD-ERROR."
+  (check-type der simple-octet-vector)
+  (let ((end (or end (length der))))
+    (labels ((need (pos n what)
+               (unless (<= (+ pos n) end)
+                 (error 'ironclad-error
+                        :format-control "Truncated DER signature in ~A."
+                        :format-arguments (list what)))
+               pos)
+             (take-length (pos)
+               (need pos 1 "length")
+               (let ((first (aref der pos)))
+                 (cond ((< first #x80)
+                        (values first (1+ pos)))
+                       ((= first #x80)
+                        (error 'ironclad-error
+                               :format-control "Indefinite DER length is not allowed in signatures."))
+                       (t
+                        (let ((count (logand first #x7f)))
+                          (when (> count 4)
+                            (error 'ironclad-error
+                                   :format-control "Overlong DER length ~D." :format-arguments (list count)))
+                          (need (1+ pos) count "long-form length")
+                          (let ((length (octets-to-integer der :start (1+ pos)
+                                                               :end (+ pos 1 count)
+                                                               :big-endian t)))
+                            (when (< length 128)
+                              (error 'ironclad-error
+                                     :format-control "Non-minimal DER length ~D." :format-arguments (list length)))
+                            (values length (+ pos 1 count))))))))
+             (take-integer (pos)
+               (need pos 1 "integer tag")
+               (unless (= (aref der pos) #x02)
+                 (error 'ironclad-error
+                        :format-control "Expected DER INTEGER tag, found ~2,'0X."
+                        :format-arguments (list (aref der pos))))
+               (multiple-value-bind (length p) (take-length (1+ pos))
+                 (when (zerop length)
+                   (error 'ironclad-error
+                          :format-control "Empty DER INTEGER."))
+                 (need p length "integer body")
+                 (let ((first (aref der p)))
+                   (cond ((>= first #x80)
+                          (error 'ironclad-error
+                                 :format-control "Negative DER signature element."))
+                         ((and (> length 1)
+                               (zerop first)
+                               (< (aref der (1+ p)) #x80))
+                          (error 'ironclad-error
+                                 :format-control "Non-minimal DER INTEGER encoding."))))
+                 (values (octets-to-integer der :start p :end (+ p length)
+                                                :big-endian t)
+                         (+ p length)))))
+      (need start 1 "sequence tag")
+      (unless (= (aref der start) #x30)
+        (error 'ironclad-error
+               :format-control "Expected DER SEQUENCE tag, found ~2,'0X."
+               :format-arguments (list (aref der start))))
+      (multiple-value-bind (length pos) (take-length (1+ start))
+        (unless (= (+ pos length) end)
+          (error 'ironclad-error
+                 :format-control "DER signature length mismatch: ~D bytes of content for ~D bytes of input."
+                 :format-arguments (list length (- end pos))))
+        (multiple-value-bind (r p) (take-integer pos)
+          (multiple-value-bind (s p2) (take-integer p)
+            (unless (= p2 end)
+              (error 'ironclad-error
+                     :format-control "Trailing data after DER signature."))
+            (values r s)))))))
+
+(defun ecdsa-signature-to-der (curve signature)
+  "Convert the raw R || S SIGNATURE on CURVE to DER encoding.
+CURVE accepts canonical kinds and aliases (see RESOLVE-ECDSA-CURVE)."
+  (let* ((curve (resolve-ecdsa-curve curve))
+         (rolen (ecdsa-field-octets curve)))
+    (unless (= (length signature) (* 2 rolen))
+      (error 'invalid-signature-length :kind curve))
+    (ecdsa-der-encode
+     (octets-to-integer signature :start 0 :end rolen :big-endian t)
+     (octets-to-integer signature :start rolen :end (* 2 rolen)
+                                    :big-endian t))))
+
+(defun ecdsa-der-to-signature (curve der)
+  "Convert the DER signature DER to raw R || S form on CURVE.
+Elements that do not fit the curve size signal
+INVALID-SIGNATURE-LENGTH."
+  (multiple-value-bind (r s) (ecdsa-der-decode der)
+    (let* ((curve (resolve-ecdsa-curve curve))
+           (rolen (ecdsa-field-octets curve))
+           (limit (ash 1 (* 8 rolen))))
+      (unless (and (< -1 r limit) (< -1 s limit))
+        (error 'invalid-signature-length :kind curve))
+      (make-signature curve
+                      :r (integer-to-octets r :n-bits (* 8 rolen)
+                                              :big-endian t)
+                      :s (integer-to-octets s :n-bits (* 8 rolen)
+                                              :big-endian t)))))

@@ -83,9 +83,12 @@
    ;; elliptic curve operations
    #:ec-point-on-curve-p #:ec-point-equal
    #:ec-double #:ec-add #:ec-scalar-mult #:ec-scalar-inv
-   #:ec-make-point #:ec-destructure-point
-   #:ec-encode-scalar #:ec-decode-scalar
-   #:ec-encode-point #:ec-decode-point
+    #:ec-make-point #:ec-destructure-point
+    #:ec-encode-scalar #:ec-decode-scalar
+    #:ec-encode-point #:ec-decode-point
+    #:ec-encode-point-compressed
+    #:ecdsa-der-encode #:ecdsa-der-decode
+    #:ecdsa-signature-to-der #:ecdsa-der-to-signature
 
    ;; elliptic curve points
    #:curve25519-point #:curve448-point
@@ -149,8 +152,8 @@
    #:invalid-mac-parameter #:invalid-signature-length
    #:invalid-message-length #:missing-key-parameter
    #:missing-message-parameter #:missing-signature-parameter
-   #:incompatible-keys #:invalid-curve-point
-   #:invalid-public-key-length #:oaep-decoding-error
+    #:incompatible-keys #:invalid-curve-point #:invalid-private-key
+    #:invalid-public-key-length #:oaep-decoding-error
    #:unsupported-authenticated-encryption-mode
    #:bad-authentication-tag
 

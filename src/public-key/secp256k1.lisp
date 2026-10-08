@@ -268,8 +268,12 @@
          (pk (ec-decode-point :secp256k1 (secp256k1-key-y key)))
          (signature-elements (destructure-signature :secp256k1 signature))
          (r (ec-decode-scalar :secp256k1 (getf signature-elements :r)))
-         (s (ec-decode-scalar :secp256k1 (getf signature-elements :s)))
-         (h (subseq message start end))
+         (s (ec-decode-scalar :secp256k1 (getf signature-elements :s))))
+    ;; Degenerate (r = 0 or s = 0) signatures are invalid; answer NIL
+    ;; before the W/RP computations, which assume nonzero operands.
+    (unless (and (< 0 r +secp256k1-l+) (< 0 s +secp256k1-l+))
+      (return-from verify-signature nil))
+    (let* ((h (subseq message start end))
          (e (ec-decode-scalar :secp256k1 h))
          (w (modular-inverse-with-blinding s +secp256k1-l+))
          (u1 (mod (* e w) +secp256k1-l+))
@@ -279,9 +283,12 @@
          (x (subseq (ec-encode-point rp) 1 (1+ (/ +secp256k1-bits+ 8))))
          (v (ec-decode-scalar :secp256k1 x))
          (v (mod v +secp256k1-l+)))
-    (and (< r +secp256k1-l+)
-         (< s +secp256k1-l+)
-         (= v r))))
+     (and (< 0 r +secp256k1-l+)
+          (< 0 s +secp256k1-l+)
+          ;; RP is the point at infinity only for invalid signatures;
+          ;; answer NIL instead of failing inside EC-ENCODE-POINT.
+          (not (ec-point-equal rp +secp256k1-point-at-infinity+))
+          (= v r)))))
 
 (defmethod make-public-key ((kind (eql :secp256k1)) &key y &allow-other-keys)
   (unless y
@@ -289,6 +296,9 @@
            :kind 'secp256k1
            :parameter 'y
            :description "public key"))
+  ;; Reject malformed encodings and off-curve points now, at
+  ;; construction time, rather than at first use.
+  (ec-decode-point :secp256k1 y)
   (make-instance 'secp256k1-public-key :y y))
 
 (defmethod destructure-public-key ((public-key secp256k1-public-key))
@@ -300,6 +310,10 @@
            :kind 'secp256k1
            :parameter 'x
            :description "private key"))
+  ;; The scalar must lie in [1, N-1]; 0 yields the point at infinity
+  ;; and values >= N silently wrap to the wrong public key.
+  (unless (< 0 (octets-to-integer x :big-endian t) +secp256k1-l+)
+    (error 'invalid-private-key :kind 'secp256k1))
   (make-instance 'secp256k1-private-key :x x :y (or y (secp256k1-public-key x))))
 
 (defmethod destructure-private-key ((private-key secp256k1-private-key))

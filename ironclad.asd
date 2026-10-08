@@ -407,6 +407,7 @@
                                            (:test-vector-file "curve25519")
                                            (:test-vector-file "curve448")
                                            (:test-vector-file "dsa")
+                                           (:test-vector-file "ecdsa-codec")
                                            (:test-vector-file "ecdsa-dh")
                                            (:test-vector-file "ecdsa-rfc6979")
                                            (:test-vector-file "ecdsa-sig")
