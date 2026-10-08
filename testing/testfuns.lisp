@@ -794,7 +794,8 @@
                               :key (cadr args)
                               :initialization-vector (caddr args)))
                        ((:chacha-poly chacha-poly crypto:chacha-poly
-                         :xchacha-poly xchacha-poly crypto:xchacha-poly)
+                         :xchacha-poly xchacha-poly crypto:xchacha-poly
+                         :gcm-siv gcm-siv crypto:gcm-siv)
                         (list :key (car args)
                               :initialization-vector (cadr args)))
                        ((:ccm ccm crypto:ccm)
@@ -821,7 +822,8 @@
                        ((:gcm gcm crypto:gcm :eax eax crypto:eax)
                          parameters)
                         ((:chacha-poly chacha-poly crypto:chacha-poly
-                          :xchacha-poly xchacha-poly crypto:xchacha-poly)
+                          :xchacha-poly xchacha-poly crypto:xchacha-poly
+                          :gcm-siv gcm-siv crypto:gcm-siv)
                          parameters)
                         ((:ccm ccm crypto:ccm)
                          parameters)
@@ -848,7 +850,8 @@
                               :key (cadr args)
                               :initialization-vector (caddr args)))
                        ((:chacha-poly chacha-poly crypto:chacha-poly
-                         :xchacha-poly xchacha-poly crypto:xchacha-poly)
+                         :xchacha-poly xchacha-poly crypto:xchacha-poly
+                         :gcm-siv gcm-siv crypto:gcm-siv)
                         (list :key (car args)
                               :initialization-vector (cadr args)))
                        ((:ccm ccm crypto:ccm)
@@ -883,7 +886,8 @@
                        ((:gcm gcm crypto:gcm :eax eax crypto:eax)
                          parameters)
                         ((:chacha-poly chacha-poly crypto:chacha-poly
-                          :xchacha-poly xchacha-poly crypto:xchacha-poly)
+                          :xchacha-poly xchacha-poly crypto:xchacha-poly
+                          :gcm-siv gcm-siv crypto:gcm-siv)
                          parameters)
                         ((:ccm ccm crypto:ccm)
                          parameters)

@@ -33,3 +33,21 @@
                            nil)
         (ironclad:bad-authentication-tag () t))))
   t)
+
+(rtest:deftest :gcm-siv-reject-bad-tag
+  (let* ((key (ironclad:random-data 16))
+         (iv (ironclad:random-data 12))
+         (msg (ironclad:random-data 48))
+         (ad (ironclad:random-data 16))
+         (enc (ironclad:make-authenticated-encryption-mode
+               :gcm-siv :key key :initialization-vector iv))
+         (ct (ironclad:encrypt-message enc msg :associated-data ad))
+         (tag (ironclad:produce-tag enc))
+         (bad-tag (copy-seq tag)))
+    (setf (aref bad-tag 0) (logxor (aref bad-tag 0) 1))
+    (let ((dec (ironclad:make-authenticated-encryption-mode
+                :gcm-siv :key key :initialization-vector iv :tag bad-tag)))
+      (handler-case (progn (ironclad:decrypt-message dec ct :associated-data ad)
+                           nil)
+        (ironclad:bad-authentication-tag () t))))
+  t)

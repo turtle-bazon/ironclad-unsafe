@@ -845,6 +845,7 @@ tell you the names of all the supported modes. They are:
  - etm (Encrypt then MAC)
  - gcm (Galois counter mode)
  - ccm (Counter with CBC-MAC, RFC 3610, AES only)
+ - gcm-siv (Nonce misuse-resistant AEAD, RFC 8452, AES only)
  - chacha-poly (ChaCha20-Poly1305, RFC 8439)
  - xchacha-poly (XChaCha20-Poly1305)
 
@@ -857,6 +858,7 @@ tell you the names of all the supported modes. They are:
 (make-authenticated-encryption-mode :etm &key tag cipher mac)
 (make-authenticated-encryption-mode :gcm &key tag cipher-name key initialization-vector)
 (make-authenticated-encryption-mode :ccm &key tag key initialization-vector tag-length message-length)
+(make-authenticated-encryption-mode :gcm-siv &key tag key initialization-vector)
 (make-authenticated-encryption-mode :chacha-poly &key tag key initialization-vector)
 (make-authenticated-encryption-mode :xchacha-poly &key tag key initialization-vector)
 #+END_EXAMPLE
@@ -883,6 +885,15 @@ default), and /message-length/ is the total number of plaintext octets.
 from the message when it is omitted; incremental [[encrypt][encrypt]] and
 [[decrypt][decrypt]] calls require it up front (as does CCM itself, since
 block B0 encodes it).
+
+When using GCM-SIV, /key/ must be 16 bytes long (AES-128 throughout)
+or 32 bytes long (AES-256 throughout), and /initialization-vector/
+must be 12 bytes long. Being an SIV construction, encryption needs
+the whole plaintext before emitting anything: incremental [[encrypt][encrypt]]
+and [[decrypt][decrypt]] calls buffer their input and process it when
+called with /handle-final-block/ (which [[encrypt-message][encrypt-message]] and
+[[decrypt-message][decrypt-message]] always pass). Plaintext is only released
+together with a successful tag check.
 
 When using Chacha-poly, /key/ must be 32 bytes long and /initialization-vector/
 must be 12 bytes long. When using Xchacha-poly, /key/ must be 32 bytes long

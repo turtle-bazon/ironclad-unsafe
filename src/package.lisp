@@ -50,7 +50,7 @@
    #:make-authenticated-encryption-mode
    #:process-associated-data
    #:produce-tag
-    #:gcm #:etm #:eax #:ccm #:chacha-poly #:xchacha-poly
+    #:gcm #:etm #:eax #:ccm #:gcm-siv #:chacha-poly #:xchacha-poly
 
     ;; KDFs
     #:list-all-kdfs
