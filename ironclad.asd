@@ -177,7 +177,10 @@
 (define-ironclad-subsystems "ironclad/aeads" "aead" #p"src/aead/"
   ("eax" :depends-on ("ironclad/mac/cmac"))
   "etm"
-  ("gcm" :depends-on ("ironclad/mac/gmac")))
+  ("gcm" :depends-on ("ironclad/mac/gmac"))
+  ("chacha-poly" :depends-on ("ironclad/cipher/chacha"
+                              "ironclad/cipher/xchacha"
+                              "ironclad/mac/poly1305")))
 
 (define-ironclad-subsystems "ironclad/kdfs" "kdf" #p"src/kdf/"
   ("argon2" :depends-on ("ironclad/mac/blake2-mac"))
@@ -269,6 +272,8 @@
                                            (:test-vector-file "eax")
                                            (:test-vector-file "etm")
                                            (:test-vector-file "gcm")
+                                           (:test-vector-file "chacha-poly")
+                                           (:test-vector-file "xchacha-poly")
                                            ;; ciphers
                                            (:file "ciphers")
                                            (:file "modes")

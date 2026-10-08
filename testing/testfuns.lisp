@@ -781,6 +781,10 @@
                         (list :cipher-name (car args)
                               :key (cadr args)
                               :initialization-vector (caddr args)))
+                       ((:chacha-poly chacha-poly crypto:chacha-poly
+                         :xchacha-poly xchacha-poly crypto:xchacha-poly)
+                        (list :key (car args)
+                              :initialization-vector (cadr args)))
                        ((:etm etm crypto:etm)
                         (destructuring-bind (cipher-name ckey mode iv mac-name mkey mparam) args
                           (let ((cipher (crypto:make-cipher cipher-name
@@ -798,7 +802,10 @@
       (error "encryption failed for ~A, input ~A, output ~A" mode-name input output))
     (setf parameters (case mode-name
                        ((:gcm gcm crypto:gcm :eax eax crypto:eax)
-                        parameters)
+                         parameters)
+                        ((:chacha-poly chacha-poly crypto:chacha-poly
+                          :xchacha-poly xchacha-poly crypto:xchacha-poly)
+                         parameters)
                        ((:etm etm crypto:etm)
                         (destructuring-bind (cipher-name ckey mode iv mac-name mkey mparam) args
                           (let ((cipher (crypto:make-cipher cipher-name
@@ -821,6 +828,10 @@
                         (list :cipher-name (car args)
                               :key (cadr args)
                               :initialization-vector (caddr args)))
+                       ((:chacha-poly chacha-poly crypto:chacha-poly
+                         :xchacha-poly xchacha-poly crypto:xchacha-poly)
+                        (list :key (car args)
+                              :initialization-vector (cadr args)))
                        ((:etm etm crypto:etm)
                         (destructuring-bind (cipher-name ckey mode iv mac-name mkey mparam) args
                           (let ((cipher (crypto:make-cipher cipher-name
@@ -846,7 +857,10 @@
       (error "encryption failed for ~A, input ~A, output ~A" mode-name input output))
     (setf parameters (case mode-name
                        ((:gcm gcm crypto:gcm :eax eax crypto:eax)
-                        parameters)
+                         parameters)
+                        ((:chacha-poly chacha-poly crypto:chacha-poly
+                          :xchacha-poly xchacha-poly crypto:xchacha-poly)
+                         parameters)
                        ((:etm etm crypto:etm)
                         (destructuring-bind (cipher-name ckey mode iv mac-name mkey mparam) args
                           (let ((cipher (crypto:make-cipher cipher-name

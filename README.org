@@ -834,6 +834,8 @@ tell you the names of all the supported modes. They are:
  - eax (Encrypt then authenticate then translate)
  - etm (Encrypt then MAC)
  - gcm (Galois counter mode)
+ - chacha-poly (ChaCha20-Poly1305, RFC 8439)
+ - xchacha-poly (XChaCha20-Poly1305)
 
 /name/ can be a symbol in the ~keyword~  or ~ironclad~ packages.
 
@@ -843,6 +845,8 @@ tell you the names of all the supported modes. They are:
 (make-authenticated-encryption-mode :eax &key tag cipher-name key initialization-vector)
 (make-authenticated-encryption-mode :etm &key tag cipher mac)
 (make-authenticated-encryption-mode :gcm &key tag cipher-name key initialization-vector)
+(make-authenticated-encryption-mode :chacha-poly &key tag key initialization-vector)
+(make-authenticated-encryption-mode :xchacha-poly &key tag key initialization-vector)
 #+END_EXAMPLE
 
 If /tag/ is specified, it will be used at the end of decryption (when the
@@ -858,6 +862,10 @@ When using ETM, /cipher/ must be a cipher object created by [[make-cipher][make-
 
 When using GCM, /cipher-name/ must have a [[block-length][block-length]] of 16 bytes. /key/ must be a suitable key
 for the chosen cipher.
+
+When using Chacha-poly, /key/ must be 32 bytes long and /initialization-vector/
+must be 12 bytes long. When using Xchacha-poly, /key/ must be 32 bytes long
+and /initialization-vector/ must be 24 bytes long.
 
 
 #+NAME: process-associated-data
