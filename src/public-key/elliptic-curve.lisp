@@ -39,3 +39,60 @@ specified coordinates."))
 
 (defgeneric ec-decode-point (kind octets)
   (:documentation "Return the point represented by the OCTETS."))
+
+
+;;; Shared fast paths for scalar multiplication.
+;;;
+;;; The per-curve EC-SCALAR-MULT methods historically used a Montgomery
+;;; ladder (one doubling plus one addition per bit).  A fixed-window
+;;; method does the same doublings but only ~15/16 as many additions,
+;;; and verification (a*P + b*Q) halves its cost again with Shamir's
+;;; trick.  Both are written against the EC-ADD/EC-DOUBLE generics so
+;;; they work for every Jacobian point class; the methods handle the
+;;; point at infinity, which the loops below rely on.
+
+(defun %ec-infinity-like (point)
+  "A fresh point at infinity of the same class as POINT."
+  (make-instance (class-of point) :x 1 :y 1 :z 0))
+
+(defun %ec-window-mult (point e &key (width 4))
+  "Left-to-right fixed-WIDTH scalar multiplication: E * POINT."
+  (declare (type integer e)
+           (type (integer 1 8) width))
+  (let ((infinity (%ec-infinity-like point)))
+    (if (zerop e)
+        infinity
+        (let* ((size (ash 1 width))
+               (table (make-array size)))
+          ;; Odd multiples from even ones: T[2i] = 2*T[i],
+          ;; T[2i+1] = T[2i] + POINT.
+          (setf (aref table 0) infinity
+                (aref table 1) point)
+          (loop for i from 2 below size
+                do (setf (aref table i)
+                         (if (evenp i)
+                             (ec-double (aref table (ash i -1)))
+                             (ec-add (aref table (1- i)) point))))
+          (let ((r infinity))
+            (loop for shift downfrom (* width (1- (ceiling (integer-length e) width))) to 0 by width
+                  do (dotimes (i width)
+                       (setf r (ec-double r)))
+                     (let ((v (ldb (byte width shift) e)))
+                       (unless (zerop v)
+                         (setf r (ec-add r (aref table v))))))
+            r)))))
+
+(defun %ec-shamir-mult (p q a b)
+  "Joint scalar multiplication A*P + B*Q (Shamir's trick)."
+  (declare (type integer a b))
+  (let ((r (%ec-infinity-like p))
+        (pq (ec-add p q))
+        (nbits (max (integer-length a) (integer-length b) 1)))
+    (loop for i downfrom (1- nbits) to 0
+          do (setf r (ec-double r))
+             (let ((ai (logbitp i a))
+                   (bi (logbitp i b)))
+               (cond ((and ai bi) (setf r (ec-add r pq)))
+                     (ai (setf r (ec-add r p)))
+                     (bi (setf r (ec-add r q))))))
+    r))

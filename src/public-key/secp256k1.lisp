@@ -109,20 +109,10 @@
                  (make-instance 'secp256k1-point :x x3 :y y3 :z z3)))))))))
 
 (defmethod ec-scalar-mult ((p secp256k1-point) e)
-  ;; Point multiplication on NIST P-256 curve using the Montgomery ladder.
+  ;; Fixed-window multiplication; see %EC-WINDOW-MULT.
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer e))
-  (do ((r0 +secp256k1-point-at-infinity+)
-       (r1 p)
-       (i (1- +secp256k1-bits+) (1- i)))
-      ((minusp i) r0)
-    (declare (type secp256k1-point r0 r1)
-             (type fixnum i))
-    (if (logbitp i e)
-        (setf r0 (ec-add r0 r1)
-              r1 (ec-double r1))
-        (setf r1 (ec-add r0 r1)
-              r0 (ec-double r0)))))
+  (%ec-window-mult p e))
 
 (defmethod ec-point-on-curve-p ((p secp256k1-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
@@ -278,8 +268,8 @@
          (w (modular-inverse-with-blinding s +secp256k1-l+))
          (u1 (mod (* e w) +secp256k1-l+))
          (u2 (mod (* r w) +secp256k1-l+))
-         (rp (ec-add (ec-scalar-mult +secp256k1-g+ u1)
-                     (ec-scalar-mult pk u2)))
+         ;; Joint multiplication (Shamir's trick): one pass instead of two.
+         (rp (%ec-shamir-mult +secp256k1-g+ pk u1 u2))
          (x (subseq (ec-encode-point rp) 1 (1+ (/ +secp256k1-bits+ 8))))
          (v (ec-decode-scalar :secp256k1 x))
          (v (mod v +secp256k1-l+)))
