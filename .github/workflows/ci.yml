@@ -10,12 +10,11 @@ jobs:
     name: ${{matrix.lisp}} on ${{matrix.os}}
     strategy:
       matrix:
-        # Pinned to modern versions installable via Roswell (checked
-        # 2026-10-08): Allegro 11.0 is current at Franz (10.1 no longer
-        # resolves); ABCL 1.9.3 (note: download moved hosts, old URL
-        # 301-redirects); CCL 1.13 (latest stable, avoids -pre lottery);
-        # ECL 24.5.10; SBCL 2.6.9.
-        lisp: [abcl-bin/1.9.3, allegro/11.0express, ccl-bin/1.13, ccl-bin/1.13 READTABLE_CASE_INVERT=1, ecl/24.5.10, sbcl-bin/2.6.9]
+        # NOTE: implementations are intentionally unpinned so CI tracks
+        # current releases, except Allegro: bare `allegro` resolves to
+        # the withdrawn 10.1express (Franz now ships 11.0), which breaks
+        # the Roswell install step, so it is pinned to 11.0express.
+        lisp: [abcl-bin, allegro/11.0express, ccl-bin, ccl-bin READTABLE_CASE_INVERT=1, ecl, sbcl-bin]
         os: [ubuntu-latest]
       fail-fast: false
     runs-on: ${{matrix.os}}
