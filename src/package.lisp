@@ -191,13 +191,14 @@
             #:blake2 #:blake2/384 #:blake2/256 #:blake2/160
             #:blake2s #:blake2s/224 #:blake2s/160 #:blake2s/128
             #:blake3
+            #:cshake128 #:cshake256
            #:jh #:jh/384 #:jh/256 #:jh/224
            #:streebog #:streebog/256
            #:kupyna #:kupyna/256
            #:sm3)
   ;; supported macs
-  (:export #:blake2-mac #:blake2s-mac #:cmac #:hmac #:poly1305 #:skein-mac
-           #:gmac #:siphash)
+   (:export #:blake2-mac #:blake2s-mac #:cmac #:hmac #:poly1305 #:skein-mac
+            #:gmac #:siphash #:kmac128 #:kmac256)
   ;; supported block ciphers
   (:export #:blowfish #:tea #:xtea #:square #:rc2 #:rc5 #:rc6 #:des #:3des
            #:aes #:twofish #:cast5 #:idea #:misty1 #:xor

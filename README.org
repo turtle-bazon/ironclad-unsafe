@@ -396,6 +396,8 @@ by calling [[list-all-digests][list-all-digests]]. They are:
  - crc24
  - crc32
  - crc32c
+ - cshake128
+ - cshake256
  - groestl
  - groestl/224
  - groestl/256
@@ -457,6 +459,16 @@ any size. The size of the digest in bytes can be specified with the
 
 #+BEGIN_EXAMPLE
 (make-digest :shake256 :output-length 123)
+#+END_EXAMPLE
+
+BLAKE3 and cSHAKE also take /output-length/ (32 by default).
+cSHAKE128 and cSHAKE256 (NIST SP 800-185) additionally take
+/function-name/ and /customization/ strings (both empty by default,
+in which case they match SHAKE128 and SHAKE256):
+
+#+BEGIN_EXAMPLE
+(make-digest :blake3 :output-length 64)
+(make-digest :cshake128 :output-length 64 :customization "Email Signature")
 #+END_EXAMPLE
 
 BLAKE3 also produces digests of any size via /output-length/ (32 by
@@ -699,6 +711,8 @@ MACs can be found by calling [[list-all-macs][list-all-macs]]. They are:
  - cmac
  - gmac
  - hmac
+ - kmac128
+ - kmac256
  - poly1305
  - siphash
  - skein-mac
@@ -714,6 +728,8 @@ Some MACs take extra arguments that can be specified in /args/.
 (make-mac :cmac key cipher-name)
 (make-mac :gmac key cipher-name initialization-vector)
 (make-mac :hmac key digest-name)
+(make-mac :kmac128 key &key customization output-length)
+(make-mac :kmac256 key &key customization output-length)
 (make-mac :poly1305 key)
 (make-mac :siphash key &key compression-rounds finalization-rounds digest-length)
 (make-mac :skein-mac key &key block-length digest-length)
@@ -735,6 +751,11 @@ an acceptable key for /cipher-name/.
 
 When making a Poly1305 MAC, the length of the /key/ passed to [[make-mac][make-mac]] must be
 32 bytes.
+
+When making a KMAC128 or KMAC256 MAC (NIST SP 800-185), /key/ can be
+any length. /customization/ is a string or octet vector bound into the
+hash (empty by default); /output-length/ is the tag size in octets (32
+by default).
 
 When making a SipHash MAC, the length of the /key/ passed to [[make-mac][make-mac]] must be 16
 bytes. /digest-length/ is 8 by default, but it can also be set to 16. By

@@ -153,3 +153,13 @@
   t)
 
 (rtest:deftest :blake3-keyed (run-test-vector-file :blake3-keyed *digest-tests*) t)
+
+;; SP 800-185: cSHAKE with empty function name and customization
+;; string degrades to SHAKE entirely.
+(rtest:deftest :cshake-empty-matches-shake
+  (let ((input (ironclad:ascii-string-to-byte-array "abc")))
+    (and (equalp (ironclad:digest-sequence (ironclad:make-digest :cshake128 :output-length 16) input)
+                 (ironclad:digest-sequence :shake128 input))
+         (equalp (ironclad:digest-sequence (ironclad:make-digest :cshake256 :output-length 32) input)
+                 (ironclad:digest-sequence :shake256 input))))
+  t)

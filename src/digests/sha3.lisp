@@ -255,6 +255,7 @@ the content on normal form exit."
     (replace padded-message message :end2 message-byte-length)
     (setf (aref padded-message message-byte-length) (ecase padding-type
                                                       (:xof #x1f)
+                                                      (:cshake #x04)
                                                       (:keccak #x01)
                                                       (:sha3 #x06)))
     (loop for index from (1+ message-byte-length) below padded-message-byte-length
@@ -434,14 +435,21 @@ the content on normal form exit."
            (type (simple-array (unsigned-byte 8) (*)) digest)
            (type integer digest-start)
            (optimize (speed 3) (safety 1) (space 0) (debug 0)))
-  (let ((padding-type (typecase state
-                        (shake128 :xof)
-                        (shake256 :xof)
-                        (keccak/224 :keccak)
-                        (keccak/256 :keccak)
-                        (keccak/384 :keccak)
-                        (keccak :keccak)
-                        (t :sha3)))
+  (let ((padding-type (cond ((typep state '(or shake128 shake256))
+                                 :xof)
+                                ;; cshake lives in a later-loaded subsystem;
+                                ;; resolve it dynamically so standalone SHA-3
+                                ;; keeps working.  Empty cSHAKE degrades to
+                                ;; SHAKE entirely, padding included.
+                                ((let ((cshake-class (find-class 'cshake nil)))
+                                   (and cshake-class (typep state cshake-class)))
+                                 (if (and (zerop (length (slot-value state 'function-name)))
+                                          (zerop (length (slot-value state 'customization))))
+                                     :xof
+                                     :cshake))
+                                ((typep state '(or keccak/224 keccak/256 keccak/384 keccak))
+                                 :keccak)
+                                (t :sha3)))
         (keccak-state (sha3-state state))
         (buffer (sha3-buffer state))
         (buffer-index (sha3-buffer-index state))

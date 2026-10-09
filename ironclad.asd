@@ -138,6 +138,7 @@
   "blake3"
   "crc24"
   "crc32"
+  ("cshake" :depends-on ("ironclad/digest/sha3"))
   "groestl"
   "jh"
   ("kupyna" :depends-on ("ironclad/cipher/kalyna"))
@@ -164,6 +165,7 @@
   "cmac"
   "hmac"
   "gmac"
+  ("kmac" :depends-on ("ironclad/digest/cshake"))
   "poly1305"
   "siphash"
   ("skein-mac" :depends-on ("ironclad/cipher/threefish"
@@ -341,6 +343,8 @@
                                            (:test-vector-file "blake2s-224")
                                            (:test-vector-file "blake3")
                                            (:test-vector-file "blake3-keyed")
+                                           (:test-vector-file "cshake128")
+                                           (:test-vector-file "cshake256")
                                            (:test-vector-file "crc24")
                                            (:test-vector-file "crc32")
                                            (:test-vector-file "crc32c")
@@ -410,6 +414,8 @@
                                            (:test-vector-file "cmac")
                                            (:test-vector-file "hmac")
                                            (:test-vector-file "gmac")
+                                           (:test-vector-file "kmac128")
+                                           (:test-vector-file "kmac256")
                                            (:test-vector-file "poly1305")
                                            (:test-vector-file "siphash")
                                            (:test-vector-file "skein-mac")
