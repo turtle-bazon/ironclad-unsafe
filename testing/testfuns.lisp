@@ -765,17 +765,17 @@
         (when (mismatch u2 uncompressed)
           (error "uncompressed roundtrip mismatch for ~A" name))))))
 
-(defun ml-kem-test (file name pk-bytes sk-bytes ct ss)
+(defun ml-kem-test (file kind name pk-bytes sk-bytes ct ss)
   (declare (ignore file))
-  (let ((pk (ironclad:make-public-key :ml-kem-768 :bytes pk-bytes))
-        (sk (ironclad:make-private-key :ml-kem-768 :bytes sk-bytes)))
+  (let ((pk (ironclad:make-public-key kind :bytes pk-bytes))
+        (sk (ironclad:make-private-key kind :bytes sk-bytes)))
     ;; KAT: decapsulation of the reference ciphertext reproduces
     ;; the reference shared secret.
     (unless (equalp (ironclad:decapsulate-key sk ct) ss)
       (error "ML-KEM decapsulation failed for ~A" name))
     ;; Roundtrip with fresh randomness.
     (multiple-value-bind (ct2 ss2) (ironclad:encapsulate-key pk)
-      (unless (and (= (length ct2) 1088)
+      (unless (and (= (length ct2) (length ct))
                    (= (length ss2) 32)
                    (equalp (ironclad:decapsulate-key sk ct2) ss2))
         (error "ML-KEM roundtrip failed for ~A" name)))

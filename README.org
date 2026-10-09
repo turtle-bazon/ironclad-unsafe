@@ -1110,7 +1110,7 @@ Encryption algorithms:
  - RSA
 
 Key encapsulation:
- - ML-KEM-768 (FIPS 203)
+ - ML-KEM-512/768/1024 (FIPS 203)
 
 Signature algorithms:
  - DSA
@@ -1494,10 +1494,12 @@ compatible, i.e. have the same group parameters).
 #+END_SRC
 
 Generate a fresh 32-octet shared secret encapsulated under an
-ML-KEM-768 public key, or recover it with the matching private key.
+ML-KEM-512/768/1024 public key, or recover it with the matching
+private key.
 Decapsulation uses implicit rejection: a tampered ciphertext yields
-an unrelated secret rather than an error.  Key sizes: public key
-1184 octets, private key 2400 octets, ciphertext 1088 octets.
+an unrelated secret rather than an error.  Key sizes (512/768/1024):
+public key 800/1184/1568 octets, private key 1632/2400/3168 octets,
+ciphertext 768/1088/1568 octets.
 
 ** Elliptic curve operations
 
