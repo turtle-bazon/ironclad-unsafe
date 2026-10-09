@@ -3,6 +3,7 @@
 
 (rtest:deftest :rsa-oaep-encryption (run-test-vector-file :rsa-enc *public-key-encryption-tests*) t)
 (rtest:deftest :elgamal-encryption (run-test-vector-file :elgamal-enc *public-key-encryption-tests*) t)
+(rtest:deftest :ecies-encryption (run-test-vector-file :ecies *public-key-encryption-tests*) t)
 
 (rtest:deftest :rsa-pss-signature (run-test-vector-file :rsa-sig *public-key-signature-tests*) t)
 (rtest:deftest :elgamal-signature (run-test-vector-file :elgamal-sig *public-key-signature-tests*) t)
@@ -24,6 +25,37 @@
 (rtest:deftest :secp384r1-dh (run-test-vector-file :secp384r1-dh *public-key-diffie-hellman-tests*) t)
 (rtest:deftest :secp521r1-dh (run-test-vector-file :secp521r1-dh *public-key-diffie-hellman-tests*) t)
 (rtest:deftest :ecdsa-dh (run-test-vector-file :ecdsa-dh *public-key-diffie-hellman-tests*) t)
+
+(rtest:deftest :ecies-tamper
+  ;; Flipping any byte of ephemeral key, IV, ciphertext or tag must
+  ;; fail (invalid point or bad tag), never decrypt.
+  (multiple-value-bind (priv pub) (ironclad:generate-key-pair :secp256r1)
+    (let* ((msg (ironclad:random-data 32))
+           (ct (ironclad:encrypt-message pub msg))
+           (ok t))
+      (dotimes (i (length ct))
+        (let ((bad (copy-seq ct)))
+          (setf (aref bad i) (logxor (aref bad i) 1))
+          (handler-case (progn (ironclad:decrypt-message priv bad) (setf ok nil))
+            (ironclad:ironclad-error () nil))))
+      ;; ... and the untouched message still verifies, as does a
+      ;; decryption with mismatched info/salt.
+      (and ok
+           (equalp (ironclad:decrypt-message priv ct) msg)
+           (handler-case (progn (ironclad:decrypt-message
+                                 priv ct :info (ironclad:random-data 4)) nil)
+             (ironclad:ironclad-error () t)))))
+  t)
+
+(rtest:deftest :ecies-wrong-key
+  (multiple-value-bind (priv1 pub1) (ironclad:generate-key-pair :secp256r1)
+    (declare (ignore priv1))
+    (multiple-value-bind (priv2 pub2) (ironclad:generate-key-pair :secp256r1)
+      (declare (ignore pub2))
+      (let ((ct (ironclad:encrypt-message pub1 (ironclad:random-data 16))))
+        (handler-case (progn (ironclad:decrypt-message priv2 ct) nil)
+          (ironclad:ironclad-error () t)))))
+  t)
 
 (rtest:deftest :ecdsa-reject-degenerate-signatures
   (multiple-value-bind (priv pub) (ironclad:generate-key-pair :ecdsa)

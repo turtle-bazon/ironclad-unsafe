@@ -696,6 +696,17 @@
       (error "shared secret computation failed for ~A on curve ~A skey ~A, pkey ~A, secret ~A"
              name curve skey2 pkey1 shared-secret))))
 
+(defun ecies-test (name curve xkey pkey input info salt output)
+  (let* ((sk (ironclad:make-private-key curve :x xkey))
+         (pk (ironclad:make-public-key curve :y pkey))
+         (m (ironclad:decrypt-message sk output :info info :salt salt)))
+    (when (mismatch m input)
+      (error "ECIES decryption failed for ~A on curve ~A" name curve))
+    ;; And a fresh encryption round-trips too.
+    (let ((ct2 (ironclad:encrypt-message pk input :info info :salt salt)))
+      (unless (equalp (ironclad:decrypt-message sk ct2 :info info :salt salt) input)
+        (error "ECIES roundtrip failed for ~A on curve ~A" name curve)))))
+
 (defparameter *ecdsa-rfc6979-keys*
   ;; RFC 6979 Appendix A private keys, as hex strings.
   '((:secp256k1 . "C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721")
@@ -756,7 +767,8 @@
 
 (defparameter *public-key-encryption-tests*
   (list (cons :rsa-oaep-encryption-test 'rsa-oaep-encryption-test)
-        (cons :elgamal-encryption-test 'elgamal-encryption-test)))
+        (cons :elgamal-encryption-test 'elgamal-encryption-test)
+        (cons :ecies-test 'ecies-test)))
 
 (defparameter *public-key-signature-tests*
   (list (cons :rsa-pss-signature-test 'rsa-pss-signature-test)

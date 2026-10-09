@@ -1105,6 +1105,7 @@ the password is valid.
 Ironclad includes support for a few public key cryptography algorithms.
 
 Encryption algorithms:
+ - ECIES (over Secp256k1, Secp256r1, Secp384r1 and Secp521r1)
  - Elgamal
  - RSA
 
@@ -1448,6 +1449,25 @@ For RSA signatures, the type of the parameters /m/ and /n-bits/ is
 
 Return the elements of a message in a plist. The indicators of the
 plist match the /&key/ arguments of the [[make-message][make-message]] method.
+
+*** ECIES
+
+ECIES encryption combines an ephemeral key pair, a Diffie-Hellman
+exchange, HKDF-SHA256 key derivation and AES-256-GCM data encryption:
+
+#+BEGIN_EXAMPLE
+(encrypt-message secp-public-key message &key info salt) => encrypted-message
+(decrypt-message secp-private-key message &key info salt) => decrypted-message
+#+END_EXAMPLE
+
+/info/ and /salt/ are optional HKDF info and salt octet vectors (both
+empty by default); sender and receiver must agree on them. A
+~bad-authentication-tag~ error is signaled if the message was tampered
+with or the wrong key, /info/ or /salt/ is used.
+
+Encrypted messages are the concatenation of the ephemeral public key
+in uncompressed form, the 12-octet initialization vector, the
+ciphertext and the 16-octet authentication tag.
 
 ** Diffie-Hellman key exchange
 

@@ -213,7 +213,14 @@
   ("ecdsa" :depends-on ("ironclad/public-key/secp256k1"
                         "ironclad/public-key/secp256r1"
                         "ironclad/public-key/secp384r1"
-                        "ironclad/public-key/secp521r1")))
+                        "ironclad/public-key/secp521r1"))
+  ("ecies" :depends-on ("ironclad/public-key/secp256k1"
+                        "ironclad/public-key/secp256r1"
+                        "ironclad/public-key/secp384r1"
+                        "ironclad/public-key/secp521r1"
+                        "ironclad/aead/gcm"
+                        "ironclad/cipher/aes"
+                        "ironclad/kdf/hmac")))
 
 (defsystem "ironclad"
   :class ironclad-system
@@ -431,6 +438,7 @@
                                            (:test-vector-file "ecdsa-dh")
                                            (:test-vector-file "ecdsa-rfc6979")
                                            (:test-vector-file "ecdsa-sig")
+                                           (:test-vector-file "ecies")
                                            (:test-vector-file "ed25519")
                                            (:test-vector-file "ed448")
                                            (:test-vector-file "elgamal-dh")
