@@ -220,7 +220,8 @@
                         "ironclad/public-key/secp521r1"
                         "ironclad/aead/gcm"
                         "ironclad/cipher/aes"
-                        "ironclad/kdf/hmac")))
+                        "ironclad/kdf/hmac"))
+  ("ml-kem" :depends-on ("ironclad/digest/sha3")))
 
 (defsystem "ironclad"
   :class ironclad-system
@@ -439,6 +440,7 @@
                                            (:test-vector-file "ecdsa-rfc6979")
                                            (:test-vector-file "ecdsa-sig")
                                            (:test-vector-file "ecies")
+                                           (:test-vector-file "ml-kem")
                                            (:test-vector-file "ed25519")
                                            (:test-vector-file "ed448")
                                            (:test-vector-file "elgamal-dh")

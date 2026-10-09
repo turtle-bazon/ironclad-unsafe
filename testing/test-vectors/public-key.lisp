@@ -4,6 +4,7 @@
 (rtest:deftest :rsa-oaep-encryption (run-test-vector-file :rsa-enc *public-key-encryption-tests*) t)
 (rtest:deftest :elgamal-encryption (run-test-vector-file :elgamal-enc *public-key-encryption-tests*) t)
 (rtest:deftest :ecies-encryption (run-test-vector-file :ecies *public-key-encryption-tests*) t)
+(rtest:deftest :ml-kem-encapsulation (run-test-vector-file :ml-kem *public-key-encryption-tests*) t)
 
 (rtest:deftest :rsa-pss-signature (run-test-vector-file :rsa-sig *public-key-signature-tests*) t)
 (rtest:deftest :elgamal-signature (run-test-vector-file :elgamal-sig *public-key-signature-tests*) t)

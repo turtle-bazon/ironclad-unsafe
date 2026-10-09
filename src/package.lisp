@@ -69,6 +69,7 @@
    #:make-public-key #:destructure-public-key
    #:make-private-key #:destructure-private-key
    #:generate-key-pair
+   #:encapsulate-key #:decapsulate-key
    #:make-signature #:destructure-signature
    #:make-message #:destructure-message
     #:generate-signature-nonce
@@ -104,6 +105,7 @@
    #:ed25519-public-key #:ed25519-private-key
    #:ed448-public-key #:ed448-private-key
    #:elgamal-public-key #:elgamal-private-key
+   #:ml-kem-768-public-key #:ml-kem-768-private-key #:ml-kem-key-bytes
    #:rsa-public-key #:rsa-private-key
    #:secp256k1-public-key #:secp256k1-private-key
    #:secp256r1-public-key #:secp256r1-private-key

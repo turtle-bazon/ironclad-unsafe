@@ -1109,6 +1109,9 @@ Encryption algorithms:
  - Elgamal
  - RSA
 
+Key encapsulation:
+ - ML-KEM-768 (FIPS 203)
+
 Signature algorithms:
  - DSA
  - Ed25519
@@ -1177,6 +1180,7 @@ methods that specialize on /kind/, below.
 (make-public-key :ed25519 &key y) => public-key
 (make-public-key :ed448 &key y) => public-key
 (make-public-key :elgamal &key p g y) => public-key
+(make-public-key :ml-kem-768 &key bytes) => public-key
 (make-public-key :rsa &key e n) => public-key
 (make-public-key :secp256k1 &key y) => public-key
 (make-public-key :secp256r1 &key y) => public-key
@@ -1201,6 +1205,7 @@ specialize on /kind/, below.
 (make-private-key :ed25519 &key x y) => private-key
 (make-private-key :ed448 &key x y) => private-key
 (make-private-key :elgamal &key p g y x) => private-key
+(make-private-key :ml-kem-768 &key bytes) => private-key
 (make-private-key :rsa &key d n p q) => private-key
 (make-private-key :secp256k1 &key x y) => private-key
 (make-private-key :secp256r1 &key x y) => private-key
@@ -1479,6 +1484,20 @@ ciphertext and the 16-octet authentication tag.
 Return a secret shared by two users Alice and Bob, computed from
 Alice's private key and Bob's public key (these keys must be
 compatible, i.e. have the same group parameters).
+
+** Key encapsulation (ML-KEM)
+
+#+NAME: encapsulate-key
+#+BEGIN_SRC lisp
+(encapsulate-key public-key) => ciphertext, shared-secret
+(decapsulate-key private-key ciphertext) => shared-secret
+#+END_SRC
+
+Generate a fresh 32-octet shared secret encapsulated under an
+ML-KEM-768 public key, or recover it with the matching private key.
+Decapsulation uses implicit rejection: a tampered ciphertext yields
+an unrelated secret rather than an error.  Key sizes: public key
+1184 octets, private key 2400 octets, ciphertext 1088 octets.
 
 ** Elliptic curve operations
 

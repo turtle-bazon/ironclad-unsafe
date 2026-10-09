@@ -765,10 +765,32 @@
         (when (mismatch u2 uncompressed)
           (error "uncompressed roundtrip mismatch for ~A" name))))))
 
+(defun ml-kem-test (file name pk-bytes sk-bytes ct ss)
+  (declare (ignore file))
+  (let ((pk (ironclad:make-public-key :ml-kem-768 :bytes pk-bytes))
+        (sk (ironclad:make-private-key :ml-kem-768 :bytes sk-bytes)))
+    ;; KAT: decapsulation of the reference ciphertext reproduces
+    ;; the reference shared secret.
+    (unless (equalp (ironclad:decapsulate-key sk ct) ss)
+      (error "ML-KEM decapsulation failed for ~A" name))
+    ;; Roundtrip with fresh randomness.
+    (multiple-value-bind (ct2 ss2) (ironclad:encapsulate-key pk)
+      (unless (and (= (length ct2) 1088)
+                   (= (length ss2) 32)
+                   (equalp (ironclad:decapsulate-key sk ct2) ss2))
+        (error "ML-KEM roundtrip failed for ~A" name)))
+    ;; A tampered ciphertext must decapsulate to a different secret
+    ;; (implicit rejection), never the real one.
+    (let ((bad (copy-seq ct)))
+      (setf (aref bad 0) (logxor (aref bad 0) 1))
+      (when (equalp (ironclad:decapsulate-key sk bad) ss)
+        (error "ML-KEM tampered ciphertext accepted for ~A" name)))))
+
 (defparameter *public-key-encryption-tests*
   (list (cons :rsa-oaep-encryption-test 'rsa-oaep-encryption-test)
         (cons :elgamal-encryption-test 'elgamal-encryption-test)
-        (cons :ecies-test 'ecies-test)))
+        (cons :ecies-test 'ecies-test)
+        (cons :ml-kem-test 'ml-kem-test)))
 
 (defparameter *public-key-signature-tests*
   (list (cons :rsa-pss-signature-test 'rsa-pss-signature-test)
