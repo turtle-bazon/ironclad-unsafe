@@ -113,6 +113,7 @@
    #:ml-dsa-65-public-key #:ml-dsa-65-private-key
    #:ml-dsa-87-public-key #:ml-dsa-87-private-key
    #:ml-dsa-key-bytes
+   #:x-wing-public-key #:x-wing-private-key #:x-wing-key-bytes
    #:rsa-public-key #:rsa-private-key
    #:secp256k1-public-key #:secp256k1-private-key
    #:secp224r1-public-key #:secp224r1-private-key

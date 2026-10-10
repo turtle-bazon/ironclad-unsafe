@@ -835,11 +835,32 @@
       (when (ironclad:verify-signature pk badmsg sig)
         (error "ML-DSA wrong message accepted for ~A" name)))))
 
+(defun x-wing-test (file name seed ct ss)
+  (declare (ignore file))
+  (let ((sk (ironclad:make-private-key :x-wing :bytes seed)))
+    ;; KAT: decapsulation of the draft ciphertext with the draft seed
+    ;; reproduces the draft shared secret.
+    (unless (equalp (ironclad:decapsulate-key sk ct) ss)
+      (error "X-Wing decapsulation failed for ~A" name))
+    ;; Roundtrip with fresh randomness.
+    (multiple-value-bind (sk2 pk2) (ironclad:generate-key-pair :x-wing)
+      (multiple-value-bind (ct2 ss2) (ironclad:encapsulate-key pk2)
+        (unless (and (= (length ct2) (length ct))
+                     (= (length ss2) 32)
+                     (equalp (ironclad:decapsulate-key sk2 ct2) ss2))
+          (error "X-Wing roundtrip failed for ~A" name))))
+    ;; A tampered ciphertext must decapsulate to a different secret.
+    (let ((bad (copy-seq ct)))
+      (setf (aref bad 0) (logxor (aref bad 0) 1))
+      (when (equalp (ironclad:decapsulate-key sk bad) ss)
+        (error "X-Wing tampered ciphertext accepted for ~A" name)))))
+
 (defparameter *public-key-encryption-tests*
   (list (cons :rsa-oaep-encryption-test 'rsa-oaep-encryption-test)
         (cons :elgamal-encryption-test 'elgamal-encryption-test)
         (cons :ecies-test 'ecies-test)
-        (cons :ml-kem-test 'ml-kem-test)))
+        (cons :ml-kem-test 'ml-kem-test)
+        (cons :x-wing-test 'x-wing-test)))
 
 (defparameter *public-key-signature-tests*
   (list (cons :rsa-pss-signature-test 'rsa-pss-signature-test)

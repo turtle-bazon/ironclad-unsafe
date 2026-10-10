@@ -1111,6 +1111,7 @@ Encryption algorithms:
 
 Key encapsulation:
  - ML-KEM-512/768/1024 (FIPS 203)
+ - X-Wing (X25519 + ML-KEM-768 hybrid, draft-connolly-cfrg-xwing-kem)
 
 Signature algorithms:
  - DSA
@@ -1505,7 +1506,7 @@ Return a secret shared by two users Alice and Bob, computed from
 Alice's private key and Bob's public key (these keys must be
 compatible, i.e. have the same group parameters).
 
-** Key encapsulation (ML-KEM)
+** Key encapsulation (ML-KEM, X-Wing)
 
 #+NAME: encapsulate-key
 #+BEGIN_SRC lisp
@@ -1514,12 +1515,14 @@ compatible, i.e. have the same group parameters).
 #+END_SRC
 
 Generate a fresh 32-octet shared secret encapsulated under an
-ML-KEM-512/768/1024 public key, or recover it with the matching
-private key.
+ML-KEM-512/768/1024 or X-Wing public key, or recover it with the
+matching private key.
 Decapsulation uses implicit rejection: a tampered ciphertext yields
-an unrelated secret rather than an error.  Key sizes (512/768/1024):
-public key 800/1184/1568 octets, private key 1632/2400/3168 octets,
-ciphertext 768/1088/1568 octets.
+an unrelated secret rather than an error.  ML-KEM key sizes
+(512/768/1024): public key 800/1184/1568 octets, private key
+1632/2400/3168 octets, ciphertext 768/1088/1568 octets.  X-Wing:
+private key 32 octets (seed), public key 1216 octets, ciphertext
+1120 octets.
 
 ** Elliptic curve operations
 

@@ -224,7 +224,10 @@
                         "ironclad/cipher/aes"
                         "ironclad/kdf/hmac"))
   ("ml-kem" :depends-on ("ironclad/digest/sha3"))
-  ("ml-dsa" :depends-on ("ironclad/digest/sha3")))
+  ("ml-dsa" :depends-on ("ironclad/digest/sha3"))
+  ("x-wing" :depends-on ("ironclad/public-key/ml-kem"
+                         "ironclad/public-key/curve25519"
+                         "ironclad/digest/sha3")))
 
 (defsystem "ironclad"
   :class ironclad-system
@@ -444,6 +447,7 @@
                                            (:test-vector-file "ecdsa-sig")
                                            (:test-vector-file "ecies")
                                            (:test-vector-file "ml-kem")
+                                           (:test-vector-file "x-wing")
                                            (:test-vector-file "ml-dsa")
                                            (:test-vector-file "ed25519")
                                            (:test-vector-file "ed448")
