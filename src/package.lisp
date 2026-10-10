@@ -212,6 +212,7 @@
             #:blake2s #:blake2s/224 #:blake2s/160 #:blake2s/128
             #:blake3
             #:cshake128 #:cshake256
+            #:ascon-hash256 #:ascon-xof128
            #:jh #:jh/384 #:jh/256 #:jh/224
            #:streebog #:streebog/256
            #:kupyna #:kupyna/256

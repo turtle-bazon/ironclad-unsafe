@@ -909,6 +909,34 @@
 (defparameter *hpke-tests*
   (list (cons :hpke-test 'hpke-test)))
 
+(defun ascon-aead-test (name input ad output tag key nonce)
+  (let ((mode-name :ascon-aead128))
+    (let* ((ae (crypto:make-authenticated-encryption-mode
+                mode-name :key key :initialization-vector nonce))
+           (ciphertext (crypto:encrypt-message ae input :associated-data ad)))
+      (when (or (mismatch ciphertext output)
+                (mismatch (crypto:produce-tag ae) tag))
+        (error "encryption failed for ~A, input ~A, output ~A" mode-name input output)))
+    (let ((ae2 (crypto:make-authenticated-encryption-mode
+                mode-name :key key :initialization-vector nonce :tag tag)))
+      (let ((plaintext (crypto:decrypt-message ae2 output :associated-data ad)))
+        (when (mismatch plaintext input)
+          (error "decryption failed for ~A, input ~A, output ~A" mode-name input output))))
+    ;; A tampered ciphertext must be rejected.
+    (let* ((ae3 (crypto:make-authenticated-encryption-mode
+                 mode-name :key key :initialization-vector nonce
+                 :tag tag))
+           (bad (copy-seq output)))
+      (unless (zerop (length bad))
+        (setf (aref bad 0) (logxor (aref bad 0) 1))
+        (handler-case (progn (crypto:decrypt-message ae3 bad :associated-data ad)
+                             (error "tampered ciphertext accepted for ~A" name))
+          (crypto:ironclad-error () nil)))))
+  t)
+
+(defparameter *aead-tests*
+  (list (cons :ascon-aead-test 'ascon-aead-test)))
+
 (defparameter *public-key-encryption-tests*
   (list (cons :rsa-oaep-encryption-test 'rsa-oaep-encryption-test)
         (cons :elgamal-encryption-test 'elgamal-encryption-test)

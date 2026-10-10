@@ -133,6 +133,7 @@
 
 (define-ironclad-subsystems "ironclad/digests" "digest" #p"src/digests/"
   "adler32"
+  "ascon"
   "blake2"
   "blake2s"
   "blake3"
@@ -185,7 +186,8 @@
   ("gcm-siv" :depends-on ("ironclad/cipher/aes"))
   ("chacha-poly" :depends-on ("ironclad/cipher/chacha"
                               "ironclad/cipher/xchacha"
-                              "ironclad/mac/poly1305")))
+                              "ironclad/mac/poly1305"))
+  ("ascon-aead" :depends-on ("ironclad/digest/ascon")))
 
 (define-ironclad-subsystems "ironclad/hpke" "hpke" #p"src/hpke/"
   ("hpke" :depends-on ("ironclad/public-key/curve25519"
@@ -305,6 +307,7 @@
                                            (:test-vector-file "gcm")
                                            (:test-vector-file "gcm-siv")
                                            (:test-vector-file "chacha-poly")
+                                           (:test-vector-file "ascon-aead")
                                            (:test-vector-file "xchacha-poly")
                                            (:test-vector-file "ccm")
                                            ;; ciphers
@@ -368,6 +371,8 @@
                                            (:test-vector-file "blake2s-160")
                                            (:test-vector-file "blake2s-224")
                                            (:test-vector-file "blake3")
+                                           (:test-vector-file "ascon-hash256")
+                                           (:test-vector-file "ascon-xof128")
                                            (:test-vector-file "blake3-keyed")
                                            (:test-vector-file "cshake128")
                                            (:test-vector-file "cshake256")

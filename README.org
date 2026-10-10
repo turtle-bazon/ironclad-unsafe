@@ -398,6 +398,8 @@ by calling [[list-all-digests][list-all-digests]]. They are:
  - crc32c
  - cshake128
  - cshake256
+ - ascon-hash256 (Ascon-Hash256, NIST SP 800-232)
+ - ascon-xof128 (Ascon-XOF128, NIST SP 800-232)
  - groestl
  - groestl/224
  - groestl/256
@@ -871,6 +873,7 @@ tell you the names of all the supported modes. They are:
  - gcm-siv (Nonce misuse-resistant AEAD, RFC 8452, AES only)
  - chacha-poly (ChaCha20-Poly1305, RFC 8439)
  - xchacha-poly (XChaCha20-Poly1305)
+ - ascon-aead128 (Ascon-AEAD128, NIST SP 800-232)
 
 /name/ can be a symbol in the ~keyword~  or ~ironclad~ packages.
 
