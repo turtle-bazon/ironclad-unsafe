@@ -114,6 +114,14 @@
    #:ml-dsa-87-public-key #:ml-dsa-87-private-key
    #:ml-dsa-key-bytes
    #:x-wing-public-key #:x-wing-private-key #:x-wing-key-bytes
+
+   ;; HPKE (RFC 9180)
+   #:hpke-derive-keypair #:hpke-setup-sender #:hpke-setup-recipient
+   #:hpke-seal #:hpke-open #:hpke-export
+   #:hpke-seal-message #:hpke-open-message
+   #:hpke-sender-context #:hpke-recipient-context
+   #:hpke-context-key #:hpke-context-base-nonce #:hpke-context-exporter-secret
+   #:hpke-context-enc #:hpke-context-seq
    #:rsa-public-key #:rsa-private-key
    #:secp256k1-public-key #:secp256k1-private-key
    #:secp224r1-public-key #:secp224r1-private-key

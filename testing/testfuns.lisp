@@ -855,6 +855,60 @@
       (when (equalp (ironclad:decapsulate-key sk bad) ss)
         (error "X-Wing tampered ciphertext accepted for ~A" name)))))
 
+(defun hpke-test (file kem-id kdf-id aead-id mode-id info ikmR ikmE psk psk-id ikmS
+                 enc key nonce exp aad pt ct exports)
+  (declare (ignore file))
+  (let ((kem (ecase kem-id (16 :dhkem-p256) (17 :dhkem-p384) (18 :dhkem-p521)
+                    (32 :dhkem-x25519) (33 :dhkem-x448)))
+        (kdf (ecase kdf-id (1 :hkdf-sha256) (2 :hkdf-sha384) (3 :hkdf-sha512)))
+        (aead (ecase aead-id (1 :aes-128-gcm) (2 :aes-256-gcm)
+                     (3 :chacha20-poly1305) (65535 :export-only)))
+        (mode (ecase mode-id (0 :base) (1 :psk) (2 :auth) (3 :auth-psk))))
+    (multiple-value-bind (skR pkR) (ironclad:hpke-derive-keypair kem ikmR)
+      (multiple-value-bind (skE pkE) (ironclad:hpke-derive-keypair kem ikmE)
+        (let ((skS (when (plusp (length ikmS))
+                     (nth-value 0 (ironclad:hpke-derive-keypair kem ikmS))))
+              (pkS (when (plusp (length ikmS))
+                     (nth-value 1 (ironclad:hpke-derive-keypair kem ikmS)))))
+          (multiple-value-bind (enc2 sctx)
+              (ironclad:hpke-setup-sender kem kdf aead pkR info
+                                          :psk psk :psk-id psk-id :sk-s skS
+                                          :mode mode
+                                          :ephemeral-keypair (list skE pkE))
+            (unless (equalp enc2 enc)
+              (error "HPKE enc mismatch for ~A/~A/~A/~A" kem-id kdf-id aead-id mode-id))
+            (unless (equalp (ironclad:hpke-context-key sctx) key)
+              (error "HPKE key mismatch for ~A/~A/~A/~A" kem-id kdf-id aead-id mode-id))
+            (unless (equalp (ironclad:hpke-context-base-nonce sctx) nonce)
+              (error "HPKE nonce mismatch for ~A/~A/~A/~A" kem-id kdf-id aead-id mode-id))
+            (unless (equalp (ironclad:hpke-context-exporter-secret sctx) exp)
+              (error "HPKE exporter-secret mismatch for ~A/~A/~A/~A" kem-id kdf-id aead-id mode-id))
+            (let ((rctx (ironclad:hpke-setup-recipient kem kdf aead enc skR info
+                                                       :psk psk :psk-id psk-id :pk-s pkS
+                                                       :mode mode)))
+              (unless (eq aead :export-only)
+                (let ((ct2 (ironclad:hpke-seal sctx aad pt)))
+                  (unless (equalp ct2 ct)
+                    (error "HPKE ct mismatch for ~A/~A/~A/~A" kem-id kdf-id aead-id mode-id)))
+                (unless (equalp (ironclad:hpke-open rctx aad ct) pt)
+                  (error "HPKE open mismatch for ~A/~A/~A/~A" kem-id kdf-id aead-id mode-id)))
+              (loop for (xctx xl xval) in exports
+                    do (unless (equalp (ironclad:hpke-export sctx xctx xl) xval)
+                         (error "HPKE export mismatch for ~A/~A/~A/~A" kem-id kdf-id aead-id mode-id))
+                       (unless (equalp (ironclad:hpke-export rctx xctx xl) xval)
+                         (error "HPKE export-r mismatch for ~A/~A/~A/~A" kem-id kdf-id aead-id mode-id)))
+              (unless (eq aead :export-only)
+                (let ((bad (copy-seq ct)))
+                  (setf (aref bad 0) (logxor (aref bad 0) 1))
+                  (let ((rctx2 (ironclad:hpke-setup-recipient kem kdf aead enc skR info
+                                                              :psk psk :psk-id psk-id :pk-s pkS
+                                                              :mode mode)))
+                    (when (ironclad:hpke-open rctx2 aad bad)
+                      (error "HPKE tampered ct accepted for ~A/~A/~A/~A" kem-id kdf-id aead-id mode-id))))))))))))
+
+(defparameter *hpke-tests*
+  (list (cons :hpke-test 'hpke-test)))
+
 (defparameter *public-key-encryption-tests*
   (list (cons :rsa-oaep-encryption-test 'rsa-oaep-encryption-test)
         (cons :elgamal-encryption-test 'elgamal-encryption-test)

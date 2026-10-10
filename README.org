@@ -1107,6 +1107,7 @@ Ironclad includes support for a few public key cryptography algorithms.
 Encryption algorithms:
  - ECIES (over Secp256k1, Secp256r1, Secp384r1 and Secp521r1)
  - Elgamal
+ - HPKE (RFC 9180: DHKEM X25519/X448/P-256/P-384/P-521, all modes)
  - RSA
 
 Key encapsulation:

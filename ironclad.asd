@@ -187,6 +187,17 @@
                               "ironclad/cipher/xchacha"
                               "ironclad/mac/poly1305")))
 
+(define-ironclad-subsystems "ironclad/hpke" "hpke" #p"src/hpke/"
+  ("hpke" :depends-on ("ironclad/public-key/curve25519"
+                       "ironclad/public-key/curve448"
+                       "ironclad/public-key/secp256r1"
+                       "ironclad/public-key/secp384r1"
+                       "ironclad/public-key/secp521r1"
+                       "ironclad/aead/gcm"
+                       "ironclad/aead/chacha-poly"
+                       "ironclad/cipher/aes"
+                       "ironclad/kdf/hmac")))
+
 (define-ironclad-subsystems "ironclad/kdfs" "kdf" #p"src/kdf/"
   ("argon2" :depends-on ("ironclad/mac/blake2-mac"))
   ("bcrypt" :depends-on ("ironclad/cipher/blowfish"
@@ -239,6 +250,7 @@
                "ironclad/prngs"
                "ironclad/aeads"
                "ironclad/kdfs"
+               "ironclad/hpke"
                "ironclad/public-keys"))
 
 (macrolet ((do-silently (&body body)
@@ -448,6 +460,7 @@
                                            (:test-vector-file "ecies")
                                            (:test-vector-file "ml-kem")
                                            (:test-vector-file "x-wing")
+                                           (:test-vector-file "hpke")
                                            (:test-vector-file "ml-dsa")
                                            (:test-vector-file "ed25519")
                                            (:test-vector-file "ed448")

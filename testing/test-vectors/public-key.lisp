@@ -6,6 +6,7 @@
 (rtest:deftest :ecies-encryption (run-test-vector-file :ecies *public-key-encryption-tests*) t)
 (rtest:deftest :ml-kem-encapsulation (run-test-vector-file :ml-kem *public-key-encryption-tests*) t)
 (rtest:deftest :x-wing-encapsulation (run-test-vector-file :x-wing *public-key-encryption-tests*) t)
+(rtest:deftest :hpke (run-test-vector-file :hpke *hpke-tests*) t)
 (rtest:deftest :ml-dsa-signature (run-test-vector-file :ml-dsa *public-key-signature-tests*) t)
 
 (rtest:deftest :rsa-pss-signature (run-test-vector-file :rsa-sig *public-key-signature-tests*) t)
