@@ -1119,6 +1119,7 @@ Signature algorithms:
  - Elgamal
  - ML-DSA-44/65/87 (FIPS 204)
  - RSA
+ - Secp224r1 (a.k.a. NIST P-224)
  - Secp256k1
  - Secp256r1 (a.k.a. NIST P-256)
  - Secp384r1 (a.k.a. NIST P-384)
@@ -1128,6 +1129,7 @@ Diffie-Hellman key exchange:
  - Curve25519
  - Curve448
  - Elgamal
+ - Secp224r1 (a.k.a. NIST P-224)
  - Secp256k1
  - Secp256r1 (a.k.a. NIST P-256)
  - Secp384r1 (a.k.a. NIST P-384)
@@ -1188,6 +1190,7 @@ methods that specialize on /kind/, below.
 (make-public-key :ml-dsa-65 &key bytes) => public-key
 (make-public-key :ml-dsa-87 &key bytes) => public-key
 (make-public-key :rsa &key e n) => public-key
+(make-public-key :secp224r1 &key y) => public-key
 (make-public-key :secp256k1 &key y) => public-key
 (make-public-key :secp256r1 &key y) => public-key
 (make-public-key :secp384r1 &key y) => public-key
@@ -1218,6 +1221,7 @@ specialize on /kind/, below.
 (make-private-key :ml-dsa-65 &key bytes) => private-key
 (make-private-key :ml-dsa-87 &key bytes) => private-key
 (make-private-key :rsa &key d n p q) => private-key
+(make-private-key :secp224r1 &key x y) => private-key
 (make-private-key :secp256k1 &key x y) => private-key
 (make-private-key :secp256r1 &key x y) => private-key
 (make-private-key :secp384r1 &key x y) => private-key
@@ -1225,7 +1229,7 @@ specialize on /kind/, below.
 #+END_EXAMPLE
 
 
-For Curve25519, Curve448, Ed25519, Ed448 keys, Secp256k1, Secp256r1, Secp384r1
+For Curve25519, Curve448, Ed25519, Ed448 keys, Secp224r1, Secp256k1, Secp256r1, Secp384r1
 and Secp521r1, the type of the parameters is
 ~(simple-array (unsigned-byte 8) (*))~:
  - /x/, the secret key
@@ -1314,7 +1318,7 @@ necessary.
 
 *** Signature nonce
 
-DSA, Elgamal and ECDSA (Secp256k1, Secp256r1, Secp384r1 and Secp521r1)
+DSA, Elgamal and ECDSA (Secp224r1, Secp256k1, Secp256r1, Secp384r1 and Secp521r1)
 signatures require the generation of a nonce. You must never sign two different
 messages with the same key and the same nonce, or anyone having these two
 signatures will be able compute your private key. Ironclad uses the
@@ -1367,12 +1371,13 @@ specialize on /kind/, below.
 (make-signature :elgamal &key r s n-bits) => signature
 (make-signature :rsa &key s n-bits) => signature
 (make-signature :secp256k1 &key r s) => signature
+(make-signature :secp224r1 &key r s) => signature
 (make-signature :secp256r1 &key r s) => signature
 (make-signature :secp384r1 &key r s) => signature
 (make-signature :secp521r1 &key r s) => signature
 #+END_EXAMPLE
 
-For Ed25519, Ed448, Secp256k1, Secp256r1, Secp384r1 and Secp521r1 signatures,
+For Ed25519, Ed448, Secp224r1, Secp256k1, Secp256r1, Secp384r1 and Secp521r1 signatures,
 the type of the parameters /r/ and /s/ is
 ~(simple-array (unsigned-byte 8) (*))~.
 

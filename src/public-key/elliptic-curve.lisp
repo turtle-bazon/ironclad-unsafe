@@ -96,3 +96,31 @@ specified coordinates."))
                      (ai (setf r (ec-add r p)))
                      (bi (setf r (ec-add r q))))))
     r))
+
+(defun ec-tonelli-shanks-sqrt (a p)
+  "Square root of A modulo the odd prime P (Tonelli-Shanks), or NIL
+if A is not a quadratic residue.  The curves with P = 3 mod 4 use
+A^((P+1)/4) inline instead; this general routine exists for primes
+like the P-224 prime with P = 1 mod 4."
+  (let ((a (mod a p)))
+    (cond ((zerop a) 0)
+          ((/= (expt-mod a (ash (1- p) -1) p) 1) nil)
+          (t
+           (let ((q (1- p)) (s 0))
+             (loop while (evenp q) do (setf q (ash q -1)) (incf s))
+             (let ((z 2))
+               (loop while (= (expt-mod z (ash (1- p) -1) p) 1) do (incf z))
+               (let ((c (expt-mod z q p))
+                     (x (expt-mod a (ash (1+ q) -1) p))
+                     (tval (expt-mod a q p))
+                     (m s))
+                 (loop while (/= tval 1)
+                       do (let ((i 1))
+                            (loop for tt = (expt-mod tval 2 p) then (expt-mod tt 2 p)
+                                  while (/= tt 1) do (incf i))
+                            (let ((b (expt-mod c (ash 1 (- m i 1)) p)))
+                              (setf x (mod (* x b) p)
+                                    c (mod (* b b) p)
+                                    tval (mod (* tval c) p)
+                                    m i))))
+                 x)))))))

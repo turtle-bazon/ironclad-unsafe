@@ -8,8 +8,8 @@
   (copy-list '(:curve25519 :curve448 :dsa :ecdsa :ed25519 :ed448 :elgamal
                :ml-dsa-44 :ml-dsa-65 :ml-dsa-87
                :ml-kem-512 :ml-kem-768 :ml-kem-1024
-               :rsa :secp256k1 :secp256r1 :secp384r1 :secp521r1
-               :p-256 :prime256v1 :p-384 :p-521)))
+               :rsa :secp224r1 :secp256k1 :secp256r1 :secp384r1 :secp521r1
+               :p-224 :p-256 :prime256v1 :p-384 :p-521)))
 
 
 ;;; class definitions

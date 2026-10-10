@@ -207,10 +207,12 @@
   ("ed25519" :depends-on ("ironclad/digest/sha512"))
   ("ed448" :depends-on ("ironclad/digest/sha3"))
   "secp256k1"
+  "secp224r1"
   "secp256r1"
   "secp384r1"
   "secp521r1"
-  ("ecdsa" :depends-on ("ironclad/public-key/secp256k1"
+  ("ecdsa" :depends-on ("ironclad/public-key/secp224r1"
+                        "ironclad/public-key/secp256k1"
                         "ironclad/public-key/secp256r1"
                         "ironclad/public-key/secp384r1"
                         "ironclad/public-key/secp521r1"))
@@ -452,6 +454,8 @@
                                            (:test-vector-file "rsa-sig")
                                            (:test-vector-file "secp256k1-dh")
                                            (:test-vector-file "secp256k1-sig")
+                                           (:test-vector-file "secp224r1-dh")
+                                           (:test-vector-file "secp224r1-sig")
                                            (:test-vector-file "secp256r1-dh")
                                            (:test-vector-file "secp256r1-sig")
                                            (:test-vector-file "secp384r1-dh")

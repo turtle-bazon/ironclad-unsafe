@@ -2,9 +2,9 @@
 ;;;; ecdsa.lisp -- generic ECDSA interface over the SEC prime curves
 ;;;;
 ;;;; Ironclad implements ECDSA separately for each curve
-;;;; (:secp256k1, :secp256r1, :secp384r1, :secp521r1).  Callers that
-;;;; want "just ECDSA" -- or that use the standard NIST names :p-256,
-;;;; :p-384, :p-521 / :prime256v1 -- previously got a
+;;;; (:secp224r1, :secp256k1, :secp256r1, :secp384r1, :secp521r1).  Callers that
+;;;; want "just ECDSA" -- or that use the standard NIST names :p-224,
+;;;; :p-256, :p-384, :p-521 / :prime256v1 -- previously got a
 ;;;; NO-APPLICABLE-METHOD error from GENERATE-KEY-PAIR, MAKE-PUBLIC-KEY
 ;;;; and MAKE-PRIVATE-KEY.  This file adds a generic :ecdsa key kind
 ;;;; (plus the standard aliases) that resolves to one of the concrete
@@ -25,11 +25,12 @@
 
 
 (defparameter *ecdsa-canonical-curves*
-  '(:secp256k1 :secp256r1 :secp384r1 :secp521r1)
+  '(:secp224r1 :secp256k1 :secp256r1 :secp384r1 :secp521r1)
   "Concrete curve kinds with native ECDSA implementations.")
 
 (defparameter *ecdsa-curve-aliases*
-  '((:p-256 . :secp256r1)
+  '((:p-224 . :secp224r1)
+    (:p-256 . :secp256r1)
     (:prime256v1 . :secp256r1)
     (:p-384 . :secp384r1)
     (:p-521 . :secp521r1))
@@ -53,6 +54,8 @@ default curve :secp256r1).  Signals IRONCLAD-ERROR for unknown curves."
   "Return the canonical curve kind of the ECDSA KEY object.
 KEY must be one of the concrete SEC curve key objects."
   (etypecase key
+    (secp224r1-public-key :secp224r1)
+    (secp224r1-private-key :secp224r1)
     (secp256k1-public-key :secp256k1)
     (secp256k1-private-key :secp256k1)
     (secp256r1-public-key :secp256r1)
@@ -67,6 +70,9 @@ KEY must be one of the concrete SEC curve key objects."
 
 (defmethod generate-key-pair ((kind (eql :ecdsa)) &key (curve :secp256r1) &allow-other-keys)
   (generate-key-pair (resolve-ecdsa-curve curve)))
+
+(defmethod generate-key-pair ((kind (eql :p-224)) &key &allow-other-keys)
+  (generate-key-pair :secp224r1))
 
 (defmethod generate-key-pair ((kind (eql :p-256)) &key &allow-other-keys)
   (generate-key-pair :secp256r1))
@@ -115,6 +121,7 @@ KEY must be one of the concrete SEC curve key objects."
                            :parameter 'x
                            :description "private key"))
                   (make-private-key ,canonical :x x :y y)))))
+  (define-alias-key-constructors :p-224 :secp224r1)
   (define-alias-key-constructors :p-256 :secp256r1)
   (define-alias-key-constructors :prime256v1 :secp256r1)
   (define-alias-key-constructors :p-384 :secp384r1)
@@ -138,6 +145,7 @@ KEY must be one of the concrete SEC curve key objects."
 (defun ecdsa-curve-order (curve)
   "Return the group order of the ECDSA CURVE (a canonical curve kind)."
   (ecase curve
+    (:secp224r1 +secp224r1-l+)
     (:secp256k1 +secp256k1-l+)
     (:secp256r1 +secp256r1-l+)
     (:secp384r1 +secp384r1-l+)
@@ -146,6 +154,7 @@ KEY must be one of the concrete SEC curve key objects."
 (defun ecdsa-field-octets (curve)
   "Number of message-hash octets consumed by SIGN-MESSAGE for CURVE."
   (ecase curve
+    (:secp224r1 28)
     (:secp256k1 32)
     (:secp256r1 32)
     (:secp384r1 48)
@@ -155,6 +164,7 @@ KEY must be one of the concrete SEC curve key objects."
   "Return the private-key octets of the ECDSA private KEY."
   (let ((curve (ecdsa-curve-for-key key)))
     (ecase curve
+      (:secp224r1 (secp224r1-key-x key))
       (:secp256k1 (secp256k1-key-x key))
       (:secp256r1 (secp256r1-key-x key))
       (:secp384r1 (secp384r1-key-x key))
@@ -191,6 +201,7 @@ the SEC curves) or to restore random nonces."
 (defun ecdsa-point-curve (point)
   "Return the canonical curve kind of the SEC POINT object."
   (etypecase point
+    (secp224r1-point :secp224r1)
     (secp256k1-point :secp256k1)
     (secp256r1-point :secp256r1)
     (secp384r1-point :secp384r1)
@@ -199,6 +210,7 @@ the SEC curves) or to restore random nonces."
 (defun ecdsa-field-prime (curve)
   "Return the field prime of the ECDSA CURVE (a canonical curve kind)."
   (ecase curve
+    (:secp224r1 +secp224r1-p+)
     (:secp256k1 +secp256k1-p+)
     (:secp256r1 +secp256r1-p+)
     (:secp384r1 +secp384r1-p+)
