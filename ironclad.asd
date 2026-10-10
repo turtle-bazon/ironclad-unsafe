@@ -221,7 +221,8 @@
                         "ironclad/aead/gcm"
                         "ironclad/cipher/aes"
                         "ironclad/kdf/hmac"))
-  ("ml-kem" :depends-on ("ironclad/digest/sha3")))
+  ("ml-kem" :depends-on ("ironclad/digest/sha3"))
+  ("ml-dsa" :depends-on ("ironclad/digest/sha3")))
 
 (defsystem "ironclad"
   :class ironclad-system
@@ -441,6 +442,7 @@
                                            (:test-vector-file "ecdsa-sig")
                                            (:test-vector-file "ecies")
                                            (:test-vector-file "ml-kem")
+                                           (:test-vector-file "ml-dsa")
                                            (:test-vector-file "ed25519")
                                            (:test-vector-file "ed448")
                                            (:test-vector-file "elgamal-dh")

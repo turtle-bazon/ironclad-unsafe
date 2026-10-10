@@ -1117,6 +1117,7 @@ Signature algorithms:
  - Ed25519
  - Ed448
  - Elgamal
+ - ML-DSA-44/65/87 (FIPS 204)
  - RSA
  - Secp256k1
  - Secp256r1 (a.k.a. NIST P-256)
@@ -1180,7 +1181,12 @@ methods that specialize on /kind/, below.
 (make-public-key :ed25519 &key y) => public-key
 (make-public-key :ed448 &key y) => public-key
 (make-public-key :elgamal &key p g y) => public-key
+(make-public-key :ml-kem-512 &key bytes) => public-key
 (make-public-key :ml-kem-768 &key bytes) => public-key
+(make-public-key :ml-kem-1024 &key bytes) => public-key
+(make-public-key :ml-dsa-44 &key bytes) => public-key
+(make-public-key :ml-dsa-65 &key bytes) => public-key
+(make-public-key :ml-dsa-87 &key bytes) => public-key
 (make-public-key :rsa &key e n) => public-key
 (make-public-key :secp256k1 &key y) => public-key
 (make-public-key :secp256r1 &key y) => public-key
@@ -1205,7 +1211,12 @@ specialize on /kind/, below.
 (make-private-key :ed25519 &key x y) => private-key
 (make-private-key :ed448 &key x y) => private-key
 (make-private-key :elgamal &key p g y x) => private-key
+(make-private-key :ml-kem-512 &key bytes) => private-key
 (make-private-key :ml-kem-768 &key bytes) => private-key
+(make-private-key :ml-kem-1024 &key bytes) => private-key
+(make-private-key :ml-dsa-44 &key bytes) => private-key
+(make-private-key :ml-dsa-65 &key bytes) => private-key
+(make-private-key :ml-dsa-87 &key bytes) => private-key
 (make-private-key :rsa &key d n p q) => private-key
 (make-private-key :secp256k1 &key x y) => private-key
 (make-private-key :secp256r1 &key x y) => private-key
@@ -1270,6 +1281,10 @@ Return a signature of /message/ between /start/ and /end/ signed with
 _Note:_ The [[sign-message][sign-message]] does not perform the hashing of the data. You
 should hash your data using your favorite hash function, and then use
 this hash as the /message/ passed to [[sign-message][sign-message]].
+
+ML-DSA keys additionally accept a /:ctx/ context string (an octet
+vector of at most 255 bytes, empty by default, as in FIPS 204);
+signer and verifier must agree on it.
 
 
 #+NAME: verify-signature

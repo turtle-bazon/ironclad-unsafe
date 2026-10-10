@@ -786,6 +786,29 @@
       (when (equalp (ironclad:decapsulate-key sk bad) ss)
         (error "ML-KEM tampered ciphertext accepted for ~A" name)))))
 
+(defun ml-dsa-test (file kind name pk-bytes sk-bytes sig msg)
+  (declare (ignore file))
+  (let ((pk (ironclad:make-public-key kind :bytes pk-bytes))
+        (sk (ironclad:make-private-key kind :bytes sk-bytes)))
+    ;; KAT: the reference signature verifies under the reference key.
+    (unless (ironclad:verify-signature pk msg sig)
+      (error "ML-DSA verification failed for ~A" name))
+    ;; Roundtrip with fresh randomness.
+    (let ((sig2 (ironclad:sign-message sk msg)))
+      (unless (and (= (length sig2) (length sig))
+                   (ironclad:verify-signature pk msg sig2))
+        (error "ML-DSA roundtrip failed for ~A" name)))
+    ;; A tampered signature must not verify.
+    (let ((bad (copy-seq sig)))
+      (setf (aref bad 100) (logxor (aref bad 100) 1))
+      (when (ironclad:verify-signature pk msg bad)
+        (error "ML-DSA tampered signature accepted for ~A" name)))
+    ;; A wrong message must not verify.
+    (let ((badmsg (copy-seq msg)))
+      (setf (aref badmsg 0) (logxor (aref badmsg 0) 1))
+      (when (ironclad:verify-signature pk badmsg sig)
+        (error "ML-DSA wrong message accepted for ~A" name)))))
+
 (defparameter *public-key-encryption-tests*
   (list (cons :rsa-oaep-encryption-test 'rsa-oaep-encryption-test)
         (cons :elgamal-encryption-test 'elgamal-encryption-test)
@@ -806,7 +829,8 @@
         (cons :ecdsa-rfc6979-test 'ecdsa-rfc6979-test)
         (cons :ecdsa-der-test 'ecdsa-der-test)
         (cons :ecdsa-der-invalid-test 'ecdsa-der-invalid-test)
-        (cons :ecdsa-compressed-point-test 'ecdsa-compressed-point-test)))
+        (cons :ecdsa-compressed-point-test 'ecdsa-compressed-point-test)
+        (cons :ml-dsa-test 'ml-dsa-test)))
 
 (defparameter *public-key-diffie-hellman-tests*
   (list (cons :curve25519-dh-test 'curve25519-dh-test)
