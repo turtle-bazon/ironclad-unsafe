@@ -237,6 +237,7 @@
                         "ironclad/cipher/aes"
                         "ironclad/kdf/hmac"))
   ("ml-kem" :depends-on ("ironclad/digest/sha3"))
+  ("slh-dsa" :depends-on ("ironclad/digest/sha256"))
   ("ml-dsa" :depends-on ("ironclad/digest/sha3"))
   ("x-wing" :depends-on ("ironclad/public-key/ml-kem"
                          "ironclad/public-key/curve25519"
@@ -467,6 +468,7 @@
                                            (:test-vector-file "x-wing")
                                            (:test-vector-file "hpke")
                                            (:test-vector-file "ml-dsa")
+                                           (:test-vector-file "slh-dsa")
                                            (:test-vector-file "ed25519")
                                            (:test-vector-file "ed448")
                                            (:test-vector-file "elgamal-dh")

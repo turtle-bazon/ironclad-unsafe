@@ -8,6 +8,7 @@
 (rtest:deftest :x-wing-encapsulation (run-test-vector-file :x-wing *public-key-encryption-tests*) t)
 (rtest:deftest :hpke (run-test-vector-file :hpke *hpke-tests*) t)
 (rtest:deftest :ml-dsa-signature (run-test-vector-file :ml-dsa *public-key-signature-tests*) t)
+(rtest:deftest :slh-dsa-signature (run-test-vector-file :slh-dsa *public-key-signature-tests*) t)
 
 (rtest:deftest :rsa-pss-signature (run-test-vector-file :rsa-sig *public-key-signature-tests*) t)
 (rtest:deftest :elgamal-signature (run-test-vector-file :elgamal-sig *public-key-signature-tests*) t)
