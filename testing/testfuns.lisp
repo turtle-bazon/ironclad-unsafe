@@ -840,7 +840,7 @@
   (let ((out (make-array n :element-type 'fixnum)))
     (dotimes (i n out)
       (let ((lo (aref bytes (* 2 i))) (hi (aref bytes (+ (* 2 i) 1))))
-        (setf (aref out i) (if (logbitp 15 hi)
+        (setf (aref out i) (if (logbitp 7 hi)
                                (- (logior (ash hi 8) lo) #x10000)
                                (logior (ash hi 8) lo)))))))
 
