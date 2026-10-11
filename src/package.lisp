@@ -121,6 +121,7 @@
    #:slh-dsa-shake-192f-public-key #:slh-dsa-shake-192f-private-key
    #:slh-dsa-shake-256s-public-key #:slh-dsa-shake-256s-private-key
    #:slh-dsa-shake-256f-public-key #:slh-dsa-shake-256f-private-key
+   #:falcon-512-public-key #:falcon-1024-public-key
    #:ml-dsa-44-public-key #:ml-dsa-44-private-key
    #:ml-dsa-65-public-key #:ml-dsa-65-private-key
    #:ml-dsa-87-public-key #:ml-dsa-87-private-key

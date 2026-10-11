@@ -239,6 +239,8 @@
   ("ml-kem" :depends-on ("ironclad/digest/sha3"))
   ("slh-dsa" :depends-on ("ironclad/digest/sha256"))
   ("ml-dsa" :depends-on ("ironclad/digest/sha3"))
+  ("falcon" :depends-on ("ironclad/digest/sha3")
+   :components ((:file "falcon-tables") (:file "falcon")))
   ("x-wing" :depends-on ("ironclad/public-key/ml-kem"
                          "ironclad/public-key/curve25519"
                          "ironclad/digest/sha3")))
