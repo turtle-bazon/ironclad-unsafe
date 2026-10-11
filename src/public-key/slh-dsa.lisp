@@ -72,6 +72,24 @@
 (defparameter +slh-sha2-256f-params+
   (slh-make-params :slh-dsa-sha2-256f :sha2-512 32 17 9 35 16 4 4 64 3 40))
 
+(defparameter +slh-shake-128s-params+
+  (slh-make-params :slh-dsa-shake-128s :shake 16 7 12 14 16 4 9 32 3 21))
+
+(defparameter +slh-shake-128f-params+
+  (slh-make-params :slh-dsa-shake-128f :shake 16 22 6 33 16 4 3 32 3 25))
+
+(defparameter +slh-shake-192s-params+
+  (slh-make-params :slh-dsa-shake-192s :shake 24 7 14 17 16 4 9 48 3 30))
+
+(defparameter +slh-shake-192f-params+
+  (slh-make-params :slh-dsa-shake-192f :shake 24 22 8 33 16 4 3 48 3 33))
+
+(defparameter +slh-shake-256s-params+
+  (slh-make-params :slh-dsa-shake-256s :shake 32 8 14 22 16 4 8 64 3 39))
+
+(defparameter +slh-shake-256f-params+
+  (slh-make-params :slh-dsa-shake-256f :shake 32 17 9 35 16 4 4 64 3 40))
+
 (defun slh-params-for-kind (kind)
   (ecase kind
     (:slh-dsa-sha2-128s +slh-sha2-128s-params+)
@@ -79,7 +97,13 @@
     (:slh-dsa-sha2-192s +slh-sha2-192s-params+)
     (:slh-dsa-sha2-192f +slh-sha2-192f-params+)
     (:slh-dsa-sha2-256s +slh-sha2-256s-params+)
-    (:slh-dsa-sha2-256f +slh-sha2-256f-params+)))
+    (:slh-dsa-sha2-256f +slh-sha2-256f-params+)
+    (:slh-dsa-shake-128s +slh-shake-128s-params+)
+    (:slh-dsa-shake-128f +slh-shake-128f-params+)
+    (:slh-dsa-shake-192s +slh-shake-192s-params+)
+    (:slh-dsa-shake-192f +slh-shake-192f-params+)
+    (:slh-dsa-shake-256s +slh-shake-256s-params+)
+    (:slh-dsa-shake-256f +slh-shake-256f-params+)))
 
 (declaim (inline slh-n slh-d slh-fors-height slh-fors-trees
                  slh-wots-w slh-wots-logw slh-tree-height
@@ -131,8 +155,13 @@
 ;;; exactly like the uint32_t[8] of the reference (little endian).
 ;;;
 
+(defun slh-shake-addr-p ()
+  "True when the bound parameter set uses 32-byte SHAKE addresses."
+  (and *slh-params* (eq (slh-params-family *slh-params*) :shake)))
+
 (defun slh-make-addr ()
-  (make-array 22 :element-type '(unsigned-byte 8) :initial-element 0))
+  (make-array (if (slh-shake-addr-p) 32 22)
+              :element-type '(unsigned-byte 8) :initial-element 0))
 
 (defparameter *slh-current-ctx* nil)
 
@@ -145,38 +174,52 @@ pub_seed padded to one full block (64 bytes for SHA-256, 128 for SHA-512)."
     (concatenate '(simple-array (unsigned-byte 8) (*)) block data)))
 
 (defun slh-thash (ctx out data addr)
-  "Reference thash: SHA-256(pub_seed||pad||addr||M) for single-block
-input; SHA-512(pub_seed||pad128||addr||M) when the SHA2-512 family
-hashes more than one n-byte block. First n bytes in both cases."
-  (let* ((*slh-current-ctx* ctx)
-         (n (slh-n))
-         (use-512 (and (eq (slh-params-family *slh-params*) :sha2-512)
-                       (> (length data) n)))
-         (md (if use-512
-                 (digest-sequence
-                  :sha512
-                  (slh-seeded-input
-                   (concatenate '(simple-array (unsigned-byte 8) (*))
-                                addr data)
-                   128))
-                 (digest-sequence
-                  :sha256
-                  (slh-seeded-input
-                   (concatenate '(simple-array (unsigned-byte 8) (*))
-                                addr data))))))
+  "Reference thash, first n bytes of output. SHAKE family: SHAKE256
+over pub_seed || addr || data. SHA2 family: SHA-256 over the seeded
+prefix for one n-byte block, SHA-512 over the 128-byte seeded prefix
+when the SHA2-512 subfamily hashes more than one block."
+  (let* ((n (slh-n))
+         (family (slh-params-family *slh-params*))
+         (md (cond ((eq family :shake)
+                    (slh-shake256
+                     (concatenate '(simple-array (unsigned-byte 8) (*))
+                                  (slh-ctx-pub-seed ctx) addr data)
+                     n))
+                   ((and (eq family :sha2-512) (> (length data) n))
+                    (let ((*slh-current-ctx* ctx))
+                      (digest-sequence
+                       :sha512
+                       (slh-seeded-input
+                        (concatenate '(simple-array (unsigned-byte 8) (*))
+                                     addr data)
+                        128))))
+                   (t
+                    (let ((*slh-current-ctx* ctx))
+                      (digest-sequence
+                       :sha256
+                       (slh-seeded-input
+                        (concatenate '(simple-array (unsigned-byte 8) (*))
+                                     addr data))))))))
     (replace out md :end2 n)
     out))
 
 (defun slh-prf-addr (ctx addr)
-  "Reference prf_addr: SHA-256(pub_seed||pad||addr||sk_seed)."
-  (let* ((*slh-current-ctx* ctx)
-         (md (digest-sequence
-              :sha256
-              (slh-seeded-input
-               (concatenate '(simple-array (unsigned-byte 8) (*))
-                            addr (slh-ctx-sk-seed ctx)))))
-         (out (make-array (slh-n) :element-type '(unsigned-byte 8))))
-    (replace out md :end2 (slh-n))
+  "Reference prf_addr. SHAKE family: SHAKE256 over pub_seed || addr ||
+sk_seed. SHA2 families: SHA-256 over the seeded prefix."
+  (let* ((n (slh-n))
+         (md (if (eq (slh-params-family *slh-params*) :shake)
+                 (slh-shake256
+                  (concatenate '(simple-array (unsigned-byte 8) (*))
+                               (slh-ctx-pub-seed ctx) addr (slh-ctx-sk-seed ctx))
+                  n)
+                 (let ((*slh-current-ctx* ctx))
+                   (digest-sequence
+                    :sha256
+                    (slh-seeded-input
+                     (concatenate '(simple-array (unsigned-byte 8) (*))
+                                  addr (slh-ctx-sk-seed ctx)))))))
+         (out (make-array n :element-type '(unsigned-byte 8))))
+    (replace out md :end2 n)
     out))
 
 ;;; The reference address integers are stored big-endian (u32_to_bytes,
@@ -200,45 +243,45 @@ hashes more than one n-byte block. First n bytes in both cases."
       (setf n (logior n (ash (aref data (+ start i)) (* 8 (- len 1 i))))))))
 
 (defun slh-set-layer (addr layer)
-  (setf (aref addr +slh-offset-layer+) layer)
+  (setf (aref addr (if (slh-shake-addr-p) 3 +slh-offset-layer+)) layer)
   (values))
 
 (defun slh-set-tree (addr tree)
-  (slh-ull-to-bytes addr +slh-offset-tree+ tree)
+  (slh-ull-to-bytes addr (if (slh-shake-addr-p) 8 +slh-offset-tree+) tree)
   (values))
 
 (defun slh-set-type (addr type)
-  (setf (aref addr +slh-offset-type+) type)
+  (setf (aref addr (if (slh-shake-addr-p) 19 +slh-offset-type+)) type)
   (values))
 
 (defun slh-copy-subtree (out in)
-  (replace out in :end2 (+ +slh-offset-tree+ 8))
+  (replace out in :end2 (if (slh-shake-addr-p) 16 (+ +slh-offset-tree+ 8)))
   (values))
 
 (defun slh-set-keypair (addr keypair)
-  (slh-u32-to-bytes addr +slh-offset-kp-addr+ keypair)
+  (slh-u32-to-bytes addr (if (slh-shake-addr-p) 20 +slh-offset-kp-addr+) keypair)
   (values))
 
 (defun slh-copy-keypair (out in)
-  (replace out in :end2 (+ +slh-offset-tree+ 8))
-  (slh-u32-to-bytes out +slh-offset-kp-addr+
-                    (slh-bytes-to-ull in +slh-offset-kp-addr+ 4))
+  (let ((kp-off (if (slh-shake-addr-p) 20 +slh-offset-kp-addr+)))
+    (replace out in :end2 (if (slh-shake-addr-p) 16 (+ +slh-offset-tree+ 8)))
+    (slh-u32-to-bytes out kp-off (slh-bytes-to-ull in kp-off 4)))
   (values))
 
 (defun slh-set-chain (addr chain)
-  (setf (aref addr +slh-offset-chain-addr+) chain)
+  (setf (aref addr (if (slh-shake-addr-p) 27 +slh-offset-chain-addr+)) chain)
   (values))
 
 (defun slh-set-hash (addr hash)
-  (setf (aref addr +slh-offset-hash-addr+) hash)
+  (setf (aref addr (if (slh-shake-addr-p) 31 +slh-offset-hash-addr+)) hash)
   (values))
 
 (defun slh-set-tree-height (addr h)
-  (setf (aref addr +slh-offset-tree-hgt+) h)
+  (setf (aref addr (if (slh-shake-addr-p) 27 +slh-offset-tree-hgt+)) h)
   (values))
 
 (defun slh-set-tree-index (addr idx)
-  (slh-u32-to-bytes addr +slh-offset-tree-index+ idx)
+  (slh-u32-to-bytes addr (if (slh-shake-addr-p) 28 +slh-offset-tree-index+) idx)
   (values))
 
 
@@ -257,6 +300,12 @@ hashes more than one n-byte block. First n bytes in both cases."
 
 (defun slh-sha512 (data)
   (digest-sequence :sha512 data))
+
+(defun slh-shake256 (input output-length)
+  "SHAKE256 XOF squeeze of INPUT to OUTPUT-LENGTH octets."
+  (let ((d (make-digest :shake256 :output-length output-length)))
+    (update-digest d input)
+    (produce-digest d)))
 
 (defun slh-mgf1-512 (out outlen in)
   "MGF1-SHA-512 (reference: mgf1_512)."
@@ -300,7 +349,8 @@ hashes more than one n-byte block. First n bytes in both cases."
   "Reference gen_message_random: HMAC(sk_prf, optrand||m)[0,n).
 SHA-256/64-byte block for the SHA2 family, SHA-512/128-byte block
 for the SHA2-512 (N=24/32) family."
-  (let* ((use-512 (eq (slh-params-family *slh-params*) :sha2-512))
+  (let* ((family (slh-params-family *slh-params*))
+         (use-512 (eq family :sha2-512))
          (block-bytes (if use-512 128 64))
          (hash (if use-512 #'slh-sha512 #'slh-sha256))
          (a (concatenate '(simple-array (unsigned-byte 8) (*)) optrand m))
@@ -312,38 +362,51 @@ for the SHA2-512 (N=24/32) family."
     (dotimes (i (slh-n))
       (setf (aref key1 i) (logxor #x36 (aref sk-prf i))
             (aref key2 i) (logxor #x5c (aref sk-prf i))))
-    (let* ((inner (funcall hash (concatenate '(simple-array (unsigned-byte 8) (*))
-                                             key1 a))))
-      (replace out (funcall hash (concatenate '(simple-array (unsigned-byte 8) (*))
-                                              key2 inner))
-               :end2 (slh-n)))
+    (if (eq family :shake)
+        (replace out (slh-shake256
+                      (concatenate '(simple-array (unsigned-byte 8) (*))
+                                   sk-prf optrand m)
+                      (slh-n))
+                 :end2 (slh-n))
+        (let* ((inner (funcall hash (concatenate '(simple-array (unsigned-byte 8) (*))
+                                                 key1 a))))
+          (replace out (funcall hash (concatenate '(simple-array (unsigned-byte 8) (*))
+                                                  key2 inner))
+                   :end2 (slh-n))))
     out))
 
 (defun slh-hash-message (r pk-seed pk-root m)
   "Reference hash_message: returns (mhash tree leaf-idx).
 Plain SHA-X (fresh state, no pub_seed prefix) of R || pk.seed ||
 pk.root || M, then MGF1-SHA-X(R || pk.seed || digest). SHA-256 for
-the SHA2 family, SHA-512 for the SHA2-512 (N=24/32) family."
-  (let* ((use-512 (eq (slh-params-family *slh-params*) :sha2-512))
+the SHA2 family, SHA-512 for the SHA2-512 (N=24/32) family. The SHAKE
+family squeezes the digest directly with SHAKE256 (no MGF1)."
+  (let* ((family (slh-params-family *slh-params*))
+         (use-512 (eq family :sha2-512))
          (hash-out (if use-512 64 32))
          (buf (make-array (slh-dgst-bytes) :element-type '(unsigned-byte 8)))
          (seed (make-array (+ (* 2 (slh-n)) hash-out) :element-type '(unsigned-byte 8))))
-    (let ((digest (digest-sequence
-                   (if use-512 :sha512 :sha256)
-                   (concatenate '(simple-array (unsigned-byte 8) (*))
-                                r pk-seed pk-root m))))
-      (replace seed r)
-      (replace seed pk-seed :start1 (slh-n))
-      (replace seed digest :start1 (* 2 (slh-n)))
-      (if use-512
-          (slh-mgf1-512 buf (slh-dgst-bytes) seed)
-          (slh-mgf1-256 buf (slh-dgst-bytes) seed))
-      (values (subseq buf 0 (slh-fors-msg-bytes))
-              (logand (slh-bytes-to-ull buf (slh-fors-msg-bytes) (slh-tree-bytes))
-                      (1- (ash 1 (slh-tree-bits))))
-              (logand (slh-bytes-to-ull buf (+ (slh-fors-msg-bytes) (slh-tree-bytes))
-                                       (slh-leaf-bytes))
-                      (1- (ash 1 (slh-leaf-bits))))))))
+    (if (eq family :shake)
+        (replace buf (slh-shake256
+                      (concatenate '(simple-array (unsigned-byte 8) (*))
+                                   r pk-seed pk-root m)
+                      (slh-dgst-bytes)))
+        (let ((digest (digest-sequence
+                       (if use-512 :sha512 :sha256)
+                       (concatenate '(simple-array (unsigned-byte 8) (*))
+                                    r pk-seed pk-root m))))
+          (replace seed r)
+          (replace seed pk-seed :start1 (slh-n))
+          (replace seed digest :start1 (* 2 (slh-n)))
+          (if use-512
+              (slh-mgf1-512 buf (slh-dgst-bytes) seed)
+              (slh-mgf1-256 buf (slh-dgst-bytes) seed))))
+    (values (subseq buf 0 (slh-fors-msg-bytes))
+            (logand (slh-bytes-to-ull buf (slh-fors-msg-bytes) (slh-tree-bytes))
+                    (1- (ash 1 (slh-tree-bits))))
+            (logand (slh-bytes-to-ull buf (+ (slh-fors-msg-bytes) (slh-tree-bytes))
+                                     (slh-leaf-bytes))
+                    (1- (ash 1 (slh-leaf-bits)))))))
 
 (defun slh-chain-lengths (msg)
   "Reference chain_lengths: LEN1 message digits plus LEN2 checksum digits."
@@ -717,7 +780,7 @@ Returns the WOTS leaf (thash of the WOTS pk buffer)."
 
 (defun slh-copy-subtree-addr (in)
   (let ((out (slh-make-addr)))
-    (replace out in :end2 (+ +slh-offset-tree+ 8))
+    (replace out in :end2 (if (slh-shake-addr-p) 16 (+ +slh-offset-tree+ 8)))
     out))
 
 (defun slh-keygen-with-seed (sk-seed sk-prf pub-seed
@@ -940,3 +1003,39 @@ Returns the WOTS leaf (thash of the WOTS pk buffer)."
   +slh-sha2-256f-params+
   "128-byte SLH-DSA-SHA2-256f secret key."
   "64-byte SLH-DSA-SHA2-256f public key.")
+
+(define-slh-dsa-kind :slh-dsa-shake-128s
+  slh-dsa-shake-128s-private-key slh-dsa-shake-128s-public-key
+  +slh-shake-128s-params+
+  "64-byte SLH-DSA-SHAKE-128s secret key."
+  "32-byte SLH-DSA-SHAKE-128s public key.")
+
+(define-slh-dsa-kind :slh-dsa-shake-128f
+  slh-dsa-shake-128f-private-key slh-dsa-shake-128f-public-key
+  +slh-shake-128f-params+
+  "64-byte SLH-DSA-SHAKE-128f secret key."
+  "32-byte SLH-DSA-SHAKE-128f public key.")
+
+(define-slh-dsa-kind :slh-dsa-shake-192s
+  slh-dsa-shake-192s-private-key slh-dsa-shake-192s-public-key
+  +slh-shake-192s-params+
+  "96-byte SLH-DSA-SHAKE-192s secret key."
+  "48-byte SLH-DSA-SHAKE-192s public key.")
+
+(define-slh-dsa-kind :slh-dsa-shake-192f
+  slh-dsa-shake-192f-private-key slh-dsa-shake-192f-public-key
+  +slh-shake-192f-params+
+  "96-byte SLH-DSA-SHAKE-192f secret key."
+  "48-byte SLH-DSA-SHAKE-192f public key.")
+
+(define-slh-dsa-kind :slh-dsa-shake-256s
+  slh-dsa-shake-256s-private-key slh-dsa-shake-256s-public-key
+  +slh-shake-256s-params+
+  "128-byte SLH-DSA-SHAKE-256s secret key."
+  "64-byte SLH-DSA-SHAKE-256s public key.")
+
+(define-slh-dsa-kind :slh-dsa-shake-256f
+  slh-dsa-shake-256f-private-key slh-dsa-shake-256f-public-key
+  +slh-shake-256f-params+
+  "128-byte SLH-DSA-SHAKE-256f secret key."
+  "64-byte SLH-DSA-SHAKE-256f public key.")

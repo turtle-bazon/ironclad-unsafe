@@ -115,6 +115,12 @@
    #:slh-dsa-sha2-192f-public-key #:slh-dsa-sha2-192f-private-key
    #:slh-dsa-sha2-256s-public-key #:slh-dsa-sha2-256s-private-key
    #:slh-dsa-sha2-256f-public-key #:slh-dsa-sha2-256f-private-key
+   #:slh-dsa-shake-128s-public-key #:slh-dsa-shake-128s-private-key
+   #:slh-dsa-shake-128f-public-key #:slh-dsa-shake-128f-private-key
+   #:slh-dsa-shake-192s-public-key #:slh-dsa-shake-192s-private-key
+   #:slh-dsa-shake-192f-public-key #:slh-dsa-shake-192f-private-key
+   #:slh-dsa-shake-256s-public-key #:slh-dsa-shake-256s-private-key
+   #:slh-dsa-shake-256f-public-key #:slh-dsa-shake-256f-private-key
    #:ml-dsa-44-public-key #:ml-dsa-44-private-key
    #:ml-dsa-65-public-key #:ml-dsa-65-private-key
    #:ml-dsa-87-public-key #:ml-dsa-87-private-key
