@@ -240,7 +240,8 @@
   ("slh-dsa" :depends-on ("ironclad/digest/sha256"))
   ("ml-dsa" :depends-on ("ironclad/digest/sha3"))
   ("falcon" :depends-on ("ironclad/digest/sha3")
-   :components ((:file "falcon-tables") (:file "falcon")))
+   :components ((:file "falcon-tables") (:file "falcon-fft-tables")
+                (:file "falcon")))
   ("x-wing" :depends-on ("ironclad/public-key/ml-kem"
                          "ironclad/public-key/curve25519"
                          "ironclad/digest/sha3")))
@@ -471,6 +472,7 @@
                                            (:test-vector-file "hpke")
                                            (:test-vector-file "ml-dsa")
                                            (:test-vector-file "slh-dsa")
+                                           (:test-vector-file "falcon-512-keymat")
                                            (:test-vector-file "ed25519")
                                            (:test-vector-file "ed448")
                                            (:test-vector-file "elgamal-dh")

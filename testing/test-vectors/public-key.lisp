@@ -124,3 +124,4 @@
                             (ironclad:ec-decode-point :secp384r1 raw)))))
       (ironclad:verify-signature reimported msg sig)))
   t)
+(rtest:deftest :falcon-keymat (run-test-vector-file :falcon-512-keymat *falcon-keymat-tests*) t)

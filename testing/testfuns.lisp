@@ -835,6 +835,32 @@
       (when (ironclad:verify-signature pk badmsg sig)
         (error "ML-DSA wrong message accepted for ~A" name)))))
 
+(defun i16-le-doubles (bytes n)
+  "Decode N little-endian int16 LE pairs into fixnums... "
+  (let ((out (make-array n :element-type 'fixnum)))
+    (dotimes (i n out)
+      (let ((lo (aref bytes (* 2 i))) (hi (aref bytes (+ (* 2 i) 1))))
+        (setf (aref out i) (if (logbitp 15 hi)
+                               (- (logior (ash hi 8) lo) #x10000)
+                               (logior (ash hi 8) lo)))))))
+
+(defparameter *falcon-keymat-tests*
+  (list (cons :falcon-512-keymat-test 'falcon-keymat-test))
+  "Test-vector function map for the Falcon key-material file.")
+
+(defun falcon-keymat-test (file kind fbytes gbytes ffbytes ggbytes pk-raw msg sig)
+  (declare (ignore file fbytes gbytes ffbytes ggbytes))
+  (let ((pk (concatenate '(simple-array (unsigned-byte 8) (*))
+                         (vector 9) pk-raw))
+        (ironclad::*falcon-params* ironclad::+falcon-512-params+))
+    ;; KAT: the reference signature verifies under the reference key.
+    (unless (ironclad::falcon-verify msg sig pk)
+      (error "Falcon KAT verification failed for ~A" kind))
+    ;; NOTE: the FFT-sampling sign path (falcon-sign-raw) is staged but
+    ;; not yet byte-KAT-parity with the reference, so it is not driven
+    ;; from here.
+    t))
+
 (defun slh-dsa-test (file kind name pk-bytes sk-bytes sig msg)
   (declare (ignore file))
   (let ((pk (ironclad:make-public-key kind :bytes pk-bytes))
@@ -984,7 +1010,9 @@
         (cons :ecdsa-der-invalid-test 'ecdsa-der-invalid-test)
         (cons :ecdsa-compressed-point-test 'ecdsa-compressed-point-test)
         (cons :ml-dsa-test 'ml-dsa-test)
-        (cons :slh-dsa-test 'slh-dsa-test)))
+        (cons :slh-dsa-test 'slh-dsa-test)
+        (cons :falcon-keymat-test 'falcon-keymat-test))
+  "Test-vector function map for the Falcon key-material file.")
 
 (defparameter *public-key-diffie-hellman-tests*
   (list (cons :curve25519-dh-test 'curve25519-dh-test)
