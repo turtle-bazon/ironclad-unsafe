@@ -111,6 +111,8 @@
    #:ml-kem-1024-public-key #:ml-kem-1024-private-key
    #:slh-dsa-sha2-128s-public-key #:slh-dsa-sha2-128s-private-key
    #:slh-dsa-sha2-128f-public-key #:slh-dsa-sha2-128f-private-key
+   #:slh-dsa-sha2-192s-public-key #:slh-dsa-sha2-192s-private-key
+   #:slh-dsa-sha2-192f-public-key #:slh-dsa-sha2-192f-private-key
    #:ml-dsa-44-public-key #:ml-dsa-44-private-key
    #:ml-dsa-65-public-key #:ml-dsa-65-private-key
    #:ml-dsa-87-public-key #:ml-dsa-87-private-key
