@@ -66,12 +66,20 @@
 (defparameter +slh-sha2-192f-params+
   (slh-make-params :slh-dsa-sha2-192f :sha2-512 24 22 8 33 16 4 3 48 3 33))
 
+(defparameter +slh-sha2-256s-params+
+  (slh-make-params :slh-dsa-sha2-256s :sha2-512 32 8 14 22 16 4 8 64 3 39))
+
+(defparameter +slh-sha2-256f-params+
+  (slh-make-params :slh-dsa-sha2-256f :sha2-512 32 17 9 35 16 4 4 64 3 40))
+
 (defun slh-params-for-kind (kind)
   (ecase kind
     (:slh-dsa-sha2-128s +slh-sha2-128s-params+)
     (:slh-dsa-sha2-128f +slh-sha2-128f-params+)
     (:slh-dsa-sha2-192s +slh-sha2-192s-params+)
-    (:slh-dsa-sha2-192f +slh-sha2-192f-params+)))
+    (:slh-dsa-sha2-192f +slh-sha2-192f-params+)
+    (:slh-dsa-sha2-256s +slh-sha2-256s-params+)
+    (:slh-dsa-sha2-256f +slh-sha2-256f-params+)))
 
 (declaim (inline slh-n slh-d slh-fors-height slh-fors-trees
                  slh-wots-w slh-wots-logw slh-tree-height
@@ -920,3 +928,15 @@ Returns the WOTS leaf (thash of the WOTS pk buffer)."
   +slh-sha2-192f-params+
   "96-byte SLH-DSA-SHA2-192f secret key."
   "48-byte SLH-DSA-SHA2-192f public key.")
+
+(define-slh-dsa-kind :slh-dsa-sha2-256s
+  slh-dsa-sha2-256s-private-key slh-dsa-sha2-256s-public-key
+  +slh-sha2-256s-params+
+  "128-byte SLH-DSA-SHA2-256s secret key."
+  "64-byte SLH-DSA-SHA2-256s public key.")
+
+(define-slh-dsa-kind :slh-dsa-sha2-256f
+  slh-dsa-sha2-256f-private-key slh-dsa-sha2-256f-public-key
+  +slh-sha2-256f-params+
+  "128-byte SLH-DSA-SHA2-256f secret key."
+  "64-byte SLH-DSA-SHA2-256f public key.")
