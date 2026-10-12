@@ -462,6 +462,10 @@
   "Adjoint via FFT (matches reference rounding)."
   (falcon-ifft (falcon-adj-fft (falcon-fft a))))
 
+(defun falcon-div (a b)
+  "Coefficient division via FFT (matches reference rounding)."
+  (falcon-ifft (falcon-div-fft (falcon-fft a) (falcon-fft b))))
+
 
 ;;;
 ;;; Discrete Gaussian sampler over Z (exact port of samplerz.py).
@@ -556,7 +560,7 @@
 (defun falcon-roll32 (x n)
   (logior (ldb (byte 32 0) (ash x n)) (ash x (- n 32))))
 
-(defconstant +falcon-chacha-cw+ #(#x61707865 #x3320646e #x79622d32 #x6b206574))
+(defconst +falcon-chacha-cw+ #(#x61707865 #x3320646e #x79622d32 #x6b206574))
 
 (defun falcon-prng-qround (state a b c d)
   (let ((x (aref state a)) (y (aref state b))
@@ -856,3 +860,397 @@ exactly like the reference."
                       (replace sig salt :start1 1)
                       (replace sig enc :start1 41)
                       (return sig))))))))))))
+
+
+;;;
+;;; NTRU key generation (exact port of ntrugen.py; integer arithmetic).
+;;;
+
+(defun falcon-karatsuba (a b n)
+  (if (= n 1)
+      (vector (* (aref a 0) (aref b 0)) 0)
+      (let* ((n2 (ash n -1))
+             (a0 (subseq a 0 n2)) (a1 (subseq a n2))
+             (b0 (subseq b 0 n2)) (b1 (subseq b n2))
+             (ax (map 'vector #'+ a0 a1))
+             (bx (map 'vector #'+ b0 b1))
+             (a0b0 (falcon-karatsuba a0 b0 n2))
+             (a1b1 (falcon-karatsuba a1 b1 n2))
+             (axbx (falcon-karatsuba ax bx n2))
+             (ab (make-array (* 2 n) :initial-element 0)))
+        (dotimes (i n)
+          (decf (aref axbx i) (+ (aref a0b0 i) (aref a1b1 i))))
+        (dotimes (i n)
+          (incf (aref ab i) (aref a0b0 i))
+          (incf (aref ab (+ i n)) (aref a1b1 i))
+          (incf (aref ab (+ i n2)) (aref axbx i)))
+        ab)))
+
+(defun falcon-karamul (a b)
+  (let* ((n (length a))
+         (ab (falcon-karatsuba (coerce a 'vector) (coerce b 'vector) n))
+         (r (make-array n :initial-element 0)))
+    (dotimes (i n r)
+      (setf (aref r i) (- (aref ab i) (aref ab (+ i n)))))))
+
+(defun falcon-galois-conj (a)
+  (let* ((n (length a))
+         (r (make-array n :initial-element 0)))
+    (dotimes (i n r)
+      (setf (aref r i) (if (evenp i) (aref a i) (- (aref a i)))))))
+
+(defun falcon-field-norm (a)
+  (let* ((n (length a))
+         (n2 (ash n -1))
+         (ae (make-array n2 :initial-element 0))
+         (ao (make-array n2 :initial-element 0)))
+    (dotimes (i n2)
+      (setf (aref ae i) (aref a (* 2 i))
+            (aref ao i) (aref a (+ (* 2 i) 1))))
+    (let ((ae2 (falcon-karamul ae ae))
+          (ao2 (falcon-karamul ao ao))
+          (res (make-array n2 :initial-element 0)))
+      (dotimes (i n2 res)
+        (setf (aref res i) (aref ae2 i)))
+      (dotimes (i (1- n2))
+        (decf (aref res (1+ i)) (aref ao2 i)))
+      (incf (aref res 0) (aref ao2 (1- n2)))
+      res)))
+
+(defun falcon-lift (a)
+  (let* ((n (length a))
+         (r (make-array (* 2 n) :initial-element 0)))
+    (dotimes (i n r)
+      (setf (aref r (* 2 i)) (aref a i)))))
+
+(defun falcon-bitsize (a)
+  (let ((val (abs a)) (res 0))
+    (loop while (plusp val)
+          do (incf res 8) (setf val (ash val -8)))
+    res))
+
+(defun falcon-xgcd (b n)
+  (let ((x0 1) (x1 0) (y0 0) (y1 1))
+    (loop while (not (zerop n))
+          do (multiple-value-bind (q r) (floor b n)
+               (setf b n n r)
+               (psetf x0 x1 x1 (- x0 (* q x1))
+                      y0 y1 y1 (- y0 (* q y1)))))
+    (values b x0 y0)))
+
+(defun falcon-babai-reduce (f g ff gg)
+  (let* ((n (length f))
+         (size (max 53 (falcon-bitsize (reduce #'min (coerce f 'list)))
+                    (falcon-bitsize (reduce #'max (coerce f 'list)))
+                    (falcon-bitsize (reduce #'min (coerce g 'list)))
+                    (falcon-bitsize (reduce #'max (coerce g 'list)))))
+         (f-adj (map 'vector (lambda (x) (float (ash x (- 53 size)) 0d0)) f))
+         (g-adj (map 'vector (lambda (x) (float (ash x (- 53 size)) 0d0)) g))
+         (fa (falcon-fft f-adj))
+         (ga (falcon-fft g-adj))
+         (rF (copy-seq ff))
+         (rG (copy-seq gg)))
+    (loop
+      (let ((sz (max 53 (falcon-bitsize (reduce #'min (coerce rF 'list)))
+                     (falcon-bitsize (reduce #'max (coerce rF 'list)))
+                     (falcon-bitsize (reduce #'min (coerce rG 'list)))
+                     (falcon-bitsize (reduce #'max (coerce rG 'list))))))
+        (when (< sz size)
+          (return (values rF rG)))
+        (let* ((big-f (map 'vector (lambda (x) (float (ash x (- 53 sz)) 0d0)) rF))
+               (big-g (map 'vector (lambda (x) (float (ash x (- 53 sz)) 0d0)) rG))
+               (big-fa (falcon-fft big-f))
+               (big-ga (falcon-fft big-g))
+               (den (falcon-add-fft (falcon-mul-fft fa (falcon-adj-fft fa))
+                                    (falcon-mul-fft ga (falcon-adj-fft ga))))
+               (num (falcon-add-fft (falcon-mul-fft big-fa (falcon-adj-fft fa))
+                                    (falcon-mul-fft big-ga (falcon-adj-fft ga))))
+               (k (map 'vector (lambda (x) (round x))
+                                   (falcon-ifft (falcon-div-fft num den)))))
+          (when (every #'zerop k)
+            (return (values rF rG)))
+          (let ((fk (falcon-karamul f k))
+                (gk (falcon-karamul g k))
+                (sh (- sz size)))
+            (dotimes (i n)
+              (decf (aref rF i) (ash (aref fk i) sh))
+              (decf (aref rG i) (ash (aref gk i) sh)))))))))
+
+(defun falcon-ntru-solve (f g)
+  (let ((n (length f)))
+    (if (= n 1)
+        (multiple-value-bind (d u v) (falcon-xgcd (aref f 0) (aref g 0))
+          (unless (= d 1)
+            (error "NTRU equation unsolvable"))
+          (values (vector (- (* +falcon-q+ v))) (vector (* +falcon-q+ u))))
+        (let* ((fp (falcon-field-norm (coerce f 'vector)))
+               (gp (falcon-field-norm (coerce g 'vector))))
+          (multiple-value-bind (Fp Gp) (falcon-ntru-solve fp gp)
+            (let ((rF (falcon-karamul (falcon-lift Fp) (falcon-galois-conj (coerce g 'vector))))
+                  (rG (falcon-karamul (falcon-lift Gp) (falcon-galois-conj (coerce f 'vector)))))
+              (falcon-babai-reduce (coerce f 'vector) (coerce g 'vector) rF rG)))))))
+
+(defun falcon-gs-norm (f g)
+  (let* ((fg (map 'vector (lambda (x) (float x 0d0)) f))
+         (gg (map 'vector (lambda (x) (float x 0d0)) g))
+         (sqnorm-fg (+ (reduce #'+ (map 'vector (lambda (x) (* x x)) fg))
+                       (reduce #'+ (map 'vector (lambda (x) (* x x)) gg))))
+         (ffgg (falcon-add (falcon-mul fg (falcon-adj fg))
+                           (falcon-mul gg (falcon-adj gg))))
+         (Ft (falcon-div (falcon-adj gg) ffgg))
+         (Gt (falcon-div (falcon-adj fg) ffgg))
+         (sqnorm-FG (* (expt +falcon-q+ 2)
+                       (+ (reduce #'+ (map 'vector (lambda (x) (* x x)) Ft))
+                          (reduce #'+ (map 'vector (lambda (x) (* x x)) Gt))))))
+    (max sqnorm-fg sqnorm-FG)))
+
+(defun falcon-gen-poly (n randbytes)
+  (let ((f0 (make-array 4096 :initial-element 0))
+        (f (make-array n :initial-element 0))
+        (k (floor 4096 n)))
+    (dotimes (i 4096)
+      (setf (aref f0 i) (falcon-samplerz 0d0 1.43300980528773d0 1.43200980528773d0 randbytes)))
+    (dotimes (i n f)
+      (let ((acc 0))
+        (dotimes (j k)
+          (incf acc (aref f0 (+ (* i k) j))))
+        (setf (aref f i) acc)))))
+
+(defun falcon-ntru-gen (n randbytes)
+  (loop
+    (let ((f (falcon-gen-poly n randbytes))
+          (g (falcon-gen-poly n randbytes)))
+      (when (<= (falcon-gs-norm f g) (* (expt 1.17d0 2) +falcon-q+))
+        (let ((fntt (falcon-ntt (map 'vector (lambda (x) (mod x +falcon-q+)) f))))
+          (unless (find 0 fntt)
+            (handler-case
+                (multiple-value-bind (sF sG) (falcon-ntru-solve f g)
+                  (return (values f g sF sG)))
+              (error () nil))))))))
+
+
+;;;
+;;; NTT division, G recovery, and the trim-i8 key codec.
+;;;
+
+(defun falcon-modinv (a)
+  "Inverse of A mod 12289 (prime)."
+  (let ((t0 0) (t1 1) (r0 +falcon-q+) (r1 (mod a +falcon-q+)))
+    (loop while (plusp r1)
+          do (multiple-value-bind (q r) (floor r0 r1)
+               (setf r0 r1 r1 r)
+               (psetf t0 t1 t1 (- t0 (* q t1)))))
+    (mod t0 +falcon-q+)))
+
+(defun falcon-div-zq (f g)
+  "Divide polys mod (x^n+1, q); signals an error if G not invertible."
+  (let* ((fn (falcon-ntt f))
+         (gn (falcon-ntt g))
+         (n (length fn))
+         (qn (make-array n :element-type 'fixnum)))
+    (dotimes (i n)
+      (when (zerop (aref gn i))
+        (error "Falcon: divisor not invertible"))
+      (setf (aref qn i) (mod (* (aref fn i) (falcon-modinv (aref gn i)))
+                             +falcon-q+)))
+    (falcon-intt qn)))
+
+(defun falcon-complete-private (f g ff n)
+  "Recover G from (f,g,F) via G = g*F/f mod q, centered, int8 range.
+Returns G or NIL."
+  (let* ((fn (falcon-ntt (map 'vector (lambda (x) (mod x +falcon-q+)) f)))
+         (gn (falcon-ntt (map 'vector (lambda (x) (mod x +falcon-q+)) g)))
+         (Fn (falcon-ntt (map 'vector (lambda (x) (mod x +falcon-q+)) ff)))
+         (qn (make-array n :element-type 'fixnum))
+         (half (ash +falcon-q+ -1)))
+    (dotimes (i n)
+      (when (zerop (aref fn i))
+        (return-from falcon-complete-private nil))
+      (setf (aref qn i) (mod (* (aref gn i) (aref Fn i)
+                                (falcon-modinv (aref fn i)))
+                             +falcon-q+)))
+    (let ((Gv (falcon-intt qn))
+          (out (make-array n :element-type 'fixnum)))
+      (dotimes (i n)
+        (let ((gi (- (mod (+ (aref Gv i) half) +falcon-q+) half)))
+          (when (or (< gi -127) (> gi 127))
+            (return-from falcon-complete-private nil))
+          (setf (aref out i) gi)))
+      out)))
+
+(defun falcon-trim-i8-encode (poly bits)
+  "Pack N coefficients of BITS each (two's complement), big-endian bits."
+  (let* ((n (length poly))
+         (mask (1- (ash 1 bits)))
+         (outlen (ash (+ (* n bits) 7) -3))
+         (out (make-array outlen :element-type '(unsigned-byte 8) :initial-element 0))
+         (acc 0) (acc-len 0) (pos 0))
+    (dotimes (i n)
+      (let ((v (aref poly i)))
+        (unless (<= (- (ash 1 (1- bits))) v (1- (ash 1 (1- bits))))
+          (error "Falcon: coefficient out of range for trim encoding"))
+        (setf acc (logior (ash acc bits) (logand v mask))
+              acc-len (+ acc-len bits))
+        (loop while (>= acc-len 8)
+              do (decf acc-len 8)
+                 (setf (aref out pos) (ldb (byte 8 acc-len) acc))
+                 (incf pos))))
+    (when (plusp acc-len)
+      (setf (aref out pos) (ldb (byte 8 0) (ash acc (- 8 acc-len)))))
+    out))
+
+(defun falcon-trim-i8-decode (bytes n bits)
+  "Unpack N BITS-wide two's-complement coefficients, big-endian bits.
+Returns NIL if any coefficient is the forbidden -2^(bits-1)."
+  (let ((out (make-array n :element-type 'fixnum :initial-element 0))
+        (acc 0) (acc-len 0) (pos 0))
+    (dotimes (i n)
+      (loop while (< acc-len bits)
+            do (setf acc (logior (ash acc 8) (aref bytes pos))
+                     acc-len (+ acc-len 8))
+               (incf pos))
+      (decf acc-len bits)
+      (let ((v (ldb (byte bits acc-len) acc)))
+        (setf acc (ldb (byte acc-len 0) acc))
+        (when (= v (ash 1 (1- bits)))
+          (return-from falcon-trim-i8-decode nil))
+        (setf (aref out i) (if (logbitp (1- bits) v) (- v (ash 1 bits)) v))))
+    out))
+
+
+;;;
+;;; Key generation and private-key API (FIPS 206 wire formats).
+;;;
+
+(defun falcon-sk-encode (f g ff logn small-bits big-bits)
+  (let ((n (ash 1 logn))
+        (out (make-array (if (= logn 9) 1281 2305)
+                         :element-type '(unsigned-byte 8) :initial-element 0)))
+    (setf (aref out 0) (+ #x50 logn))
+    (let ((pos 1))
+      (dolist (pair (list (cons f small-bits) (cons g small-bits) (cons ff big-bits)))
+        (let ((enc (falcon-trim-i8-encode (car pair) (cdr pair))))
+          (replace out enc :start1 pos)
+          (incf pos (length enc)))))
+    out))
+
+(defun falcon-pk-encode (h logn)
+  (let ((out (make-array (if (= logn 9) 897 1793)
+                         :element-type '(unsigned-byte 8) :initial-element 0)))
+    (setf (aref out 0) logn)
+    (replace out (falcon-serialize (map 'vector (lambda (x) (mod x +falcon-q+)) h))
+             :start1 1)
+    out))
+
+(defun falcon-keygen (params randbytes)
+  "Generate (sk-bytes pk-bytes f g F G) in FIPS 206 formats."
+  (let* ((*falcon-params* params)
+         (n (falcon-params-n params))
+         (logn (falcon-params-logn params))
+         (small-bits (if (= logn 9) 6 5)))
+    (loop
+      (multiple-value-bind (f g ff gg)
+          (falcon-ntru-gen n randbytes)
+        (let ((h (falcon-div-zq (map 'vector (lambda (x) (mod x +falcon-q+)) g)
+                                (map 'vector (lambda (x) (mod x +falcon-q+)) f))))
+          (declare (ignore h))
+          ;; FIPS sizes require f,g,F in range; retry otherwise.
+          (when (and (every (lambda (x) (<= (- 1 (ash 1 (1- small-bits))) x (1- (ash 1 (1- small-bits)))))
+                            (concatenate 'vector f g))
+                     (every (lambda (x) (<= -127 x 127)) ff))
+            (return (values (falcon-sk-encode f g ff logn small-bits 8)
+                            f g ff gg))))))))
+
+(defclass falcon-512-private-key ()
+  ((bytes :initarg :bytes :reader falcon-key-bytes
+          :type (simple-array (unsigned-byte 8) (*)))
+   (poly-f :initarg :poly-f :reader falcon-sk-poly-f)
+   (poly-g :initarg :poly-g :reader falcon-sk-poly-g)
+   (poly-ff :initarg :poly-ff :reader falcon-sk-poly-ff)
+   (poly-gg :initarg :poly-gg :reader falcon-sk-poly-gg))
+  (:documentation "Falcon-512 private key (FIPS 1281-byte encoding + basis)."))
+
+(defclass falcon-1024-private-key ()
+  ((bytes :initarg :bytes :reader falcon-key-bytes
+          :type (simple-array (unsigned-byte 8) (*)))
+   (poly-f :initarg :poly-f :reader falcon-sk-poly-f)
+   (poly-g :initarg :poly-g :reader falcon-sk-poly-g)
+   (poly-ff :initarg :poly-ff :reader falcon-sk-poly-ff)
+   (poly-gg :initarg :poly-gg :reader falcon-sk-poly-gg))
+  (:documentation "Falcon-1024 private key (FIPS 2305-byte encoding + basis)."))
+
+(defun falcon-decode-sk (bytes params)
+  "Decode FIPS sk bytes to (f g F G); NIL on failure."
+  (let* ((*falcon-params* params)
+         (n (falcon-params-n params))
+         (logn (falcon-params-logn params))
+         (small-bits (if (= logn 9) 6 5))
+         (sklen (if (= logn 9) 1281 2305)))
+    (when (and (= (length bytes) sklen) (= (aref bytes 0) (+ #x50 logn)))
+      (let* ((flen (ash (+ (* n small-bits) 7) -3))
+             (Flen (ash (+ (* n 8) 7) -3))
+             (f (falcon-trim-i8-decode (subseq bytes 1 (+ 1 flen)) n small-bits))
+             (g (falcon-trim-i8-decode (subseq bytes (+ 1 flen) (+ 1 (* 2 flen))) n small-bits))
+             (ff (falcon-trim-i8-decode (subseq bytes (+ 1 (* 2 flen)) (+ 1 (* 2 flen) Flen)) n 8)))
+        (when (and f g ff)
+          (let ((gg (falcon-complete-private f g ff n)))
+            (when gg
+              (values f g ff gg))))))))
+
+(defmethod make-private-key ((kind (eql :falcon-512)) &key bytes &allow-other-keys)
+  (multiple-value-bind (f g ff gg) (falcon-decode-sk bytes +falcon-512-params+)
+    (unless f
+      (error 'missing-key-parameter :kind :falcon-512 :parameter 'bytes
+             :description "Falcon-512 private key bytes"))
+    (make-instance 'falcon-512-private-key :bytes (copy-seq bytes)
+                   :poly-f f :poly-g g :poly-ff ff :poly-gg gg)))
+
+(defmethod make-private-key ((kind (eql :falcon-1024)) &key bytes &allow-other-keys)
+  (multiple-value-bind (f g ff gg) (falcon-decode-sk bytes +falcon-1024-params+)
+    (unless f
+      (error 'missing-key-parameter :kind :falcon-1024 :parameter 'bytes
+             :description "Falcon-1024 private key bytes"))
+    (make-instance 'falcon-1024-private-key :bytes (copy-seq bytes)
+                   :poly-f f :poly-g g :poly-ff ff :poly-gg gg)))
+
+(defmethod destructure-private-key ((key falcon-512-private-key))
+  (list :bytes (copy-seq (falcon-key-bytes key))))
+
+(defmethod destructure-private-key ((key falcon-1024-private-key))
+  (list :bytes (copy-seq (falcon-key-bytes key))))
+
+(defmethod generate-key-pair ((kind (eql :falcon-512)) &key &allow-other-keys)
+  (multiple-value-bind (sk-bytes f g ff gg)
+      (falcon-keygen +falcon-512-params+ (lambda (k) (random-data k)))
+    (let* ((h (falcon-div-zq (map 'vector (lambda (x) (mod x +falcon-q+)) g)
+                             (map 'vector (lambda (x) (mod x +falcon-q+)) f)))
+           (pk-bytes (falcon-pk-encode h 9)))
+      (values (make-instance 'falcon-512-private-key :bytes sk-bytes
+                             :poly-f f :poly-g g :poly-ff ff :poly-gg gg)
+              (make-instance 'falcon-512-public-key :bytes pk-bytes)))))
+
+(defmethod generate-key-pair ((kind (eql :falcon-1024)) &key &allow-other-keys)
+  (multiple-value-bind (sk-bytes f g ff gg)
+      (falcon-keygen +falcon-1024-params+ (lambda (k) (random-data k)))
+    (let* ((h (falcon-div-zq (map 'vector (lambda (x) (mod x +falcon-q+)) g)
+                             (map 'vector (lambda (x) (mod x +falcon-q+)) f)))
+           (pk-bytes (falcon-pk-encode h 10)))
+      (values (make-instance 'falcon-1024-private-key :bytes sk-bytes
+                             :poly-f f :poly-g g :poly-ff ff :poly-gg gg)
+              (make-instance 'falcon-1024-public-key :bytes pk-bytes)))))
+
+(defmethod sign-message ((key falcon-512-private-key) message
+                         &key (start 0) end &allow-other-keys)
+  (falcon-sign-raw (falcon-sk-poly-f key) (falcon-sk-poly-g key)
+                   (falcon-sk-poly-ff key) (falcon-sk-poly-gg key)
+                   (subseq message start (or end (length message)))
+                   (lambda (k) (random-data k))
+                   +falcon-512-params+))
+
+(defmethod sign-message ((key falcon-1024-private-key) message
+                         &key (start 0) end &allow-other-keys)
+  (falcon-sign-raw (falcon-sk-poly-f key) (falcon-sk-poly-g key)
+                   (falcon-sk-poly-ff key) (falcon-sk-poly-gg key)
+                   (subseq message start (or end (length message)))
+                   (lambda (k) (random-data k))
+                   +falcon-1024-params+))
