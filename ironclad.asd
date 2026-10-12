@@ -473,6 +473,7 @@
                                            (:test-vector-file "ml-dsa")
                                            (:test-vector-file "slh-dsa")
                                            (:test-vector-file "falcon-512-keymat")
+                                           (:test-vector-file "falcon")
                                            (:test-vector-file "ed25519")
                                            (:test-vector-file "ed448")
                                            (:test-vector-file "elgamal-dh")

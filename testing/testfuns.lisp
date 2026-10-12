@@ -861,6 +861,29 @@
     ;; from here.
     t))
 
+(defun falcon-test (file kind name pk-bytes sig msg)
+  (declare (ignore file))
+  (let ((pk (ironclad:make-public-key kind :bytes pk-bytes)))
+    ;; KAT: the reference signature verifies under the reference key.
+    (unless (ironclad:verify-signature pk msg sig)
+      (error "Falcon verification failed for ~A" name))
+    ;; Roundtrip with a fresh key.
+    (multiple-value-bind (sk2 pk2) (ironclad:generate-key-pair kind)
+      (let ((sig2 (ironclad:sign-message sk2 msg)))
+        (unless (and (= (length sig2) (length sig))
+                     (ironclad:verify-signature pk2 msg sig2))
+          (error "Falcon roundtrip failed for ~A" name))))
+    ;; A tampered signature must not verify.
+    (let ((bad (copy-seq sig)))
+      (setf (aref bad 100) (logxor (aref bad 100) 1))
+      (when (ironclad:verify-signature pk msg bad)
+        (error "Falcon tampered signature accepted for ~A" name)))
+    ;; A wrong message must not verify.
+    (let ((badmsg (copy-seq msg)))
+      (setf (aref badmsg 0) (logxor (aref badmsg 0) 1))
+      (when (ironclad:verify-signature pk badmsg sig)
+        (error "Falcon wrong message accepted for ~A" name)))))
+
 (defun slh-dsa-test (file kind name pk-bytes sk-bytes sig msg)
   (declare (ignore file))
   (let ((pk (ironclad:make-public-key kind :bytes pk-bytes))
@@ -1011,8 +1034,7 @@
         (cons :ecdsa-compressed-point-test 'ecdsa-compressed-point-test)
         (cons :ml-dsa-test 'ml-dsa-test)
         (cons :slh-dsa-test 'slh-dsa-test)
-        (cons :falcon-keymat-test 'falcon-keymat-test))
-  "Test-vector function map for the Falcon key-material file.")
+        (cons :falcon-test 'falcon-test)))
 
 (defparameter *public-key-diffie-hellman-tests*
   (list (cons :curve25519-dh-test 'curve25519-dh-test)

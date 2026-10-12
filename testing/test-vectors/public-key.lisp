@@ -125,3 +125,4 @@
       (ironclad:verify-signature reimported msg sig)))
   t)
 (rtest:deftest :falcon-keymat (run-test-vector-file :falcon-512-keymat *falcon-keymat-tests*) t)
+(rtest:deftest :falcon-signature (run-test-vector-file :falcon *public-key-signature-tests*) t)
