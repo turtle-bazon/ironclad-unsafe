@@ -603,9 +603,13 @@
       (let ((blk (falcon-prng-update prng)))
         (dotimes (j 16)
           (setf (aref words (+ (* j 8) i)) (aref blk j)))))
+    ;; Reference: elt.to_bytes(4, "little").hex() per word.
     (with-output-to-string (out)
       (dotimes (i 128)
-        (format out "~8,'0X" (aref words i))))))
+        (let ((w (aref words i)))
+          (format out "~2,'0X~2,'0X~2,'0X~2,'0X"
+                  (ldb (byte 8 0) w) (ldb (byte 8 8) w)
+                  (ldb (byte 8 16) w) (ldb (byte 8 24) w)))))))
 
 (defun falcon-prng-randombytes (prng k)
   (when (> (* 2 k) (length (falcon-prng-hexbytes prng)))
@@ -614,9 +618,10 @@
          (take (subseq hex 0 (* 2 k)))
          (rest (subseq hex (* 2 k)))
          (out (make-array k :element-type '(unsigned-byte 8))))
-    ;; Reverse byte order per reference shenanigans, then reverse array.
+    ;; The reference reverses the byte order twice (hex regrouping plus
+    ;; the final [::-1]), which cancels out; emit the buffer as-is.
     (dotimes (i k)
-      (setf (aref out i) (parse-integer take :start (* 2 (- k 1 i)) :end (* 2 (- k i))
+      (setf (aref out i) (parse-integer take :start (* 2 i) :end (* 2 (1+ i))
                                         :radix 16)))
     (setf (falcon-prng-hexbytes prng) rest)
     out))
@@ -754,9 +759,9 @@
   (destructuring-bind ((a b) (c d)) b0fft
     ;; t = (point*d/q, -point*b/q) in FFT domain (scalar q division).
     (let* ((pointf (falcon-fft (map 'vector (lambda (x) (float x 0d0)) hashed)))
-           (qu (coerce (/ 1d0 (float +falcon-q+ 0d0)) 'double-float))
-           (tt0 (map 'vector (lambda (e) (* e qu)) (falcon-mul-fft pointf d)))
-           (tt1 (map 'vector (lambda (e) (* e qu))
+           (qf (float +falcon-q+ 0d0))
+           (tt0 (map 'vector (lambda (e) (/ e qf)) (falcon-mul-fft pointf d)))
+           (tt1 (map 'vector (lambda (e) (/ e qf))
                                     (falcon-mul-fft (falcon-negate-fft pointf) b))))
       (multiple-value-bind (z0f z1f)
           (falcon-ffsampling tt0 tt1 tree sigmin randbytes)
@@ -778,6 +783,48 @@
       (falcon-sample-preimage b0fft tree hashed sigmin randbytes)
       (falcon-sample-preimage b0fft tree hashed sigmin
                               (falcon-make-randbytes (falcon-prng-init seed)))))
+
+(defun falcon-sign-kat (fbytes gbytes ffbytes ggbbytes msg randbytes)
+  "KAT driver: salt and per-attempt seeds come from the caller's stream,
+and each attempt uses a fresh ChaCha20 PRNG (as the reference does).
+Inputs are the raw little-endian int16 NTRU polynomials."
+  (let* ((*falcon-params* +falcon-512-params+)
+         (n (falcon-params-n *falcon-params*))
+         (decode (lambda (bytes)
+                   (let ((v (make-array n :element-type 'fixnum)))
+                     (dotimes (i n v)
+                       (let ((lo (aref bytes (* 2 i))) (hi (aref bytes (+ (* 2 i) 1))))
+                         (setf (aref v i) (if (logbitp 7 hi)
+                                              (- (logior (ash hi 8) lo) #x10000)
+                                              (logior (ash hi 8) lo))))))))
+         (f (funcall decode fbytes))
+         (g (funcall decode gbytes))
+         (ff (funcall decode ffbytes))
+         (gg (funcall decode ggbbytes))
+         (salt (funcall randbytes 40))
+         (sigmin (falcon-params-sigmin *falcon-params*))
+         (bound (falcon-params-sig-bound *falcon-params*))
+         (sig-bytelen (falcon-params-sig-bytelen *falcon-params*))
+         (logn (falcon-params-logn *falcon-params*)))
+    (multiple-value-bind (b0fft tree) (falcon-expand-sk f g ff gg *falcon-params*)
+      (let ((hashed (coerce (falcon-hash-to-point msg salt n)
+                            '(simple-array fixnum (*)))))
+        (loop
+          (let ((seed (funcall randbytes 56)))
+            (multiple-value-bind (s0 s1)
+                (falcon-sample-preimage b0fft tree hashed sigmin
+                                        (falcon-make-randbytes (falcon-prng-init seed)))
+              (let ((norm (+ (reduce #'+ (map 'vector (lambda (x) (* x x)) s0))
+                             (reduce #'+ (map 'vector (lambda (x) (* x x)) s1)))))
+                (when (<= norm bound)
+                  (let ((enc (falcon-compress s1 (- sig-bytelen 1 40))))
+                    (when enc
+                      (let ((sig (make-array sig-bytelen :element-type '(unsigned-byte 8)
+                                                            :initial-element 0)))
+                        (setf (aref sig 0) (+ #x30 logn))
+                        (replace sig salt :start1 1)
+                        (replace sig enc :start1 41)
+                      (return sig)))))))))))))
 
 (defun falcon-sign-raw (f g ff gg msg randbytes params)
   "Sign MSG with explicit RANDBYTES byte-stream closure. Returns the
