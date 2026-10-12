@@ -242,6 +242,7 @@
   ("falcon" :depends-on ("ironclad/digest/sha3")
    :components ((:file "falcon-tables") (:file "falcon-fft-tables")
                 (:file "falcon")))
+  ("mceliece" :depends-on ("ironclad/digest/sha3"))
   ("x-wing" :depends-on ("ironclad/public-key/ml-kem"
                          "ironclad/public-key/curve25519"
                          "ironclad/digest/sha3")))
