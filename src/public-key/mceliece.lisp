@@ -94,3 +94,219 @@
                            (mce-gf-mul (aref prod i) 2))))
     (dotimes (i +mce-sys-t+ out)
       (setf (aref out i) (aref prod i)))))
+
+
+;;;
+;;; Bit reversal, polynomial evaluation, syndrome, Berlekamp-Massey.
+;;;
+
+(defun mce-bitrev (a)
+  (let ((x a))
+    (setf x (logior (ash (logand x #x00FF) 8) (ash (logand x #xFF00) -8)))
+    (setf x (logior (ash (logand x #x0F0F) 4) (ash (logand x #xF0F0) -4)))
+    (setf x (logior (ash (logand x #x3333) 2) (ash (logand x #xCCCC) -2)))
+    (setf x (logior (ash (logand x #x5555) 1) (ash (logand x #xAAAA) -1)))
+    (ash x -4)))
+
+(defun mce-eval (f a)
+  "Evaluate the degree-SYS_T Goppa polynomial F at field element A."
+  (let ((r (aref f +mce-sys-t+)))
+    (loop for i from (1- +mce-sys-t+) downto 0
+          do (setf r (mce-gf-add (mce-gf-mul r a) (aref f i))))
+    r))
+
+(defun mce-root (out f l)
+  "OUT[i] = F(L[i]) for every support element."
+  (dotimes (i +mce-sys-n+ out)
+    (setf (aref out i) (mce-eval f (aref l i)))))
+
+(defun mce-synd (out f l r-bytes)
+  "Syndrome of the received word R-BYTES under (F, L), length 2*SYS_T."
+  (let ((bytes (coerce r-bytes '(simple-array (unsigned-byte 8) (*))))
+        (n +mce-sys-n+))
+    (dotimes (j (* 2 +mce-sys-t+))
+      (setf (aref out j) 0))
+    (dotimes (i n)
+      (let* ((c (ldb (byte 1 (mod i 8)) (aref bytes (truncate i 8))))
+             (e (mce-eval f (aref l i)))
+             (e-inv (mce-gf-inv (mce-gf-mul e e))))
+        (when (plusp c)
+          (dotimes (j (* 2 +mce-sys-t+))
+            (setf (aref out j) (mce-gf-add (aref out j) e-inv))
+            (incf (setf e-inv (mce-gf-mul e-inv (aref l i))))))))))
+
+(defun mce-bm (out s)
+  "Berlekamp-Massey: minimal polynomial of the syndrome S."
+  (let ((C (make-array (1+ +mce-sys-t+) :initial-element 0))
+        (B (make-array (1+ +mce-sys-t+) :initial-element 0))
+        (T (make-array (1+ +mce-sys-t+) :initial-element 0))
+        (L 0)
+        (b 1)
+        (d 0))
+    (setf (aref C 0) 1 (aref B 1) 1)
+    (dotimes (N (* 2 +mce-sys-t+))
+      (setf d 0)
+      (dotimes (i (1+ (min N +mce-sys-t+)))
+        (when (<= i N)
+          (setf d (logxor d (mce-gf-mul (aref C i) (aref s (- N i)))))))
+      (let* ((mne (if (zerop d) 0 1))
+             (f (mce-gf-frac b d)))
+        (dotimes (i (1+ +mce-sys-t+))
+          (setf (aref T i) (aref C i))
+          (when (= mne 1)
+            (setf (aref C i) (logxor (aref C i) (mce-gf-mul f (aref B i))))))
+        (when (< (* 2 L) (+ N 1))
+          (dotimes (i (1+ +mce-sys-t+))
+            (setf (aref B i) (aref T i)))
+          (setf L (1+ (- N L))
+                b d))
+        (loop for i from +mce-sys-t+ downto 1
+              do (setf (aref B i) (aref B (1- i))))
+        (setf (aref B 0) 0)))
+    (dotimes (i (1+ +mce-sys-t+) out)
+      (setf (aref out i) (aref C (- +mce-sys-t+ i))))))
+
+
+;;;
+;;; Little-endian field loads, support generation, bit packing.
+;;;
+
+(defun mce-load-gf (bytes off)
+  "Load a 12-bit field element from BYTES at OFF (little-endian)."
+  (logior (aref bytes off)
+          (ash (logand (aref bytes (1+ off)) #x0F) 8)))
+
+(defun mce-store-gf (bytes off v)
+  (setf (aref bytes off) (logand v #xFF)
+        (aref bytes (1+ off)) (logand (ash v -8) #x0F))
+  (values))
+
+(defun mce-load4 (bytes off)
+  (declare (type (simple-array (unsigned-byte 8) (*)) bytes))
+  (logior (aref bytes off)
+          (ash (aref bytes (+ off 1)) 8)
+          (ash (aref bytes (+ off 2)) 16)
+          (ash (aref bytes (+ off 3)) 24)))
+
+(defun mce-store8 (bytes off v)
+  (setf (aref bytes off) (ldb (byte 8 0) v)
+        (aref bytes (+ off 1)) (ldb (byte 8 8) v)
+        (aref bytes (+ off 2)) (ldb (byte 8 16) v)
+        (aref bytes (+ off 3)) (ldb (byte 8 24) v)
+        (aref bytes (+ off 4)) (ldb (byte 8 32) v)
+        (aref bytes (+ off 5)) (ldb (byte 8 40) v)
+        (aref bytes (+ off 6)) (ldb (byte 8 48) v)
+        (aref bytes (+ off 7)) (ldb (byte 8 56) v))
+  (values))
+
+(defun mce-support-gen (s cond-bytes)
+  "Support from condition bits (Benes sieving + interleave)."
+  (let ((l (make-array +mce-gfbits+ :element-type '(simple-array (unsigned-byte 8) (*))))
+        (size (truncate (ash 1 +mce-gfbits+) 8)))
+    (dotimes (i +mce-gfbits+)
+      (setf (aref l i) (make-array size :element-type '(unsigned-byte 8)
+                                            :initial-element 0)))
+    (dotimes (i (ash 1 +mce-gfbits+))
+      (let ((a (mce-bitrev i)))
+        (dotimes (j +mce-gfbits+)
+          (setf (aref (aref l j) (truncate i 8))
+                (logior (aref (aref l j) (truncate i 8))
+                        (ash (ldb (byte 1 j) a) (mod i 8)))))))
+    (dotimes (j +mce-gfbits+)
+      (mce-apply-benes (aref l j) cond-bytes 0))
+    (dotimes (i +mce-sys-n+)
+      (let ((v 0))
+        (loop for j from (1- +mce-gfbits+) downto 0
+              do (setf v (ash v 1))
+                 (setf v (logior v (ldb (byte 1 (mod i 8))
+                                        (aref (aref l j) (truncate i 8))))))
+        (setf (aref s i) v)))))
+
+
+;;;
+;;; Benes network: transpose, layer, apply.
+;;;
+
+(defun mce-load8 (bytes off)
+  (logior (aref bytes off)
+          (ash (aref bytes (+ off 1)) 8)
+          (ash (aref bytes (+ off 2)) 16)
+          (ash (aref bytes (+ off 3)) 24)
+          (ash (aref bytes (+ off 4)) 32)
+          (ash (aref bytes (+ off 5)) 40)
+          (ash (aref bytes (+ off 6)) 48)
+          (ash (aref bytes (+ off 7)) 56)))
+
+(defun mce-apply-benes (r bits)
+  (declare (ignore r bits))
+  (values))
+
+
+;;;
+;;; Benes network (transpose, layers, apply).
+;;;
+
+
+;;; Bit-transpose a 64x64 bit matrix held as 64 uint64 words.
+(defparameter *mce-tmasks*
+  #(#x5555555555555555 #xAAAAAAAAAAAAAAAA
+    #x3333333333333333 #xCCCCCCCCCCCCCCCC
+    #x0F0F0F0F0F0F0F0F #xF0F0F0F0F0F0F0F0
+    #x00FF00FF00FF00FF #xFF00FF00FF00FF00
+    #x0000FFFF0000FFFF #xFFFF0000FFFF0000
+    #x00000000FFFFFFFF #xFFFFFFFF00000000))
+
+(defun mce-transpose-64x64 (out src)
+  "OUT := transpose(SRC)."
+  (let ((res (copy-seq src)))
+    (loop for d from 5 downto 0
+          do (let ((s (ash 1 d))
+                   (lo (aref *mce-tmasks* (* 2 d)))
+                   (hi (aref *mce-tmasks* (+ 1 (* 2 d)))))
+               (loop for i from 0 below 64 by (* 2 s)
+                     do (loop for j from i below (+ i s)
+                              do (let ((x (logior (logand (aref res j) lo)
+                                                  (ldb (byte #x10000 0)
+                                                       (logand (aref res (+ j s)) lo))))
+                                     (y (logior (ldb (byte #x10000 0)
+                                                     (logand (aref res j) hi))
+                                                (logand (aref res (+ j s)) hi))))
+                                   (setf (aref res j)
+                                         (logior x (ash (logand (aref res (+ j s)) lo) s)))
+                                   (setf (aref res (+ j s))
+                                         (logior (ash (logand (aref res j) hi) (- s))
+                                                 (logand (aref res (+ j s)) hi)))))))))))
+    (replace out res)
+    (values)))
+
+(defun mce-transpose-64x64 (out src)
+  (let* ((masks #(#x5555555555555555 #xAAAAAAAAAAAAAAAA
+                  #x3333333333333333 #xCCCCCCCCCCCCCCCC
+                  #x0F0F0F0F0F0F0F0F #xF0F0F0F0F0F0F0F0
+                  #x00FF00FF00FF00FF #xFF00FF00FF00FF00
+                  #x0000FFFF0000FFFF #xFFFF0000FFFF0000
+                  #x00000000FFFFFFFF #xFFFFFFFF00000000))
+         (res (copy-seq src)))
+    (loop for d from 5 downto 0
+          do (let ((s (ash 1 d)))
+               (loop for i from 0 below 64 by (* s 2)
+                     do (loop for j from i below (+ i s)
+                              do (let ((x (logior (logand (aref res j) (aref masks (* 2 d)))
+                                                  (ldb (byte #x10000 0)
+                                                       (logand (aref res (+ j s))
+                                                               (aref masks (* 2 d))))))
+                                     (y (logior (ldb (byte #x10000 0)
+                                                     (logand (aref res j)
+                                                             (aref masks (+ 1 (* 2 d)))))
+                                                (logand (aref res (+ j s))
+                                                        (aref masks (+ 1 (* 2 d)))))))
+                                   (setf (aref res j) (logior x (ldb (byte (- 64 s) s)
+                                                                     (logand (aref res (+ j s))
+                                                                             (aref masks (* 2 d))))))
+                                   (setf (aref res (+ j s)) (logior (ldb (byte s (- 64 s))
+                                                                         (logand (aref res j)
+                                                                                 (aref masks (+ 1 (* 2 d)))))
+                                                                    (logand (aref res (+ j s))
+                                                                            (aref masks (+ 1 (* 2 d)))))))))))
+    (replace out res)
+    (values)))
