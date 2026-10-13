@@ -1,30 +1,88 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
-;;;; mceliece.lisp -- Classic McEliece KEM, mceliece348864 (level 1)
+;;;; mceliece.lisp -- Classic McEliece KEM family
+;;; (mceliece348864/460896/6688128/6960119/8192128).
 ;;;;
-;;;; Direct translation of the PQClean clean implementation:
-;;;; GF(2^12) arithmetic, Goppa support, Patterson decoding.
+;;;; Direct translation of the PQClean clean implementations:
+;;;; GF(2^m) arithmetic, Goppa support, Patterson decoding.
 
 (in-package :crypto)
 
 
 ;;;
-;;; Parameters (mceliece348864)
+;;; Parameters: one struct per set, selected via *MCE-PARAMS*.
 ;;;
 
-(defconstant +mce-gfbits+ 12)
-(defconstant +mce-sys-n+ 3488)
-(defconstant +mce-sys-t+ 64)
-(defconstant +mce-cond-bytes+ 5888)
-(defconstant +mce-irr-bytes+ 128)
-(defconstant +mce-pk-nrows+ 768)
-(defconstant +mce-pk-ncols+ 2720)
-(defconstant +mce-pk-row-bytes+ 340)
-(defconstant +mce-synd-bytes+ 96)
-(defconstant +mce-gfmask+ #xFFF)
-(defconstant +mce-pk-bytes+ 261120)
-(defconstant +mce-sk-bytes+ 6492)
-(defconstant +mce-ct-bytes+ 96)
-(defconstant +mce-ss-bytes+ 32)
+(defstruct mce-params
+  kind gfbits sys-n sys-t gfmask cond-bytes irr-bytes
+  pk-nrows pk-row-bytes synd-bytes pk-bytes sk-bytes ct-bytes poly-red)
+
+(defparameter +mce-348864-params+
+  (make-mce-params :kind :mceliece348864 :gfbits 12 :sys-n 3488 :sys-t 64
+                   :gfmask #xFFF :cond-bytes 5888 :irr-bytes 128
+                   :pk-nrows 768 :pk-row-bytes 340 :synd-bytes 96
+                   :pk-bytes 261120 :sk-bytes 6492 :ct-bytes 96
+                   :poly-red '((3 nil) (1 nil) (0 t))))
+
+(defparameter +mce-460896-params+
+  (make-mce-params :kind :mceliece460896 :gfbits 13 :sys-n 4608 :sys-t 96
+                   :gfmask #x1FFF :cond-bytes 12800 :irr-bytes 192
+                   :pk-nrows 1248 :pk-row-bytes 420 :synd-bytes 156
+                   :pk-bytes 524160 :sk-bytes 13608 :ct-bytes 156
+                   :poly-red '((10 nil) (9 nil) (6 nil) (0 nil))))
+
+(defparameter +mce-6688128-params+
+  (make-mce-params :kind :mceliece6688128 :gfbits 13 :sys-n 6688 :sys-t 128
+                   :gfmask #x1FFF :cond-bytes 12800 :irr-bytes 256
+                   :pk-nrows 1664 :pk-row-bytes 628 :synd-bytes 208
+                   :pk-bytes 1044992 :sk-bytes 13932 :ct-bytes 208
+                   :poly-red '((7 nil) (2 nil) (1 nil) (0 nil))))
+
+(defparameter +mce-6960119-params+
+  (make-mce-params :kind :mceliece6960119 :gfbits 13 :sys-n 6960 :sys-t 119
+                   :gfmask #x1FFF :cond-bytes 12800 :irr-bytes 238
+                   :pk-nrows 1547 :pk-row-bytes 677 :synd-bytes 194
+                   :pk-bytes 1047319 :sk-bytes 13948 :ct-bytes 194
+                   :poly-red '((8 nil) (0 nil))))
+
+(defparameter +mce-8192128-params+
+  (make-mce-params :kind :mceliece8192128 :gfbits 13 :sys-n 8192 :sys-t 128
+                   :gfmask #x1FFF :cond-bytes 12800 :irr-bytes 256
+                   :pk-nrows 1664 :pk-row-bytes 816 :synd-bytes 208
+                   :pk-bytes 1357824 :sk-bytes 14120 :ct-bytes 208
+                   :poly-red '((7 nil) (2 nil) (1 nil) (0 nil))))
+
+(defparameter *mce-params* +mce-348864-params+)
+
+(defun mce-params-for-kind (kind)
+  (case kind
+    (:mceliece348864 +mce-348864-params+)
+    (:mceliece460896 +mce-460896-params+)
+    (:mceliece6688128 +mce-6688128-params+)
+    (:mceliece6960119 +mce-6960119-params+)
+    (:mceliece8192128 +mce-8192128-params+)
+    (otherwise (error "unknown McEliece kind ~A" kind))))
+
+(declaim (inline mce-gfbits mce-sys-n mce-sys-t mce-gfmask mce-cond-bytes
+                 mce-irr-bytes mce-pk-nrows mce-pk-row-bytes mce-synd-bytes
+                 mce-pk-bytes mce-sk-bytes mce-ct-bytes
+                 mce-perm-len mce-sup-row-bytes mce-r-len))
+
+(defun mce-gfbits () (mce-params-gfbits *mce-params*))
+(defun mce-sys-n () (mce-params-sys-n *mce-params*))
+(defun mce-sys-t () (mce-params-sys-t *mce-params*))
+(defun mce-gfmask () (mce-params-gfmask *mce-params*))
+(defun mce-cond-bytes () (mce-params-cond-bytes *mce-params*))
+(defun mce-irr-bytes () (mce-params-irr-bytes *mce-params*))
+(defun mce-pk-nrows () (mce-params-pk-nrows *mce-params*))
+(defun mce-pk-row-bytes () (mce-params-pk-row-bytes *mce-params*))
+(defun mce-synd-bytes () (mce-params-synd-bytes *mce-params*))
+(defun mce-pk-bytes () (mce-params-pk-bytes *mce-params*))
+(defun mce-sk-bytes () (mce-params-sk-bytes *mce-params*))
+(defun mce-ct-bytes () (mce-params-ct-bytes *mce-params*))
+(defun mce-perm-len () (ash 1 (mce-gfbits)))
+(defun mce-sup-row-bytes () (ash (ash 1 (mce-gfbits)) -3))
+(defun mce-r-len ()
+  (+ (ash (mce-sys-n) -3) (* 4 (mce-perm-len)) (* 2 (mce-sys-t)) 32))
 
 
 ;;;
@@ -35,9 +93,15 @@
 (defun mce-gf-add (a b)
   (logxor a b))
 
+(declaim (inline mce-gf-mul))
 (defun mce-gf-mul (a b)
+  (if (= (mce-gfbits) 12)
+      (mce-gf-mul-12 a b)
+      (mce-gf-mul-13 a b)))
+
+(defun mce-gf-mul-12 (a b)
   (let ((tmp 0))
-    (dotimes (i +mce-gfbits+)
+    (dotimes (i (mce-gfbits))
       (when (logbitp i b)
         (setf tmp (logxor tmp (ash a i)))))
     ;; reduce x^12 = x^3 + 1
@@ -45,7 +109,7 @@
       (setf tmp (logxor tmp (ash tt -9) (ash tt -12))))
     (let ((tt (logand tmp #x3000)))
       (setf tmp (logxor tmp (ash tt -9) (ash tt -12))))
-    (logand tmp +mce-gfmask+)))
+    (logand tmp (mce-gfmask))))
 
 (defun mce-gf-sq (a)
   (let ((x a))
@@ -57,9 +121,15 @@
       (setf x (logxor x (ash tt -9) (ash tt -12))))
     (let ((tt (logand x #x3000)))
       (setf x (logxor x (ash tt -9) (ash tt -12))))
-    (logand x +mce-gfmask+)))
+    (logand x (mce-gfmask))))
 
+(declaim (inline mce-gf-inv))
 (defun mce-gf-inv (a)
+  (if (= (mce-gfbits) 12)
+      (mce-gf-inv-12 a)
+      (mce-gf-frac-13 a 1)))
+
+(defun mce-gf-inv-12 (a)
   (let* ((out (mce-gf-sq a))
          (tmp-11 (mce-gf-mul out a)))
     (setf out (mce-gf-sq (mce-gf-sq tmp-11)))
@@ -74,25 +144,96 @@
 
 (declaim (inline mce-gf-frac))
 (defun mce-gf-frac (den num)
-  (mce-gf-mul (mce-gf-inv den) num))
+  (if (= (mce-gfbits) 12)
+      (mce-gf-mul (mce-gf-inv den) num)
+      (mce-gf-frac-13 den num)))
+
+(defun mce-gf-mul-13 (a b)
+  (let ((tmp 0))
+    (dotimes (i 13)
+      (when (logbitp i b)
+        (setf tmp (logxor tmp (ash a i)))))
+    ;; reduce x^13 = x^4 + x^3 + x + 1
+    (let ((tt (logand tmp #x1FF0000)))
+      (setf tmp (logxor tmp (ash tt -9) (ash tt -10) (ash tt -12) (ash tt -13))))
+    (let ((tt (logand tmp #xE000)))
+      (setf tmp (logxor tmp (ash tt -9) (ash tt -10) (ash tt -12) (ash tt -13))))
+    (logand tmp #x1FFF)))
+
+(defun mce13-sq2 (a)
+  (let ((x a)
+        (tt 0))
+    (setf x (logand (logior x (ash x 24)) #x000000FF000000FF))
+    (setf x (logand (logior x (ash x 12)) #x000F000F000F000F))
+    (setf x (logand (logior x (ash x 6)) #x0303030303030303))
+    (setf x (logand (logior x (ash x 3)) #x1111111111111111))
+    (dolist (m '(#x0001FF0000000000 #x000000FF80000000
+                 #x000000007FC00000 #x00000000003FE000))
+      (setf tt (logand x m))
+      (setf x (logxor x (ash tt -9) (ash tt -10) (ash tt -12) (ash tt -13))))
+    (logand x #x1FFF)))
+
+(defun mce13-sqmul (a m)
+  (let ((x 0)
+        (t0 a)
+        (tt 0))
+    (setf x (* (ash m 6) (logand t0 (ash 1 6))))
+    (setf t0 (logxor t0 (ash t0 7)))
+    (setf x (logxor x (* m (logand t0 #x04001))))
+    (setf x (logxor x (ash (* m (logand t0 #x08002)) 1)))
+    (setf x (logxor x (ash (* m (logand t0 #x10004)) 2)))
+    (setf x (logxor x (ash (* m (logand t0 #x20008)) 3)))
+    (setf x (logxor x (ash (* m (logand t0 #x40010)) 4)))
+    (setf x (logxor x (ash (* m (logand t0 #x80020)) 5)))
+    (dolist (mm '(#x0000001FF0000000 #x000000000FF80000 #x000000000007E000))
+      (setf tt (logand x mm))
+      (setf x (logxor x (ash tt -9) (ash tt -10) (ash tt -12) (ash tt -13))))
+    (logand x #x1FFF)))
+
+(defun mce13-sq2mul (a m)
+  (let ((x 0)
+        (t0 a)
+        (t1 m)
+        (tt 0))
+    (setf x (* (ash t1 18) (logand t0 (ash 1 6))))
+    (setf t0 (logxor t0 (ash t0 21)))
+    (setf x (logxor x (* t1 (logand t0 #x010000001))))
+    (setf x (logxor x (ash (* t1 (logand t0 #x020000002)) 3)))
+    (setf x (logxor x (ash (* t1 (logand t0 #x040000004)) 6)))
+    (setf x (logxor x (ash (* t1 (logand t0 #x080000008)) 9)))
+    (setf x (logxor x (ash (* t1 (logand t0 #x100000010)) 12)))
+    (setf x (logxor x (ash (* t1 (logand t0 #x200000020)) 15)))
+    (dolist (mm '(#x1FF0000000000000 #x000FF80000000000 #x000007FC00000000
+                  #x00000003FE000000 #x0000000001FE0000 #x000000000001E000))
+      (setf tt (logand x mm))
+      (setf x (logxor x (ash tt -9) (ash tt -10) (ash tt -12) (ash tt -13))))
+    (logand x #x1FFF)))
+
+(defun mce-gf-frac-13 (den num)
+  (let* ((tmp-11 (mce13-sqmul den den))
+         (tmp-1111 (mce13-sq2mul tmp-11 tmp-11))
+         (out (mce13-sq2 tmp-1111)))
+    (setf out (mce13-sq2mul out tmp-1111))
+    (setf out (mce13-sq2 out))
+    (setf out (mce13-sq2mul out tmp-1111))
+    (mce13-sqmul out num)))
 
 (defun mce-gf-poly-mul (out in0 in1)
-  "Multiply degree<SYS_T polys mod x^64 + x^3 + 1 (Goppa reduction)."
-  (let ((prod (make-array (1- (* 2 +mce-sys-t+)) :initial-element 0)))
-    (dotimes (i +mce-sys-t+)
-      (dotimes (j +mce-sys-t+)
+  "Multiply degree<SYS_T polys with the set's Goppa reduction."
+  (let ((tt (mce-sys-t))
+        (prod (make-array (1- (* 2 (mce-sys-t))) :initial-element 0)))
+    (dotimes (i (mce-sys-t))
+      (dotimes (j (mce-sys-t))
         (setf (aref prod (+ i j))
               (logxor (aref prod (+ i j))
                       (mce-gf-mul (aref in0 i) (aref in1 j))))))
-    (loop for i from (* 2 (1- +mce-sys-t+)) downto +mce-sys-t+
-          do (setf (aref prod (+ (- i +mce-sys-t+) 3))
-                   (logxor (aref prod (+ (- i +mce-sys-t+) 3)) (aref prod i))
-                   (aref prod (+ (- i +mce-sys-t+) 1))
-                   (logxor (aref prod (+ (- i +mce-sys-t+) 1)) (aref prod i))
-                   (aref prod (+ (- i +mce-sys-t+) 0))
-                   (logxor (aref prod (+ (- i +mce-sys-t+) 0))
-                           (mce-gf-mul (aref prod i) 2))))
-    (dotimes (i +mce-sys-t+ out)
+    (loop for i from (* 2 (1- tt)) downto tt
+          do (let ((p (aref prod i)))
+               (dolist (r (mce-params-poly-red *mce-params*))
+                 (setf (aref prod (+ (- i tt) (car r)))
+                       (logxor (aref prod (+ (- i tt) (car r)))
+                               (if (cadr r) (mce-gf-mul p 2) p))))))
+    (dotimes (i (mce-sys-t) out)
       (setf (aref out i) (aref prod i)))))
 
 
@@ -103,39 +244,39 @@
 (defun mce-genpoly (out f)
   "OUT := minimal polynomial of the extension element F.
 Returns T on success, NIL when the matrix is not systematic."
-  (let ((mat (make-array (list (1+ +mce-sys-t+) +mce-sys-t+)
+  (let ((mat (make-array (list (1+ (mce-sys-t)) (mce-sys-t))
                          :element-type 'fixnum :initial-element 0))
-        (prev (make-array +mce-sys-t+ :element-type 'fixnum :initial-element 0))
-        (prod (make-array +mce-sys-t+ :element-type 'fixnum :initial-element 0)))
+        (prev (make-array (mce-sys-t) :element-type 'fixnum :initial-element 0))
+        (prod (make-array (mce-sys-t) :element-type 'fixnum :initial-element 0)))
     (setf (aref mat 0 0) 1)
-    (dotimes (i +mce-sys-t+)
+    (dotimes (i (mce-sys-t))
       (setf (aref mat 1 i) (aref f i)))
-    (loop for j from 2 to +mce-sys-t+
-          do (dotimes (i +mce-sys-t+)
+    (loop for j from 2 to (mce-sys-t)
+          do (dotimes (i (mce-sys-t))
                (setf (aref prev i) (aref mat (1- j) i)))
              (mce-gf-poly-mul prod prev f)
-             (dotimes (i +mce-sys-t+)
+             (dotimes (i (mce-sys-t))
                (setf (aref mat j i) (aref prod i))))
-    (dotimes (j +mce-sys-t+)
-      (loop for k from (1+ j) below +mce-sys-t+
+    (dotimes (j (mce-sys-t))
+      (loop for k from (1+ j) below (mce-sys-t)
             do (when (zerop (aref mat j j))
-                 (loop for c from j to +mce-sys-t+
+                 (loop for c from j to (mce-sys-t)
                        do (setf (aref mat c j)
                                 (logxor (aref mat c j) (aref mat c k))))))
       (when (zerop (aref mat j j))
         (return-from mce-genpoly nil))
       (let ((inv (mce-gf-inv (aref mat j j))))
-        (loop for c from j to +mce-sys-t+
+        (loop for c from j to (mce-sys-t)
               do (setf (aref mat c j) (mce-gf-mul (aref mat c j) inv)))
-        (dotimes (k +mce-sys-t+)
+        (dotimes (k (mce-sys-t))
           (unless (= k j)
             (let ((tt (aref mat j k)))
-              (loop for c from j to +mce-sys-t+
+              (loop for c from j to (mce-sys-t)
                     do (setf (aref mat c k)
                              (logxor (aref mat c k)
                                      (mce-gf-mul (aref mat c j) tt)))))))))
-    (dotimes (i +mce-sys-t+ out)
-      (setf (aref out i) (aref mat +mce-sys-t+ i)))
+    (dotimes (i (mce-sys-t) out)
+      (setf (aref out i) (aref mat (mce-sys-t) i)))
     t))
 
 
@@ -153,61 +294,61 @@ Returns T on success, NIL when the matrix is not systematic."
 
 (defun mce-eval (f a)
   "Evaluate the degree-SYS_T Goppa polynomial F at field element A."
-  (let ((r (aref f +mce-sys-t+)))
-    (loop for i from (1- +mce-sys-t+) downto 0
+  (let ((r (aref f (mce-sys-t))))
+    (loop for i from (1- (mce-sys-t)) downto 0
           do (setf r (mce-gf-add (mce-gf-mul r a) (aref f i))))
     r))
 
 (defun mce-root (out f l)
   "OUT[i] = F(L[i]) for every support element."
-  (dotimes (i +mce-sys-n+ out)
+  (dotimes (i (mce-sys-n) out)
     (setf (aref out i) (mce-eval f (aref l i)))))
 
 (defun mce-synd (out f l r-bytes)
   "Syndrome of the received word R-BYTES under (F, L), length 2*SYS_T."
   (let ((bytes (coerce r-bytes '(simple-array (unsigned-byte 8) (*)))))
-    (dotimes (j (* 2 +mce-sys-t+))
+    (dotimes (j (* 2 (mce-sys-t)))
       (setf (aref out j) 0))
-    (dotimes (i +mce-sys-n+)
+    (dotimes (i (mce-sys-n))
       (let* ((c (ldb (byte 1 (mod i 8)) (aref bytes (truncate i 8))))
              (e (mce-eval f (aref l i)))
              (e-inv (mce-gf-inv (mce-gf-mul e e))))
         (when (plusp c)
-          (dotimes (j (* 2 +mce-sys-t+))
+          (dotimes (j (* 2 (mce-sys-t)))
             (setf (aref out j) (mce-gf-add (aref out j) e-inv))
             (setf e-inv (mce-gf-mul e-inv (aref l i))))))))
   (values))
 
 (defun mce-bm (out s)
   "Berlekamp-Massey: minimal polynomial of the syndrome S."
-  (let ((C (make-array (1+ +mce-sys-t+) :initial-element 0))
-        (B (make-array (1+ +mce-sys-t+) :initial-element 0))
-        (temp-b (make-array (1+ +mce-sys-t+) :initial-element 0))
+  (let ((C (make-array (1+ (mce-sys-t)) :initial-element 0))
+        (B (make-array (1+ (mce-sys-t)) :initial-element 0))
+        (temp-b (make-array (1+ (mce-sys-t)) :initial-element 0))
         (lf 0)
         (be 1)
         (d 0))
     (setf (aref C 0) 1 (aref B 1) 1)
-    (dotimes (N (* 2 +mce-sys-t+))
+    (dotimes (N (* 2 (mce-sys-t)))
       (setf d 0)
-      (dotimes (i (1+ (min N +mce-sys-t+)))
+      (dotimes (i (1+ (min N (mce-sys-t))))
         (when (<= i N)
           (setf d (logxor d (mce-gf-mul (aref C i) (aref s (- N i)))))))
       (let* ((mne (if (zerop d) 0 1))
              (f (mce-gf-frac be d)))
-        (dotimes (i (1+ +mce-sys-t+))
+        (dotimes (i (1+ (mce-sys-t)))
           (setf (aref temp-b i) (aref C i))
           (when (= mne 1)
             (setf (aref C i) (logxor (aref C i) (mce-gf-mul f (aref B i))))))
         (when (< (* 2 lf) (+ N 1))
-          (dotimes (i (1+ +mce-sys-t+))
+          (dotimes (i (1+ (mce-sys-t)))
             (setf (aref B i) (aref temp-b i)))
           (setf lf (1+ (- N lf))
                 be d))
-        (loop for i from +mce-sys-t+ downto 1
+        (loop for i from (mce-sys-t) downto 1
               do (setf (aref B i) (aref B (1- i))))
         (setf (aref B 0) 0)))
-    (dotimes (i (1+ +mce-sys-t+) out)
-      (setf (aref out i) (aref C (- +mce-sys-t+ i))))))
+    (dotimes (i (1+ (mce-sys-t)) out)
+      (setf (aref out i) (aref C (- (mce-sys-t) i))))))
 
 
 ;;;
@@ -218,7 +359,7 @@ Returns T on success, NIL when the matrix is not systematic."
   "Load a 12-bit field element from BYTES at OFF (little-endian)."
   (logand (logior (aref bytes off)
                   (ash (aref bytes (1+ off)) 8))
-          +mce-gfmask+))
+          (mce-gfmask)))
 
 (defun mce-store-gf (bytes off v)
   (setf (aref bytes off) (logand v #xFF)
@@ -354,24 +495,104 @@ Returns T on success, NIL when the matrix is not systematic."
       (mce-store8 r (* i 8) (aref bs i)))
     (values)))
 
+(defun mce-layer-ex (data bits lgs)
+  "128-element exterior Benes layer with sequential condition bits."
+  (let ((s (ash 1 lgs))
+        (k 0))
+    (loop for i from 0 below 128 by (* 2 s)
+          do (loop for j from i below (+ i s)
+                   do (let ((d (logand (logxor (aref data j) (aref data (+ j s)))
+                                      (aref bits k))))
+                        (setf (aref data j) (logxor (aref data j) d)
+                              (aref data (+ j s)) (logxor (aref data (+ j s)) d))
+                        (incf k))))
+    (values)))
+
+(defun mce-layer-in (data0 data1 bits lgs)
+  "Middle Benes layer over two 64-element halves, two bits per pair."
+  (let ((s (ash 1 lgs))
+        (k 0))
+    (loop for i from 0 below 64 by (* 2 s)
+          do (loop for j from i below (+ i s)
+                   do (let ((d0 (logand (logxor (aref data0 j) (aref data0 (+ j s)))
+                                       (aref bits k))))
+                        (setf (aref data0 j) (logxor (aref data0 j) d0)
+                              (aref data0 (+ j s)) (logxor (aref data0 (+ j s)) d0))
+                        (incf k)
+                        (let ((d1 (logand (logxor (aref data1 j) (aref data1 (+ j s)))
+                                          (aref bits k))))
+                          (setf (aref data1 j) (logxor (aref data1 j) d1)
+                                (aref data1 (+ j s)) (logxor (aref data1 (+ j s)) d1))
+                          (incf k)))))
+    (values)))
+
+(defun mce-apply-benes-13 (r bits)
+  "Apply the double-width (m=13) Benes network to 1024-bit vector R."
+  (let ((rv0 (make-array 64 :element-type '(unsigned-byte 64)))
+        (rv1 (make-array 64 :element-type '(unsigned-byte 64)))
+        (rh0 (make-array 64 :element-type '(unsigned-byte 64)))
+        (rh1 (make-array 64 :element-type '(unsigned-byte 64)))
+        (bv (make-array 64 :element-type '(unsigned-byte 64)))
+        (bh (make-array 64 :element-type '(unsigned-byte 64)))
+        (off 0))
+    (dotimes (i 64)
+      (setf (aref rv0 i) (mce-load8 r (* i 16))
+            (aref rv1 i) (mce-load8 r (+ (* i 16) 8))))
+    (mce-transpose-64x64 rh0 rv0)
+    (mce-transpose-64x64 rh1 rv1)
+    (dotimes (iter 7)
+      (dotimes (i 64)
+        (setf (aref bv i) (mce-load8 bits off))
+        (incf off 8))
+      (mce-transpose-64x64 bh bv)
+      (mce-layer-ex rh0 bh iter))
+    (mce-transpose-64x64 rv0 rh0)
+    (mce-transpose-64x64 rv1 rh1)
+    (dotimes (iter 6)
+      (dotimes (i 64)
+        (setf (aref bv i) (mce-load8 bits off))
+        (incf off 8))
+      (mce-layer-in rv0 rv1 bv iter))
+    (loop for iter from 4 downto 0
+          do (dotimes (i 64)
+               (setf (aref bv i) (mce-load8 bits off))
+               (incf off 8))
+             (mce-layer-in rv0 rv1 bv iter))
+    (mce-transpose-64x64 rh0 rv0)
+    (mce-transpose-64x64 rh1 rv1)
+    (loop for iter from 6 downto 0
+          do (dotimes (i 64)
+               (setf (aref bv i) (mce-load8 bits off))
+               (incf off 8))
+             (mce-transpose-64x64 bh bv)
+             (mce-layer-ex rh0 bh iter))
+    (mce-transpose-64x64 rv0 rh0)
+    (mce-transpose-64x64 rv1 rh1)
+    (dotimes (i 64)
+      (mce-store8 r (* i 16) (aref rv0 i))
+      (mce-store8 r (+ (* i 16) 8) (aref rv1 i)))
+    (values)))
+
 (defun mce-support-gen (s cond-bytes)
   "Support from condition bits (Benes sieve then bit interleave)."
-  (let ((l (make-array +mce-gfbits+ :element-type '(simple-array (unsigned-byte 8) (*))))
-        (size (truncate (ash 1 +mce-gfbits+) 8)))
-    (dotimes (i +mce-gfbits+)
+  (let ((l (make-array (mce-gfbits) :element-type '(simple-array (unsigned-byte 8) (*))))
+        (size (truncate (ash 1 (mce-gfbits)) 8)))
+    (dotimes (i (mce-gfbits))
       (setf (aref l i) (make-array size :element-type '(unsigned-byte 8)
                                             :initial-element 0)))
-    (dotimes (i (ash 1 +mce-gfbits+))
+    (dotimes (i (ash 1 (mce-gfbits)))
       (let ((a (mce-bitrev i)))
-        (dotimes (j +mce-gfbits+)
+        (dotimes (j (mce-gfbits))
           (setf (aref (aref l j) (truncate i 8))
                 (logior (aref (aref l j) (truncate i 8))
                         (ash (ldb (byte 1 j) a) (mod i 8)))))))
-    (dotimes (j +mce-gfbits+)
-      (mce-apply-benes (aref l j) cond-bytes))
-    (dotimes (i +mce-sys-n+)
+    (dotimes (j (mce-gfbits))
+      (if (= (mce-gfbits) 12)
+          (mce-apply-benes (aref l j) cond-bytes)
+          (mce-apply-benes-13 (aref l j) cond-bytes)))
+    (dotimes (i (mce-sys-n))
       (let ((v 0))
-        (loop for j from (1- +mce-gfbits+) downto 0
+        (loop for j from (1- (mce-gfbits)) downto 0
               do (setf v (ash v 1))
                  (setf v (logior v (ldb (byte 1 (mod i 8))
                                         (aref (aref l j) (truncate i 8))))))
@@ -590,82 +811,82 @@ Returns T on success, NIL when the matrix is not systematic."
 
 (defun mce-perm-check (piv perm)
   "Sort PERM into PIV; NIL when two entries collide."
-  (let ((idx (make-array 4096 :element-type 'fixnum)))
-    (dotimes (i 4096)
+  (let ((idx (make-array (mce-perm-len) :element-type  'fixnum)))
+    (dotimes (i (mce-perm-len))
       (setf (aref idx i) i))
     (setf idx (sort idx #'< :key (lambda (i) (aref perm i))))
-    (loop for j from 1 below 4096
+    (loop for j from 1 below (mce-perm-len)
           do (when (= (aref perm (aref idx (1- j))) (aref perm (aref idx j)))
                (return-from mce-perm-check nil)))
-    (dotimes (j 4096)
+    (dotimes (j (mce-perm-len))
       (setf (aref piv j) (aref idx j)))
     t))
 
 (defun mce-pk-gen (pk sk perm piv)
   "PK := public key for secret Goppa bytes SK and permutation PERM.
-PIV is 4096-element scratch/output. Returns T on success, NIL on failure."
+PIV is permutation-sized scratch/output. Returns T on success, NIL on failure."
   (unless (mce-perm-check piv perm)
     (return-from mce-pk-gen nil))
-  (let ((g (make-array 65 :element-type 'fixnum :initial-element 0))
-        (l (make-array +mce-sys-n+ :element-type 'fixnum))
-        (inv (make-array +mce-sys-n+ :element-type 'fixnum))
-        (rows (make-array +mce-pk-nrows+)))
-    (setf (aref g +mce-sys-t+) 1)
-    (dotimes (i +mce-sys-t+)
+  (let ((g (make-array (1+ (mce-sys-t)) :element-type 'fixnum :initial-element 0))
+        (l (make-array (mce-sys-n) :element-type 'fixnum))
+        (inv (make-array (mce-sys-n) :element-type 'fixnum))
+        (rows (make-array (mce-pk-nrows))))
+    (setf (aref g (mce-sys-t)) 1)
+    (dotimes (i (mce-sys-t))
       (setf (aref g i) (mce-load-gf sk (* i 2))))
-    (dotimes (i +mce-sys-n+)
+    (dotimes (i (mce-sys-n))
       (setf (aref l i) (mce-bitrev (aref piv i))))
-    (dotimes (i +mce-pk-nrows+)
+    (dotimes (i (mce-pk-nrows))
       (setf (aref rows i)
-            (make-array 436 :element-type '(unsigned-byte 8) :initial-element 0)))
+            (make-array (ash (mce-sys-n) -3) :element-type '(unsigned-byte 8) :initial-element 0)))
     (mce-root inv g l)
-    (dotimes (i +mce-sys-n+)
+    (dotimes (i (mce-sys-n))
       (setf (aref inv i) (mce-gf-inv (aref inv i))))
-    (dotimes (i +mce-sys-t+)
-      (loop for j from 0 below +mce-sys-n+ by 8
+    (dotimes (i (mce-sys-t))
+      (loop for j from 0 below (mce-sys-n) by 8
             do (let ((base (truncate j 8)))
-                 (dotimes (k +mce-gfbits+)
+                 (dotimes (k (mce-gfbits))
                    (let ((b 0)
-                         (rk (aref rows (+ (* i +mce-gfbits+) k))))
+                         (rk (aref rows (+ (* i (mce-gfbits)) k))))
                      (declare (type (simple-array (unsigned-byte 8) (*)) rk))
                      (loop for q from 7 downto 0
                            do (setf b (logior (ash b 1)
                                               (ldb (byte 1 k) (aref inv (+ j q))))))
                      (setf (aref rk base) b)))))
-      (dotimes (j +mce-sys-n+)
+      (dotimes (j (mce-sys-n))
         (setf (aref inv j) (mce-gf-mul (aref inv j) (aref l j)))))
-    (loop for i from 0 below (truncate +mce-pk-nrows+ 8)
+    (loop for i from 0 below (ceiling (mce-pk-nrows) 8)
           do (dotimes (j 8)
                (let ((row (+ (* i 8) j)))
-                 (when (>= row +mce-pk-nrows+)
+                 (when (>= row (mce-pk-nrows))
                    (return))
                  (let ((rr (aref rows row)))
                    (declare (type (simple-array (unsigned-byte 8) (*)) rr))
-                   (loop for k from (1+ row) below +mce-pk-nrows+
+                   (loop for k from (1+ row) below (mce-pk-nrows)
                          do (let ((rk (aref rows k)))
                               (declare (type (simple-array (unsigned-byte 8) (*)) rk))
                               (when (= (ldb (byte 1 j)
                                             (logxor (aref rr i) (aref rk i)))
                                        1)
-                                (dotimes (c 436)
+                                (dotimes (c (ash (mce-sys-n) -3))
                                   (setf (aref rr c)
                                         (logxor (aref rr c) (aref rk c)))))))
                    (when (zerop (ldb (byte 1 j) (aref rr i)))
                      (return-from mce-pk-gen nil))
-                   (dotimes (k +mce-pk-nrows+)
+                   (dotimes (k (mce-pk-nrows))
                      (unless (= k row)
                        (let ((rk (aref rows k)))
                          (declare (type (simple-array (unsigned-byte 8) (*)) rk))
                          (when (= (ldb (byte 1 j) (aref rk i)) 1)
-                           (dotimes (c 436)
+                           (dotimes (c (ash (mce-sys-n) -3))
                              (setf (aref rk c)
                                    (logxor (aref rk c) (aref rr c))))))))))))
-    (dotimes (i +mce-pk-nrows+)
+    (dotimes (i (mce-pk-nrows))
       (let ((rr (aref rows i)))
         (declare (type (simple-array (unsigned-byte 8) (*)) rr))
-        (dotimes (j +mce-pk-row-bytes+)
-          (setf (aref pk (+ (* i +mce-pk-row-bytes+) j))
-                (aref rr (+ (truncate +mce-pk-nrows+ 8) j))))))
+        (dotimes (j (mce-pk-row-bytes))
+          (setf (aref pk (+ (* i (mce-pk-row-bytes)) j))
+                (aref rr (+ (truncate (mce-pk-nrows) 8) j))))))
     t))
 
 
@@ -681,64 +902,71 @@ PIV is 4096-element scratch/output. Returns T on success, NIL on failure."
 (defun mce-keypair-from-seed (seed32)
   "Deterministic keypair from 32-byte SEED32; returns (pk sk)."
   (let ((seed (make-array 33 :element-type '(unsigned-byte 8) :initial-element 0))
-        (pk (make-array +mce-pk-bytes+ :element-type '(unsigned-byte 8)
+        (pk (make-array (mce-pk-bytes) :element-type '(unsigned-byte 8)
                                           :initial-element 0))
-        (sk (make-array +mce-sk-bytes+ :element-type '(unsigned-byte 8)
+        (sk (make-array (mce-sk-bytes) :element-type '(unsigned-byte 8)
                                           :initial-element 0))
-        (f (make-array +mce-sys-t+ :element-type 'fixnum :initial-element 0))
-        (irr (make-array +mce-sys-t+ :element-type 'fixnum :initial-element 0))
-        (irr-bytes (make-array +mce-irr-bytes+
+        (f (make-array (mce-sys-t) :element-type 'fixnum :initial-element 0))
+        (irr (make-array (mce-sys-t) :element-type 'fixnum :initial-element 0))
+        (irr-bytes (make-array (mce-irr-bytes)
                                :element-type '(unsigned-byte 8)
                                :initial-element 0))
-        (perm (make-array (ash 1 +mce-gfbits+) :element-type '(unsigned-byte 32)
+        (perm (make-array (ash 1 (mce-gfbits)) :element-type '(unsigned-byte 32)
                                                      :initial-element 0))
-        (piv (make-array (ash 1 +mce-gfbits+) :element-type 'fixnum
+        (piv (make-array (ash 1 (mce-gfbits)) :element-type 'fixnum
                                                    :initial-element 0))
-        (cond-bytes (make-array +mce-cond-bytes+
+        (cond-bytes (make-array (mce-cond-bytes)
                                 :element-type '(unsigned-byte 8)
                                 :initial-element 0)))
     (setf (aref seed 0) 64)
     (replace seed seed32 :start1 1)
     (loop
-      (let ((r (mce-shake256 seed 16980)))
+      (let* ((rlen (mce-r-len))
+             (f-off (- rlen 32 (* 2 (mce-sys-t))))
+             (perm-off (- rlen 32 (* 2 (mce-sys-t)) (* 4 (mce-perm-len))))
+             (nbytes (ash (mce-sys-n) -3))
+             (irr-off 40)
+             (cond-off (+ 40 (mce-irr-bytes)))
+             (s-off (+ 40 (mce-irr-bytes) (mce-cond-bytes)))
+             (r (mce-shake256 seed rlen)))
         (replace sk seed :start2 1 :end2 33)
-        (replace seed r :start1 1 :start2 16948)
-        (dotimes (i +mce-sys-t+)
-          (setf (aref f i) (mce-load-gf r (+ 16820 (* i 2)))))
+        (replace seed r :start1 1 :start2 (- rlen 32))
+        (dotimes (i (mce-sys-t))
+          (setf (aref f i) (mce-load-gf r (+ f-off (* i 2)))))
         (when (mce-genpoly irr f)
-          (dotimes (i +mce-sys-t+)
+          (dotimes (i (mce-sys-t))
             (mce-store-gf irr-bytes (* i 2) (aref irr i)))
-          (dotimes (i (ash 1 +mce-gfbits+))
-            (setf (aref perm i) (mce-load4 r (+ 436 (* i 4)))))
+          (dotimes (i (ash 1 (mce-gfbits)))
+            (setf (aref perm i) (mce-load4 r (+ perm-off (* i 4)))))
           (when (mce-pk-gen pk irr-bytes perm piv)
-            (replace sk irr-bytes :start1 40)
-            (mce-controlbits cond-bytes piv +mce-gfbits+ (ash 1 +mce-gfbits+))
-            (replace sk cond-bytes :start1 168)
-            (replace sk r :start1 6056 :end2 436)
+            (replace sk irr-bytes :start1 irr-off)
+            (mce-controlbits cond-bytes piv (mce-gfbits) (ash 1 (mce-gfbits)))
+            (replace sk cond-bytes :start1 cond-off)
+            (replace sk r :start1 s-off :end2 nbytes)
             (mce-store8 sk 32 #xFFFFFFFF)
             (return (values pk sk))))))))
 
 (defun mce-gen-e (e random-fn)
   "Random weight-SYS_T error vector into E (436 bytes)."
   (loop
-    (let ((buf (funcall random-fn 256))
-          (ind (make-array +mce-sys-t+ :element-type 'fixnum))
+    (let ((buf (funcall random-fn (* 4 (mce-sys-t))))
+          (ind (make-array (mce-sys-t) :element-type 'fixnum))
           (count 0))
-      (dotimes (i (* 2 +mce-sys-t+))
-        (when (< count +mce-sys-t+)
+      (dotimes (i (* 2 (mce-sys-t)))
+        (when (< count (mce-sys-t))
           (let ((tgt (mce-load-gf buf (* i 2))))
-            (when (< tgt +mce-sys-n+)
+            (when (< tgt (mce-sys-n))
               (setf (aref ind count) tgt)
               (incf count)))))
-      (when (= count +mce-sys-t+)
+      (when (= count (mce-sys-t))
         (let ((distinct t))
-          (loop for i from 1 below +mce-sys-t+
+          (loop for i from 1 below (mce-sys-t)
                 do (loop for j from 0 below i
                          do (when (= (aref ind i) (aref ind j))
                               (setf distinct nil))))
           (when distinct
             (fill e 0)
-            (dotimes (j +mce-sys-t+)
+            (dotimes (j (mce-sys-t))
               (let ((tgt (aref ind j)))
                 (setf (aref e (ash tgt -3))
                       (logior (aref e (ash tgt -3))
@@ -746,19 +974,21 @@ PIV is 4096-element scratch/output. Returns T on success, NIL on failure."
             (return e)))))))
 
 (defun mce-syndrome-bytes (s pk e)
-  "Niederreiter syndrome S (96 bytes) of error vector E under PK."
-  (dotimes (i +mce-synd-bytes+)
+  "Niederreiter syndrome S of error vector E under PK."
+  (dotimes (i (mce-synd-bytes))
     (setf (aref s i) 0))
-  (let ((row (make-array 436 :element-type '(unsigned-byte 8)
-                                   :initial-element 0)))
-    (dotimes (i +mce-pk-nrows+)
+  (let ((nbytes (ash (mce-sys-n) -3))
+        (row (make-array (ash (mce-sys-n) -3) :element-type '(unsigned-byte 8)
+                                                     :initial-element 0)))
+    (dotimes (i (mce-pk-nrows))
       (fill row 0)
-      (replace row pk :start1 96 :start2 (* i +mce-pk-row-bytes+)
-                         :end2 (+ (* i +mce-pk-row-bytes+) +mce-pk-row-bytes+))
+      (replace row pk :start1 (- nbytes (mce-pk-row-bytes))
+                         :start2 (* i (mce-pk-row-bytes))
+                         :end2 (+ (* i (mce-pk-row-bytes)) (mce-pk-row-bytes)))
       (let ((q (ash i -3)))
         (setf (aref row q) (logior (aref row q) (ash 1 (logand i 7)))))
       (let ((b 0))
-        (dotimes (j 436)
+        (dotimes (j nbytes)
           (setf b (logxor b (logand (aref row j) (aref e j)))))
         (setf b (logxor b (ash b -4)))
         (setf b (logxor b (ash b -2)))
@@ -775,56 +1005,66 @@ PIV is 4096-element scratch/output. Returns T on success, NIL on failure."
 
 (defun mce-decrypt (e sk c)
   "Niederreiter decrypt C under SK into E; T on success."
-  (let ((r (make-array 436 :element-type '(unsigned-byte 8) :initial-element 0))
-        (g (make-array 65 :element-type 'fixnum :initial-element 0))
-        (l (make-array +mce-sys-n+ :element-type 'fixnum))
-        (s (make-array 128 :element-type 'fixnum))
-        (s-cmp (make-array 128 :element-type 'fixnum))
-        (locator (make-array 65 :element-type 'fixnum))
-        (images (make-array +mce-sys-n+ :element-type 'fixnum)))
-    (replace r c :end2 +mce-synd-bytes+)
-    (dotimes (i +mce-sys-t+)
-      (setf (aref g i) (mce-load-gf sk (+ 40 (* i 2)))))
-    (setf (aref g +mce-sys-t+) 1)
-    (mce-support-gen l (subseq sk 168 (+ 168 +mce-cond-bytes+)))
+  (let* ((tt (mce-sys-t))
+         (nbytes (ash (mce-sys-n) -3))
+         (r (make-array nbytes :element-type '(unsigned-byte 8) :initial-element 0))
+         (g (make-array (1+ tt) :element-type 'fixnum :initial-element 0))
+         (l (make-array (mce-sys-n) :element-type 'fixnum))
+         (s (make-array (* 2 tt) :element-type 'fixnum))
+         (s-cmp (make-array (* 2 tt) :element-type 'fixnum))
+         (locator (make-array (1+ tt) :element-type 'fixnum))
+         (images (make-array (mce-sys-n) :element-type 'fixnum))
+         (irr-off 40)
+         (cond-off (+ 40 (mce-irr-bytes))))
+    (replace r c :end2 (mce-synd-bytes))
+    (dotimes (i (mce-sys-t))
+      (setf (aref g i) (mce-load-gf sk (+ irr-off (* i 2)))))
+    (setf (aref g (mce-sys-t)) 1)
+    (mce-support-gen l (subseq sk cond-off (+ cond-off (mce-cond-bytes))))
     (mce-synd s g l r)
     (mce-bm locator s)
     (mce-root images locator l)
     (fill e 0)
     (let ((w 0))
-      (dotimes (i +mce-sys-n+)
+      (dotimes (i (mce-sys-n))
         (let ((tgt (if (zerop (aref images i)) 1 0)))
           (setf (aref e (ash i -3))
                 (logior (aref e (ash i -3)) (ash tgt (logand i 7))))
           (incf w tgt)))
       (mce-synd s-cmp g l e)
-      (and (= w +mce-sys-t+)
-           (dotimes (i 128 t)
+      (and (= w (mce-sys-t))
+           (dotimes (i (* 2 tt) t)
              (unless (= (aref s i) (aref s-cmp i))
                (return nil)))))))
 
 (defun mce-encaps-from-error (e pk)
   "Deterministic encapsulation with error vector E; returns (ct ss)."
-  (let ((ct (make-array +mce-ct-bytes+ :element-type '(unsigned-byte 8)
+  (let* ((nbytes (ash (mce-sys-n) -3))
+         (ct (make-array (mce-ct-bytes) :element-type '(unsigned-byte 8)
                                              :initial-element 0)))
     (mce-encrypt ct pk e)
-    (let ((pre (make-array 533 :element-type '(unsigned-byte 8)
-                                     :initial-element 0)))
+    (let ((pre (make-array (+ 1 nbytes (mce-synd-bytes))
+                           :element-type '(unsigned-byte 8)
+                           :initial-element 0)))
       (setf (aref pre 0) 1)
       (replace pre e :start1 1)
-      (replace pre ct :start1 437)
+      (replace pre ct :start1 (+ 1 nbytes))
       (values ct (mce-shake256 pre 32)))))
 
 (defun mce-decapsulate (ct sk)
   "Decapsulation with implicit rejection; returns 32-byte secret."
-  (let ((e (make-array 436 :element-type '(unsigned-byte 8) :initial-element 0))
-        (pre (make-array 533 :element-type '(unsigned-byte 8) :initial-element 0)))
+  (let* ((nbytes (ash (mce-sys-n) -3))
+         (e (make-array nbytes :element-type '(unsigned-byte 8) :initial-element 0))
+         (pre (make-array (+ 1 nbytes (mce-synd-bytes))
+                          :element-type '(unsigned-byte 8)
+                          :initial-element 0))
+         (s-off (+ 40 (mce-irr-bytes) (mce-cond-bytes))))
     (if (mce-decrypt e sk ct)
         (progn (setf (aref pre 0) 1)
                (replace pre e :start1 1))
         (progn (setf (aref pre 0) 0)
-               (replace pre sk :start1 1 :start2 6056 :end2 6492)))
-    (replace pre ct :start1 437)
+               (replace pre sk :start1 1 :start2 s-off :end2 (mce-sk-bytes))))
+    (replace pre ct :start1 (+ 1 nbytes))
     (mce-shake256 pre 32)))
 
 
@@ -848,6 +1088,30 @@ PIV is 4096-element scratch/output. Returns T on success, NIL on failure."
 (defclass mceliece348864-private-key (mceliece-private-key)
   ())
 
+(defclass mceliece460896-public-key (mceliece-public-key)
+  ())
+
+(defclass mceliece460896-private-key (mceliece-private-key)
+  ())
+
+(defclass mceliece6688128-public-key (mceliece-public-key)
+  ())
+
+(defclass mceliece6688128-private-key (mceliece-private-key)
+  ())
+
+(defclass mceliece6960119-public-key (mceliece-public-key)
+  ())
+
+(defclass mceliece6960119-private-key (mceliece-private-key)
+  ())
+
+(defclass mceliece8192128-public-key (mceliece-public-key)
+  ())
+
+(defclass mceliece8192128-private-key (mceliece-private-key)
+  ())
+
 (defun mce-check-bytes (bytes length kind)
   (unless (and (typep bytes '(simple-array (unsigned-byte 8) (*)))
                (= (length bytes) length))
@@ -857,26 +1121,32 @@ PIV is 4096-element scratch/output. Returns T on success, NIL on failure."
            :description "McEliece key bytes"))
   (copy-seq bytes))
 
-(defmethod make-public-key ((kind (eql :mceliece348864)) &key bytes
-                            &allow-other-keys)
-  (make-instance 'mceliece348864-public-key :kind kind
-                                            :bytes (mce-check-bytes bytes
-                                                                    +mce-pk-bytes+
-                                                                    kind)))
+(defmacro mce-define-key-constructors (kind public-class private-class)
+  `(progn
+     (defmethod make-public-key ((kind (eql ,kind)) &key bytes &allow-other-keys)
+       (let ((*mce-params* (mce-params-for-kind ,kind)))
+         (make-instance ',public-class :kind ,kind
+                                          :bytes (mce-check-bytes bytes
+                                                                  (mce-pk-bytes)
+                                                                  ,kind))))
+     (defmethod make-private-key ((kind (eql ,kind)) &key bytes &allow-other-keys)
+       (let ((*mce-params* (mce-params-for-kind ,kind)))
+         (make-instance ',private-class :kind ,kind
+                                           :bytes (mce-check-bytes bytes
+                                                                   (mce-sk-bytes)
+                                                                   ,kind))))
+     (defmethod generate-key-pair ((kind (eql ,kind)) &key &allow-other-keys)
+       (let ((*mce-params* (mce-params-for-kind ,kind)))
+         (multiple-value-bind (pk sk)
+             (mce-keypair-from-seed (random-data 32))
+           (values (make-private-key ,kind :bytes sk)
+                   (make-public-key ,kind :bytes pk)))))))
 
-(defmethod make-private-key ((kind (eql :mceliece348864)) &key bytes
-                             &allow-other-keys)
-  (make-instance 'mceliece348864-private-key :kind kind
-                                              :bytes (mce-check-bytes bytes
-                                                                      +mce-sk-bytes+
-                                                                      kind)))
-
-(defmethod generate-key-pair ((kind (eql :mceliece348864)) &key
-                              &allow-other-keys)
-  (multiple-value-bind (pk sk)
-      (mce-keypair-from-seed (random-data 32))
-    (values (make-private-key kind :bytes sk)
-            (make-public-key kind :bytes pk))))
+(mce-define-key-constructors :mceliece348864 mceliece348864-public-key mceliece348864-private-key)
+(mce-define-key-constructors :mceliece460896 mceliece460896-public-key mceliece460896-private-key)
+(mce-define-key-constructors :mceliece6688128 mceliece6688128-public-key mceliece6688128-private-key)
+(mce-define-key-constructors :mceliece6960119 mceliece6960119-public-key mceliece6960119-private-key)
+(mce-define-key-constructors :mceliece8192128 mceliece8192128-public-key mceliece8192128-private-key)
 
 (defmethod destructure-public-key ((public-key mceliece-public-key))
   (list :bytes (copy-seq (mceliece-key-bytes public-key))))
@@ -884,14 +1154,16 @@ PIV is 4096-element scratch/output. Returns T on success, NIL on failure."
 (defmethod destructure-private-key ((private-key mceliece-private-key))
   (list :bytes (copy-seq (mceliece-key-bytes private-key))))
 
-(defmethod encapsulate-key ((public-key mceliece348864-public-key))
-  (let ((e (make-array 436 :element-type '(unsigned-byte 8)
-                                 :initial-element 0)))
-    (mce-gen-e e (lambda (k) (random-data k)))
-    (mce-encaps-from-error e (mceliece-key-bytes public-key))))
+(defmethod encapsulate-key ((public-key mceliece-public-key))
+  (let ((*mce-params* (mce-params-for-kind (mceliece-key-kind public-key))))
+    (let ((e (make-array (ash (mce-sys-n) -3) :element-type '(unsigned-byte 8)
+                                                     :initial-element 0)))
+      (mce-gen-e e (lambda (k) (random-data k)))
+      (mce-encaps-from-error e (mceliece-key-bytes public-key)))))
 
-(defmethod decapsulate-key ((private-key mceliece348864-private-key) ciphertext)
-  (unless (and (typep ciphertext '(simple-array (unsigned-byte 8) (*)))
-               (= (length ciphertext) +mce-ct-bytes+))
-    (error 'invalid-message-length :kind (mceliece-key-kind private-key)))
-  (mce-decapsulate ciphertext (mceliece-key-bytes private-key)))
+(defmethod decapsulate-key ((private-key mceliece-private-key) ciphertext)
+  (let ((*mce-params* (mce-params-for-kind (mceliece-key-kind private-key))))
+    (unless (and (typep ciphertext '(simple-array (unsigned-byte 8) (*)))
+                 (= (length ciphertext) (mce-ct-bytes)))
+      (error 'invalid-message-length :kind (mceliece-key-kind private-key)))
+    (mce-decapsulate ciphertext (mceliece-key-bytes private-key))))
