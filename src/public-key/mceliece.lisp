@@ -285,12 +285,13 @@ Returns T on success, NIL when the matrix is not systematic."
 ;;;
 
 (defun mce-bitrev (a)
+  "Bit-reversal over GFBITS bits (via 16-bit reversal)."
   (let ((x a))
     (setf x (logior (ash (logand x #x00FF) 8) (ash (logand x #xFF00) -8)))
     (setf x (logior (ash (logand x #x0F0F) 4) (ash (logand x #xF0F0) -4)))
     (setf x (logior (ash (logand x #x3333) 2) (ash (logand x #xCCCC) -2)))
     (setf x (logior (ash (logand x #x5555) 1) (ash (logand x #xAAAA) -1)))
-    (ash x -4)))
+    (ash x (- (mce-gfbits) 16))))
 
 (defun mce-eval (f a)
   "Evaluate the degree-SYS_T Goppa polynomial F at field element A."
