@@ -97,6 +97,49 @@
 
 
 ;;;
+;;; Irreducible-polynomial generation (secret-key generation).
+;;;
+
+(defun mce-genpoly (out f)
+  "OUT := minimal polynomial of the extension element F.
+Returns T on success, NIL when the matrix is not systematic."
+  (let ((mat (make-array (list (1+ +mce-sys-t+) +mce-sys-t+)
+                         :element-type 'fixnum :initial-element 0))
+        (prev (make-array +mce-sys-t+ :element-type 'fixnum :initial-element 0))
+        (prod (make-array +mce-sys-t+ :element-type 'fixnum :initial-element 0)))
+    (setf (aref mat 0 0) 1)
+    (dotimes (i +mce-sys-t+)
+      (setf (aref mat 1 i) (aref f i)))
+    (loop for j from 2 to +mce-sys-t+
+          do (dotimes (i +mce-sys-t+)
+               (setf (aref prev i) (aref mat (1- j) i)))
+             (mce-gf-poly-mul prod prev f)
+             (dotimes (i +mce-sys-t+)
+               (setf (aref mat j i) (aref prod i))))
+    (dotimes (j +mce-sys-t+)
+      (loop for k from (1+ j) below +mce-sys-t+
+            do (when (zerop (aref mat j j))
+                 (loop for c from j to +mce-sys-t+
+                       do (setf (aref mat c j)
+                                (logxor (aref mat c j) (aref mat c k))))))
+      (when (zerop (aref mat j j))
+        (return-from mce-genpoly nil))
+      (let ((inv (mce-gf-inv (aref mat j j))))
+        (loop for c from j to +mce-sys-t+
+              do (setf (aref mat c j) (mce-gf-mul (aref mat c j) inv)))
+        (dotimes (k +mce-sys-t+)
+          (unless (= k j)
+            (let ((tt (aref mat j k)))
+              (loop for c from j to +mce-sys-t+
+                    do (setf (aref mat c k)
+                             (logxor (aref mat c k)
+                                     (mce-gf-mul (aref mat c j) tt)))))))))
+    (dotimes (i +mce-sys-t+ out)
+      (setf (aref out i) (aref mat +mce-sys-t+ i)))
+    t))
+
+
+;;;
 ;;; Bit reversal, polynomial evaluation, syndrome, Berlekamp-Massey.
 ;;;
 
