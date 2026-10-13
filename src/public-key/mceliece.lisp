@@ -667,3 +667,231 @@ PIV is 4096-element scratch/output. Returns T on success, NIL on failure."
           (setf (aref pk (+ (* i +mce-pk-row-bytes+) j))
                 (aref rr (+ (truncate +mce-pk-nrows+ 8) j))))))
     t))
+
+
+;;;
+;;; KEM: keypair, encryption, decryption, encapsulation.
+;;;
+
+(defun mce-shake256 (input output-length)
+  (let ((d (make-digest :shake256 :output-length output-length)))
+    (update-digest d input)
+    (produce-digest d)))
+
+(defun mce-keypair-from-seed (seed32)
+  "Deterministic keypair from 32-byte SEED32; returns (pk sk)."
+  (let ((seed (make-array 33 :element-type '(unsigned-byte 8) :initial-element 0))
+        (pk (make-array +mce-pk-bytes+ :element-type '(unsigned-byte 8)
+                                          :initial-element 0))
+        (sk (make-array +mce-sk-bytes+ :element-type '(unsigned-byte 8)
+                                          :initial-element 0))
+        (f (make-array +mce-sys-t+ :element-type 'fixnum :initial-element 0))
+        (irr (make-array +mce-sys-t+ :element-type 'fixnum :initial-element 0))
+        (irr-bytes (make-array +mce-irr-bytes+
+                               :element-type '(unsigned-byte 8)
+                               :initial-element 0))
+        (perm (make-array (ash 1 +mce-gfbits+) :element-type '(unsigned-byte 32)
+                                                     :initial-element 0))
+        (piv (make-array (ash 1 +mce-gfbits+) :element-type 'fixnum
+                                                   :initial-element 0))
+        (cond-bytes (make-array +mce-cond-bytes+
+                                :element-type '(unsigned-byte 8)
+                                :initial-element 0)))
+    (setf (aref seed 0) 64)
+    (replace seed seed32 :start1 1)
+    (loop
+      (let ((r (mce-shake256 seed 16980)))
+        (replace sk seed :start2 1 :end2 33)
+        (replace seed r :start1 1 :start2 16948)
+        (dotimes (i +mce-sys-t+)
+          (setf (aref f i) (mce-load-gf r (+ 16820 (* i 2)))))
+        (when (mce-genpoly irr f)
+          (dotimes (i +mce-sys-t+)
+            (mce-store-gf irr-bytes (* i 2) (aref irr i)))
+          (dotimes (i (ash 1 +mce-gfbits+))
+            (setf (aref perm i) (mce-load4 r (+ 436 (* i 4)))))
+          (when (mce-pk-gen pk irr-bytes perm piv)
+            (replace sk irr-bytes :start1 40)
+            (mce-controlbits cond-bytes piv +mce-gfbits+ (ash 1 +mce-gfbits+))
+            (replace sk cond-bytes :start1 168)
+            (replace sk r :start1 6056 :end2 436)
+            (mce-store8 sk 32 #xFFFFFFFF)
+            (return (values pk sk))))))))
+
+(defun mce-gen-e (e random-fn)
+  "Random weight-SYS_T error vector into E (436 bytes)."
+  (loop
+    (let ((buf (funcall random-fn 256))
+          (ind (make-array +mce-sys-t+ :element-type 'fixnum))
+          (count 0))
+      (dotimes (i (* 2 +mce-sys-t+))
+        (when (< count +mce-sys-t+)
+          (let ((tgt (mce-load-gf buf (* i 2))))
+            (when (< tgt +mce-sys-n+)
+              (setf (aref ind count) tgt)
+              (incf count)))))
+      (when (= count +mce-sys-t+)
+        (let ((distinct t))
+          (loop for i from 1 below +mce-sys-t+
+                do (loop for j from 0 below i
+                         do (when (= (aref ind i) (aref ind j))
+                              (setf distinct nil))))
+          (when distinct
+            (fill e 0)
+            (dotimes (j +mce-sys-t+)
+              (let ((tgt (aref ind j)))
+                (setf (aref e (ash tgt -3))
+                      (logior (aref e (ash tgt -3))
+                              (ash 1 (logand tgt 7))))))
+            (return e)))))))
+
+(defun mce-syndrome-bytes (s pk e)
+  "Niederreiter syndrome S (96 bytes) of error vector E under PK."
+  (dotimes (i +mce-synd-bytes+)
+    (setf (aref s i) 0))
+  (let ((row (make-array 436 :element-type '(unsigned-byte 8)
+                                   :initial-element 0)))
+    (dotimes (i +mce-pk-nrows+)
+      (fill row 0)
+      (replace row pk :start1 96 :start2 (* i +mce-pk-row-bytes+)
+                         :end2 (+ (* i +mce-pk-row-bytes+) +mce-pk-row-bytes+))
+      (let ((q (ash i -3)))
+        (setf (aref row q) (logior (aref row q) (ash 1 (logand i 7)))))
+      (let ((b 0))
+        (dotimes (j 436)
+          (setf b (logxor b (logand (aref row j) (aref e j)))))
+        (setf b (logxor b (ash b -4)))
+        (setf b (logxor b (ash b -2)))
+        (setf b (logxor b (ash b -1)))
+        (let ((q (ash i -3)))
+          (setf (aref s q)
+                (logior (aref s q) (ash (logand b 1) (logand i 7))))))))
+  (values))
+
+(defun mce-encrypt (ct pk e)
+  "Syndrome ciphertext CT of the given error vector E under PK."
+  (mce-syndrome-bytes ct pk e)
+  (values))
+
+(defun mce-decrypt (e sk c)
+  "Niederreiter decrypt C under SK into E; T on success."
+  (let ((r (make-array 436 :element-type '(unsigned-byte 8) :initial-element 0))
+        (g (make-array 65 :element-type 'fixnum :initial-element 0))
+        (l (make-array +mce-sys-n+ :element-type 'fixnum))
+        (s (make-array 128 :element-type 'fixnum))
+        (s-cmp (make-array 128 :element-type 'fixnum))
+        (locator (make-array 65 :element-type 'fixnum))
+        (images (make-array +mce-sys-n+ :element-type 'fixnum)))
+    (replace r c :end2 +mce-synd-bytes+)
+    (dotimes (i +mce-sys-t+)
+      (setf (aref g i) (mce-load-gf sk (+ 40 (* i 2)))))
+    (setf (aref g +mce-sys-t+) 1)
+    (mce-support-gen l (subseq sk 168 (+ 168 +mce-cond-bytes+)))
+    (mce-synd s g l r)
+    (mce-bm locator s)
+    (mce-root images locator l)
+    (fill e 0)
+    (let ((w 0))
+      (dotimes (i +mce-sys-n+)
+        (let ((tgt (if (zerop (aref images i)) 1 0)))
+          (setf (aref e (ash i -3))
+                (logior (aref e (ash i -3)) (ash tgt (logand i 7))))
+          (incf w tgt)))
+      (mce-synd s-cmp g l e)
+      (and (= w +mce-sys-t+)
+           (dotimes (i 128 t)
+             (unless (= (aref s i) (aref s-cmp i))
+               (return nil)))))))
+
+(defun mce-encaps-from-error (e pk)
+  "Deterministic encapsulation with error vector E; returns (ct ss)."
+  (let ((ct (make-array +mce-ct-bytes+ :element-type '(unsigned-byte 8)
+                                             :initial-element 0)))
+    (mce-encrypt ct pk e)
+    (let ((pre (make-array 533 :element-type '(unsigned-byte 8)
+                                     :initial-element 0)))
+      (setf (aref pre 0) 1)
+      (replace pre e :start1 1)
+      (replace pre ct :start1 437)
+      (values ct (mce-shake256 pre 32)))))
+
+(defun mce-decapsulate (ct sk)
+  "Decapsulation with implicit rejection; returns 32-byte secret."
+  (let ((e (make-array 436 :element-type '(unsigned-byte 8) :initial-element 0))
+        (pre (make-array 533 :element-type '(unsigned-byte 8) :initial-element 0)))
+    (if (mce-decrypt e sk ct)
+        (progn (setf (aref pre 0) 1)
+               (replace pre e :start1 1))
+        (progn (setf (aref pre 0) 0)
+               (replace pre sk :start1 1 :start2 6056 :end2 6492)))
+    (replace pre ct :start1 437)
+    (mce-shake256 pre 32)))
+
+
+;;;
+;;; Public API: key classes, generation, encapsulation.
+;;;
+
+(defclass mceliece-key ()
+  ((kind :initarg :kind :reader mceliece-key-kind)
+   (bytes :initarg :bytes :reader mceliece-key-bytes)))
+
+(defclass mceliece-public-key (mceliece-key)
+  ())
+
+(defclass mceliece-private-key (mceliece-key)
+  ())
+
+(defclass mceliece348864-public-key (mceliece-public-key)
+  ())
+
+(defclass mceliece348864-private-key (mceliece-private-key)
+  ())
+
+(defun mce-check-bytes (bytes length kind)
+  (unless (and (typep bytes '(simple-array (unsigned-byte 8) (*)))
+               (= (length bytes) length))
+    (error 'missing-key-parameter
+           :kind kind
+           :parameter 'bytes
+           :description "McEliece key bytes"))
+  (copy-seq bytes))
+
+(defmethod make-public-key ((kind (eql :mceliece348864)) &key bytes
+                            &allow-other-keys)
+  (make-instance 'mceliece348864-public-key :kind kind
+                                            :bytes (mce-check-bytes bytes
+                                                                    +mce-pk-bytes+
+                                                                    kind)))
+
+(defmethod make-private-key ((kind (eql :mceliece348864)) &key bytes
+                             &allow-other-keys)
+  (make-instance 'mceliece348864-private-key :kind kind
+                                              :bytes (mce-check-bytes bytes
+                                                                      +mce-sk-bytes+
+                                                                      kind)))
+
+(defmethod generate-key-pair ((kind (eql :mceliece348864)) &key
+                              &allow-other-keys)
+  (multiple-value-bind (pk sk)
+      (mce-keypair-from-seed (random-data 32))
+    (values (make-private-key kind :bytes sk)
+            (make-public-key kind :bytes pk))))
+
+(defmethod destructure-public-key ((public-key mceliece-public-key))
+  (list :bytes (copy-seq (mceliece-key-bytes public-key))))
+
+(defmethod destructure-private-key ((private-key mceliece-private-key))
+  (list :bytes (copy-seq (mceliece-key-bytes private-key))))
+
+(defmethod encapsulate-key ((public-key mceliece348864-public-key))
+  (let ((e (make-array 436 :element-type '(unsigned-byte 8)
+                                 :initial-element 0)))
+    (mce-gen-e e (lambda (k) (random-data k)))
+    (mce-encaps-from-error e (mceliece-key-bytes public-key))))
+
+(defmethod decapsulate-key ((private-key mceliece348864-private-key) ciphertext)
+  (unless (and (typep ciphertext '(simple-array (unsigned-byte 8) (*)))
+               (= (length ciphertext) +mce-ct-bytes+))
+    (error 'invalid-message-length :kind (mceliece-key-kind private-key)))
+  (mce-decapsulate ciphertext (mceliece-key-bytes private-key)))

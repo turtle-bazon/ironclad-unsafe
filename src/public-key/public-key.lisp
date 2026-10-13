@@ -8,7 +8,7 @@
   (copy-list '(:curve25519 :curve448 :dsa :ecdsa :ed25519 :ed448 :elgamal
                :ml-dsa-44 :ml-dsa-65 :ml-dsa-87
                :ml-kem-512 :ml-kem-768 :ml-kem-1024
-               :rsa :falcon-512 :falcon-1024 :slh-dsa-sha2-128s :slh-dsa-sha2-128f :slh-dsa-sha2-192s :slh-dsa-sha2-192f :slh-dsa-sha2-256s :slh-dsa-sha2-256f :slh-dsa-shake-128s :slh-dsa-shake-128f :slh-dsa-shake-192s :slh-dsa-shake-192f :slh-dsa-shake-256s :slh-dsa-shake-256f :secp224r1 :secp256k1 :secp256r1 :secp384r1 :secp521r1
+               :rsa :falcon-512 :falcon-1024 :slh-dsa-sha2-128s :slh-dsa-sha2-128f :slh-dsa-sha2-192s :slh-dsa-sha2-192f :slh-dsa-sha2-256s :slh-dsa-sha2-256f :slh-dsa-shake-128s :slh-dsa-shake-128f :slh-dsa-shake-192s :slh-dsa-shake-192f :slh-dsa-shake-256s :slh-dsa-shake-256f :mceliece348864 :secp224r1 :secp256k1 :secp256r1 :secp384r1 :secp521r1
                :p-224 :p-256 :prime256v1 :p-384 :p-521 :x-wing)))
 
 

@@ -127,6 +127,7 @@
    #:ml-dsa-87-public-key #:ml-dsa-87-private-key
    #:ml-dsa-key-bytes
    #:x-wing-public-key #:x-wing-private-key #:x-wing-key-bytes
+   #:mceliece348864-public-key #:mceliece348864-private-key #:mceliece-key-bytes
 
    ;; HPKE (RFC 9180)
    #:hpke-derive-keypair #:hpke-setup-sender #:hpke-setup-recipient
