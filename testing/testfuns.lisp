@@ -812,6 +812,27 @@
       (when (equalp (ironclad:decapsulate-key sk bad) ss)
         (error "ML-KEM tampered ciphertext accepted for ~A" name)))))
 
+(defun mceliece-test (file kind name pk-bytes sk-bytes ct ss)
+  (declare (ignore file))
+  (let ((pk (ironclad:make-public-key kind :bytes pk-bytes))
+        (sk (ironclad:make-private-key kind :bytes sk-bytes)))
+    ;; KAT: decapsulation of the reference ciphertext reproduces
+    ;; the reference shared secret.
+    (unless (equalp (ironclad:decapsulate-key sk ct) ss)
+      (error "McEliece decapsulation failed for ~A" name))
+    ;; Roundtrip with fresh randomness.
+    (multiple-value-bind (ct2 ss2) (ironclad:encapsulate-key pk)
+      (unless (and (= (length ct2) (length ct))
+                   (= (length ss2) 32)
+                   (equalp (ironclad:decapsulate-key sk ct2) ss2))
+        (error "McEliece roundtrip failed for ~A" name)))
+    ;; A tampered ciphertext must decapsulate to a different secret
+    ;; (implicit rejection), never the real one.
+    (let ((bad (copy-seq ct)))
+      (setf (aref bad 0) (logxor (aref bad 0) 1))
+      (when (equalp (ironclad:decapsulate-key sk bad) ss)
+        (error "McEliece tampered ciphertext accepted for ~A" name)))))
+
 (defun ml-dsa-test (file kind name pk-bytes sk-bytes sig msg)
   (declare (ignore file))
   (let ((pk (ironclad:make-public-key kind :bytes pk-bytes))
@@ -1014,6 +1035,7 @@
         (cons :elgamal-encryption-test 'elgamal-encryption-test)
         (cons :ecies-test 'ecies-test)
         (cons :ml-kem-test 'ml-kem-test)
+        (cons :mceliece-test 'mceliece-test)
         (cons :x-wing-test 'x-wing-test)))
 
 (defparameter *public-key-signature-tests*

@@ -469,6 +469,7 @@
                                            (:test-vector-file "ecdsa-sig")
                                            (:test-vector-file "ecies")
                                            (:test-vector-file "ml-kem")
+                                           (:test-vector-file "mceliece")
                                            (:test-vector-file "x-wing")
                                            (:test-vector-file "hpke")
                                            (:test-vector-file "ml-dsa")
