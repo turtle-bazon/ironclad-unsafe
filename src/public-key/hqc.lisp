@@ -1,0 +1,550 @@
+;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
+;;;; hqc.lisp -- HQC KEM family (hqc-128/192/256).
+;;;;
+;;;; Direct translation of the PQClean clean implementations:
+;;;; quasi-cyclic codes with concatenated Reed-Muller/Reed-Solomon codec.
+
+(in-package :crypto)
+
+
+;;; m_val tables for fixed-weight sampling.
+;;;
+
+(defparameter +hqc-m-val-128+
+  #(
+    243079 243093 243106 243120 243134 243148 243161 243175
+    243189 243203 243216 243230 243244 243258 243272 243285
+    243299 243313 243327 243340 243354 243368 243382 243396
+    243409 243423 243437 243451 243465 243478 243492 243506
+    243520 243534 243547 243561 243575 243589 243603 243616
+    243630 243644 243658 243672 243686 243699 243713 243727
+    243741 243755 243769 243782 243796 243810 243824 243838
+    243852 243865 243879 243893 243907 243921 243935 243949
+    243962 243976 243990 244004 244018 244032 244046 244059
+    244073 244087 244101
+    ))
+
+(defparameter +hqc-m-val-192+
+  #(
+    119800 119803 119807 119810 119813 119817 119820 119823
+    119827 119830 119833 119837 119840 119843 119847 119850
+    119853 119857 119860 119864 119867 119870 119874 119877
+    119880 119884 119887 119890 119894 119897 119900 119904
+    119907 119910 119914 119917 119920 119924 119927 119930
+    119934 119937 119941 119944 119947 119951 119954 119957
+    119961 119964 119967 119971 119974 119977 119981 119984
+    119987 119991 119994 119997 120001 120004 120008 120011
+    120014 120018 120021 120024 120028 120031 120034 120038
+    120041 120044 120048 120051 120054 120058 120061 120065
+    120068 120071 120075 120078 120081 120085 120088 120091
+    120095 120098 120101 120105 120108 120112 120115 120118
+    120122 120125 120128 120132 120135 120138 120142 120145
+    120149 120152 120155 120159 120162 120165 120169 120172
+    120175 120179
+    ))
+
+(defparameter +hqc-m-val-256+
+  #(
+    74517 74518 74520 74521 74522 74524 74525 74526
+    74527 74529 74530 74531 74533 74534 74535 74536
+    74538 74539 74540 74542 74543 74544 74545 74547
+    74548 74549 74551 74552 74553 74555 74556 74557
+    74558 74560 74561 74562 74564 74565 74566 74567
+    74569 74570 74571 74573 74574 74575 74577 74578
+    74579 74580 74582 74583 74584 74586 74587 74588
+    74590 74591 74592 74593 74595 74596 74597 74599
+    74600 74601 74602 74604 74605 74606 74608 74609
+    74610 74612 74613 74614 74615 74617 74618 74619
+    74621 74622 74623 74625 74626 74627 74628 74630
+    74631 74632 74634 74635 74636 74637 74639 74640
+    74641 74643 74644 74645 74647 74648 74649 74650
+    74652 74653 74654 74656 74657 74658 74660 74661
+    74662 74663 74665 74666 74667 74669 74670 74671
+    74673 74674 74675 74676 74678 74679 74680 74682
+    74683 74684 74685 74687 74688 74689 74691 74692
+    74693 74695 74696 74697 74698 74700 74701 74702
+    74704 74705 74706 74708 74709
+    ))
+
+
+;;;
+;;; Parameters: one struct per set, selected via *HQC-PARAMS*.
+;;;
+
+(defstruct hqc-params
+  kind n n1 n2 n1n2 omega omega-e omega-r m k g fft delta
+  red-mask seed-bytes salt-bytes ss-bytes sk-bytes pk-bytes ct-bytes
+  vec-n-bytes vec-k-bytes vec-n1-bytes vec-n1n2-bytes
+  vec-n-64 vec-n1-64 vec-n1n2-64 multiplicity
+  rs-poly m-val)
+
+(defparameter +hqc-128-params+
+  (make-hqc-params :kind :hqc-128 :n 17669 :n1 46 :n2 384 :n1n2 17664
+                   :omega 66 :omega-e 75 :omega-r 75 :m 8 :k 16 :g 31
+                   :fft 4 :delta 15 :red-mask #x1F
+                   :seed-bytes 40 :salt-bytes 16 :ss-bytes 64
+                   :sk-bytes 2305 :pk-bytes 2249 :ct-bytes 4433
+                   :vec-n-bytes 2209 :vec-k-bytes 16 :vec-n1-bytes 46
+                   :vec-n1n2-bytes 2208 :vec-n-64 277 :vec-n1-64 6
+                   :vec-n1n2-64 276 :multiplicity 3
+                   :rs-poly #(                              89 69 153 116 176 117 111 75 73 233 242 233 65
+                              210 21 139 103 173 67 118 105 210 174 110 74 69
+                              228 82 255 181 1)
+                   :m-val +hqc-m-val-128+))
+
+(defparameter +hqc-192-params+
+  (make-hqc-params :kind :hqc-192 :n 35851 :n1 56 :n2 640 :n1n2 35840
+                   :omega 100 :omega-e 114 :omega-r 114 :m 8 :k 24 :g 33
+                   :fft 5 :delta 16 :red-mask #x7FF
+                   :seed-bytes 40 :salt-bytes 16 :ss-bytes 64
+                   :sk-bytes 4586 :pk-bytes 4522 :ct-bytes 8978
+                   :vec-n-bytes 4482 :vec-k-bytes 24 :vec-n1-bytes 56
+                   :vec-n1n2-bytes 4480 :vec-n-64 561 :vec-n1-64 7
+                   :vec-n1n2-64 560 :multiplicity 5
+                   :rs-poly #(                              45 216 239 24 253 104 27 40 107 50 163 210 227
+                              134 224 158 119 13 158 1 238 164 82 43 15 232
+                              246 142 50 189 29 232 1)
+                   :m-val +hqc-m-val-192+))
+
+(defparameter +hqc-256-params+
+  (make-hqc-params :kind :hqc-256 :n 57637 :n1 90 :n2 640 :n1n2 57600
+                   :omega 131 :omega-e 149 :omega-r 149 :m 8 :k 32 :g 59
+                   :fft 5 :delta 29 :red-mask #x1FFFFFFFFF
+                   :seed-bytes 40 :salt-bytes 16 :ss-bytes 64
+                   :sk-bytes 7317 :pk-bytes 7245 :ct-bytes 14421
+                   :vec-n-bytes 7205 :vec-k-bytes 32 :vec-n1-bytes 90
+                   :vec-n1n2-bytes 7200 :vec-n-64 901 :vec-n1-64 12
+                   :vec-n1n2-64 900 :multiplicity 5
+                   :rs-poly #(                              49 167 49 39 200 121 124 91 240 63 148 71 150
+                              123 87 101 32 215 159 71 201 115 97 210 186 183
+                              141 217 123 12 31 243 180 219 152 239 99 141 4
+                              246 191 144 8 232 47 27 141 178 130 64 124 47
+                              39 188 216 48 199 187 1)
+                   :m-val +hqc-m-val-256+))
+
+(defparameter *hqc-params* +hqc-128-params+)
+
+(defun hqc-params-for-kind (kind)
+  (case kind
+    (:hqc-128 +hqc-128-params+)
+    (:hqc-192 +hqc-192-params+)
+    (:hqc-256 +hqc-256-params+)
+    (otherwise (error "unknown HQC kind ~A" kind))))
+
+(declaim (inline hqc-n hqc-n1 hqc-n2 hqc-n1n2 hqc-omega hqc-omega-e hqc-omega-r
+                 hqc-gf-m hqc-k hqc-gg hqc-fft hqc-delta hqc-red-mask
+                 hqc-seed-bytes hqc-salt-bytes hqc-ss-bytes hqc-sk-bytes
+                 hqc-pk-bytes hqc-ct-bytes hqc-vec-n-bytes hqc-vec-k-bytes
+                 hqc-vec-n1-bytes hqc-vec-n1n2-bytes hqc-vec-n-64
+                 hqc-vec-n1-64 hqc-vec-n1n2-64 hqc-multiplicity
+                 hqc-rs-poly hqc-m-val))
+
+(defun hqc-n () (hqc-params-n *hqc-params*))
+(defun hqc-n1 () (hqc-params-n1 *hqc-params*))
+(defun hqc-n2 () (hqc-params-n2 *hqc-params*))
+(defun hqc-n1n2 () (hqc-params-n1n2 *hqc-params*))
+(defun hqc-omega () (hqc-params-omega *hqc-params*))
+(defun hqc-omega-e () (hqc-params-omega-e *hqc-params*))
+(defun hqc-omega-r () (hqc-params-omega-r *hqc-params*))
+(defun hqc-gf-m () (hqc-params-m *hqc-params*))
+(defun hqc-k () (hqc-params-k *hqc-params*))
+(defun hqc-gg () (hqc-params-g *hqc-params*))
+(defun hqc-fft () (hqc-params-fft *hqc-params*))
+(defun hqc-delta () (hqc-params-delta *hqc-params*))
+(defun hqc-red-mask () (hqc-params-red-mask *hqc-params*))
+(defun hqc-seed-bytes () (hqc-params-seed-bytes *hqc-params*))
+(defun hqc-salt-bytes () (hqc-params-salt-bytes *hqc-params*))
+(defun hqc-ss-bytes () (hqc-params-ss-bytes *hqc-params*))
+(defun hqc-sk-bytes () (hqc-params-sk-bytes *hqc-params*))
+(defun hqc-pk-bytes () (hqc-params-pk-bytes *hqc-params*))
+(defun hqc-ct-bytes () (hqc-params-ct-bytes *hqc-params*))
+(defun hqc-vec-n-bytes () (hqc-params-vec-n-bytes *hqc-params*))
+(defun hqc-vec-k-bytes () (hqc-params-vec-k-bytes *hqc-params*))
+(defun hqc-vec-n1-bytes () (hqc-params-vec-n1-bytes *hqc-params*))
+(defun hqc-vec-n1n2-bytes () (hqc-params-vec-n1n2-bytes *hqc-params*))
+(defun hqc-vec-n-64 () (hqc-params-vec-n-64 *hqc-params*))
+(defun hqc-vec-n1-64 () (hqc-params-vec-n1-64 *hqc-params*))
+(defun hqc-vec-n1n2-64 () (hqc-params-vec-n1n2-64 *hqc-params*))
+(defun hqc-multiplicity () (hqc-params-multiplicity *hqc-params*))
+(defun hqc-rs-poly () (hqc-params-rs-poly *hqc-params*))
+(defun hqc-m-val () (hqc-params-m-val *hqc-params*))
+
+
+;;;
+;;; GF(256) = GF(2)[x]/(x^8 + x^4 + x^3 + x + 1).
+;;;
+
+(declaim (inline hqc-gf-add))
+(defun hqc-gf-add (a b)
+  (logxor a b))
+
+(defun hqc-gf-reduce (x deg-x)
+  "Reduce X (degree < 64) modulo the primitive polynomial."
+  (let ((steps (ceiling (- deg-x 7) 4)))
+    (dotimes (i steps)
+      (let ((mod (ash x -8)))
+        (setf x (logand x #xFF))
+        (setf x (logxor x mod))
+        (let ((z1 0)
+              (rmdr (logxor #x11D 1)))
+          (loop for j from 3 downto 1
+                do (let* ((z2 (hqc-tzcount rmdr))
+                          (dist (- z2 z1)))
+                     (setf mod (ash mod dist))
+                     (setf x (logxor x mod))
+                     (setf rmdr (logxor rmdr (ash 1 z2)))
+                     (setf z1 z2)))))))
+  (logand x #xFFFF))
+
+(defun hqc-tzcount (a)
+  (let ((tmp 0)
+        (mask #xFFFF))
+    (dotimes (i 14)
+      (let ((bit (logand (ash a (- i)) 1)))
+        (setf tmp (+ tmp (logand (- 1 bit) mask)))
+        (setf mask (logand mask (- (- 1 bit))))))
+    tmp))
+
+(declaim (inline hqc-u32-eq-mask))
+(defun hqc-u32-eq-mask (a b)
+  "All-ones (32-bit) iff A equals B; mirrors (0 - (1 - (((a-b)|(-(a-b)))>>31)))."
+  (let* ((d (logand (- a b) #xFFFFFFFF))
+         (s (ldb (byte 1 31) (logior d (logand (- d) #xFFFFFFFF)))))
+    (if (zerop s) #xFFFFFFFF 0)))
+
+(defun hqc-gf-cmul (a b)
+  "Carryless multiply of bytes A B; returns (low high)."
+  (let ((h 0) (l 0) (g 0)
+        (u (make-array 4 :initial-element 0))
+        (tmp1 0) (mask 0))
+    (setf (aref u 0) 0
+          (aref u 1) (logand b #x7F)
+          (aref u 2) (ash (aref u 1) 1)
+          (aref u 3) (logxor (aref u 2) (aref u 1)))
+    (setf tmp1 (logand a 3))
+    (dotimes (i 4)
+      (setf g (logxor g (logand (aref u i) (hqc-u32-eq-mask tmp1 i)))))
+    (setf l g h 0)
+    (loop for i from 2 below 8 by 2
+          do (setf g 0
+                   tmp1 (logand (ash a (- i)) 3))
+             (dotimes (j 4)
+               (setf g (logxor g (logand (aref u j) (hqc-u32-eq-mask tmp1 j)))))
+             (setf l (logxor l (ash g i)))
+             (setf h (logxor h (ash g (- i 8)))))
+    (setf mask (if (zerop (logand (ash b -7) 1)) 0 #xFFFFFFFF))
+    (setf l (logxor l (logand (ash a 7) mask)))
+    (setf h (logxor h (logand (ash a -1) mask)))
+    (values (logand l #xFF) (logand h #xFF))))
+
+(defun hqc-gf-mul (a b)
+  (multiple-value-bind (lo hi) (hqc-gf-cmul a b)
+    (hqc-gf-reduce (logior lo (ash hi 8)) 14)))
+
+(defun hqc-gf-square (a)
+  (let ((b a)
+        (s (logand a 1)))
+    (dotimes (i 7)
+      (setf b (ash b 1))
+      (setf s (logxor s (logand b (ash 1 (* 2 (1+ i)))))))
+    (hqc-gf-reduce s 14)))
+
+(defun hqc-gf-inv (a)
+  (let* ((inv (hqc-gf-square a))
+         (tmp1 (hqc-gf-mul inv a)))
+    (setf inv (hqc-gf-square inv))
+    (let ((tmp2 (hqc-gf-mul inv tmp1)))
+      (setf tmp1 (hqc-gf-mul inv tmp2))
+      (setf inv (hqc-gf-mul tmp1 inv))
+      (setf inv (hqc-gf-square inv))
+      (setf inv (hqc-gf-square inv))
+      (setf inv (hqc-gf-square inv))
+      (setf inv (hqc-gf-mul inv tmp2))
+      (setf inv (hqc-gf-square inv))
+      inv)))
+
+
+;;;
+;;; u64 vectors: allocation, loads, basic ops.
+;;;
+
+(declaim (inline hqc-u64vec))
+(defun hqc-u64vec (n)
+  (make-array n :element-type '(unsigned-byte 64) :initial-element 0))
+
+(defun hqc-vec-add (o v1 v2 size)
+  (dotimes (i size o)
+    (setf (aref o i) (logxor (aref v1 i) (aref v2 i)))))
+
+(defun hqc-vec-compare (v1 v2 size-bytes)
+  "0 if equal over SIZE-BYTES, 1 otherwise."
+  (let ((r #x100))
+    (dotimes (i size-bytes)
+      (setf r (logior r (logxor (aref v1 i) (aref v2 i)))))
+    (ash (1- r) -8)))
+
+(defun hqc-load8-arr (out64 outlen in8 inlen)
+  (let ((index-in 0)
+        (index-out 0))
+    (when (and (>= inlen 8) (>= outlen 1))
+      (loop while (and (< index-out outlen) (<= (+ index-in 8) inlen))
+            do (setf (aref out64 index-out) (mce-load8 in8 index-in))
+               (incf index-in 8)
+               (incf index-out)))
+    (when (or (>= index-in inlen) (>= index-out outlen))
+      (return-from hqc-load8-arr (values)))
+    (setf (aref out64 index-out) (aref in8 (1- inlen)))
+    (loop for i from (- (- inlen index-in) 2) downto 0
+          do (setf (aref out64 index-out)
+                   (logior (ash (aref out64 index-out) 8)
+                           (aref in8 (+ index-in i)))))
+    (values)))
+
+(defun hqc-store8-arr (out8 outlen in64 inlen)
+  (let ((index-out 0)
+        (index-in 0))
+    (loop while (and (< index-out outlen) (< index-in inlen)
+          do (setf (aref out8 index-out)
+                   (ldb (byte 8 (* (mod index-out 8) 8)) (aref in64 index-in)))
+             (incf index-out)
+             (when (zerop (mod index-out 8))
+               (incf index-in))))
+    (values)))
+
+(defun hqc-vec-resize (o size-o v size-v)
+  (let ((mask #x7FFFFFFFFFFFFFFF)
+        (val 0))
+    (if (< size-o size-v)
+        (progn
+          (unless (zerop (mod size-o 64))
+            (setf val (- 64 (mod size-o 64))))
+          (let ((nwords (truncate (hqc-vec-n1n2-bytes) 8)))
+            (dotimes (i nwords)
+              (setf (aref o i) (aref v i))))
+          (dotimes (i val)
+            (setf mask (ash mask -1))
+            (setf (aref o (1- (hqc-vec-n1n2-64)))
+                  (logand (aref o (1- (hqc-vec-n1n2-64))) mask))))
+        (let ((nwords (ceiling size-v 64)))
+          (dotimes (i nwords)
+            (setf (aref o i) (aref v i)))))
+    (values)))
+
+
+;;;
+;;; SHAKE-256 seed expander (incremental squeeze via re-production).
+;;;
+
+(defstruct hqc-seedexpander
+  (seed #() :type (simple-array (unsigned-byte 8) (*)))
+  (done 0 :type fixnum))
+
+(defun hqc-shake256 (input output-length)
+  (let ((d (make-digest :shake256 :output-length output-length)))
+    (update-digest d input)
+    (produce-digest d)))
+
+(defun hqc-seedexpander-init (seed)
+  (let ((with-domain (make-array (1+ (length seed)) :element-type '(unsigned-byte 8))))
+    (replace with-domain seed)
+    (setf (aref with-domain (length seed)) 2)
+    (make-hqc-seedexpander :seed with-domain :done 0)))
+
+(defun hqc-seedexpander-squeeze (expander outlen)
+  "Squeeze OUTLEN fresh bytes, advancing the stream.
+Mirrors the reference: partial 8-byte blocks are fully consumed."
+  (let* ((done (hqc-seedexpander-done expander))
+         (rem (mod outlen 8))
+         (consumed (if (zerop rem) outlen (+ outlen (- 8 rem))))
+         (full (hqc-shake256 (hqc-seedexpander-seed expander) (+ done outlen)))
+         (out (make-array outlen :element-type '(unsigned-byte 8))))
+    (replace out full :start2 done)
+    (setf (hqc-seedexpander-done expander) (+ done consumed))
+    out))
+
+(defun hqc-shake256-512-ds (input domain)
+  "One-shot SHAKE-256(input || domain) to 64 bytes."
+  (let ((in (make-array (1+ (length input)) :element-type '(unsigned-byte 8))))
+    (replace in input)
+    (setf (aref in (length input)) domain)
+    (hqc-shake256 in 64)))
+
+
+;;;
+;;; Fixed-weight vector sampling.
+;;;
+
+(declaim (inline hqc-u32))
+(defun hqc-u32 (x)
+  (logand x #xFFFFFFFF))
+
+(defun hqc-cond-sub (r n)
+  (let ((rr (hqc-u32 (- r n))))
+    (if (zerop (ldb (byte 1 31) rr))
+        rr
+        (hqc-u32 (+ rr n)))))
+
+(defun hqc-support-reduce (a i)
+  (let* ((m (aref (hqc-m-val) i))
+         (q (ash (* a m) -32))
+         (n (- (hqc-n) i))
+         (r (- a (* q n))))
+    (hqc-cond-sub (hqc-u32 r) n)))
+
+(defun hqc-vec-set-random-fixed-weight (expander v weight)
+  (let* ((rand-bytes (hqc-seedexpander-squeeze expander (* 4 weight)))
+         (support (make-array weight :element-type '(unsigned-byte 32)
+                                       :initial-element 0))
+         (index-tab (make-array weight :element-type 'fixnum :initial-element 0))
+         (bit-tab (make-array weight :element-type '(unsigned-byte 64)
+                                        :initial-element 0)))
+    (dotimes (i weight)
+      (let ((w (logior (aref rand-bytes (* 4 i))
+                       (ash (aref rand-bytes (+ (* 4 i) 1)) 8)
+                       (ash (aref rand-bytes (+ (* 4 i) 2)) 16)
+                       (ash (aref rand-bytes (+ (* 4 i) 3)) 24))))
+        (setf (aref support i) (hqc-u32 (+ i (hqc-support-reduce w i))))))
+    (loop for i from (- weight 2) downto 0
+          do (let ((found nil))
+               (loop for j from (1+ i) below weight
+                     do (when (= (aref support j) (aref support i))
+                          (setf found t)))
+               (when found
+                 (setf (aref support i) i))))
+    (dotimes (i weight)
+      (setf (aref index-tab i) (ash (aref support i) -6))
+      (setf (aref bit-tab i) (ash 1 (logand (aref support i) #x3F))))
+    (dotimes (i (hqc-vec-n-64))
+      (setf (aref v i) 0))
+    (dotimes (i (hqc-vec-n-64))
+      (let ((val 0))
+        (dotimes (j weight)
+          (when (= i (aref index-tab j))
+            (setf val (logior val (aref bit-tab j)))))
+        (setf (aref v i) (logior (aref v i) val))))
+    (values)))
+
+(defun hqc-vec-set-random (expander v)
+  (let* ((nbytes (hqc-vec-n-bytes))
+         (rand-bytes (hqc-seedexpander-squeeze expander nbytes))
+         (n64 (hqc-vec-n-64)))
+    (hqc-load8-arr v n64 rand-bytes nbytes)
+    (setf (aref v (1- n64)) (logand (aref v (1- n64)) (hqc-red-mask)))
+    (values)))
+
+
+;;;
+;;; GF(2)[x] Karatsuba multiply + reduce mod x^n - 1.
+;;;
+
+(defun hqc-base-mul (c a b)
+  "Carryless 64x64 -> 128-bit product into C[0..1]."
+  (let ((h 0) (l 0) (g 0)
+        (u (make-array 16 :initial-element 0))
+        (tmp1 0) (tmp2 0)
+        (mask-tab (make-array 4 :initial-element 0)))
+    (setf (aref u 0) 0
+          (aref u 1) (logand b (1- (ash 1 (- 64 4)))))
+    (setf (aref u 2) (ash (aref u 1) 1))
+    (setf (aref u 3) (logxor (aref u 2) (aref u 1)))
+    (setf (aref u 4) (ash (aref u 2) 1))
+    (setf (aref u 5) (logxor (aref u 4) (aref u 1)))
+    (setf (aref u 6) (ash (aref u 3) 1))
+    (setf (aref u 7) (logxor (aref u 6) (aref u 1)))
+    (setf (aref u 8) (ash (aref u 4) 1))
+    (setf (aref u 9) (logxor (aref u 8) (aref u 1)))
+    (setf (aref u 10) (ash (aref u 5) 1))
+    (setf (aref u 11) (logxor (aref u 10) (aref u 1)))
+    (setf (aref u 12) (ash (aref u 6) 1))
+    (setf (aref u 13) (logxor (aref u 12) (aref u 1)))
+    (setf (aref u 14) (ash (aref u 7) 1))
+    (setf (aref u 15) (logxor (aref u 14) (aref u 1)))
+    (setf g 0
+          tmp1 (logand a #xF))
+    (dotimes (i 16)
+      (setf tmp2 (hqc-u32 (- tmp1 i)))
+      (setf g (logxor g (logand (aref u i) (hqc-u32-eq-mask tmp1 i)))))
+    (setf l (logand g #xFFFFFFFFFFFFFFFF) h 0)
+    (loop for i from 4 below 64 by 4
+          do (setf g 0
+                   tmp1 (logand (ash a (- i)) #xF))
+             (dotimes (j 16)
+               (setf tmp2 (hqc-u32 (- tmp1 j)))
+               (setf g (logxor g (logand (aref u j) (hqc-u32-eq-mask tmp1 j)))))
+             (setf l (logand (logxor l (ash g i)) #xFFFFFFFFFFFFFFFF))
+             (setf h (logand (logxor h (ash g (- i 64))) #xFFFFFFFFFFFFFFFF)))
+    (setf (aref mask-tab 0) (if (zerop (logand (ash b -60) 1)) 0 #xFFFFFFFFFFFFFFFF))
+    (setf (aref mask-tab 1) (if (zerop (logand (ash b -61) 1)) 0 #xFFFFFFFFFFFFFFFF))
+    (setf (aref mask-tab 2) (if (zerop (logand (ash b -62) 1)) 0 #xFFFFFFFFFFFFFFFF))
+    (setf (aref mask-tab 3) (if (zerop (logand (ash b -63) 1)) 0 #xFFFFFFFFFFFFFFFF))
+    (setf l (logand (logxor l (logand (ash a 60) (aref mask-tab 0))) #xFFFFFFFFFFFFFFFF))
+    (setf h (logand (logxor h (ash (logand (ash a -4) (aref mask-tab 0)) 0)) #xFFFFFFFFFFFFFFFF))
+    (setf l (logand (logxor l (logand (ash a 61) (aref mask-tab 1))) #xFFFFFFFFFFFFFFFF))
+    (setf h (logand (logxor h (ash (logand (ash a -3) (aref mask-tab 1)) 0)) #xFFFFFFFFFFFFFFFF))
+    (setf l (logand (logxor l (logand (ash a 62) (aref mask-tab 2))) #xFFFFFFFFFFFFFFFF))
+    (setf h (logand (logxor h (ash (logand (ash a -2) (aref mask-tab 2)) 0)) #xFFFFFFFFFFFFFFFF))
+    (setf l (logand (logxor l (logand (ash a 63) (aref mask-tab 3))) #xFFFFFFFFFFFFFFFF))
+    (setf h (logand (logxor h (ash (logand (ash a -1) (aref mask-tab 3)) 0)) #xFFFFFFFFFFFFFFFF))
+    (setf (aref c 0) l
+          (aref c 1) h)
+    (values)))
+
+(defun hqc-karatsuba-add1 (alh blh a b size-l size-h)
+  (dotimes (i size-h)
+    (setf (aref alh i) (logxor (aref a i) (aref a (+ i size-l))))
+    (setf (aref blh i) (logxor (aref b i) (aref b (+ i size-l)))))
+  (when (< size-h size-l)
+    (setf (aref alh size-h) (aref a size-h))
+    (setf (aref blh size-h) (aref b size-h)))
+  (values))
+
+(defun hqc-karatsuba-add2 (o tmp1 tmp2 size-l size-h)
+  (dotimes (i (* 2 size-l))
+    (setf (aref tmp1 i) (logxor (aref tmp1 i) (aref o i))))
+  (dotimes (i (* 2 size-h))
+    (setf (aref tmp1 i) (logxor (aref tmp1 i) (aref tmp2 i))))
+  (dotimes (i (* 2 size-l))
+    (setf (aref o (+ i size-l)) (logxor (aref o (+ i size-l)) (aref tmp1 i))))
+  (values))
+
+(defun hqc-karatsuba (o a b size)
+  (if (= size 1)
+      (let ((c (hqc-u64vec 2)))
+        (hqc-base-mul c (aref a 0) (aref b 0))
+        (setf (aref o 0) (aref c 0)
+              (aref o 1) (aref c 1))
+        (values))
+      (let* ((size-h (truncate size 2))
+             (size-l (truncate (1+ size) 2))
+             (alh (hqc-u64vec (1+ size-l)))
+             (blh (hqc-u64vec (1+ size-l)))
+             (tmp1 (hqc-u64vec (* 2 size-l)))
+             (ah (make-array size-h :element-type '(unsigned-byte 64)
+                                        :displaced-to a :displaced-index-offset size-l))
+             (bh (make-array size-h :element-type '(unsigned-byte 64)
+                                        :displaced-to b :displaced-index-offset size-l))
+             (tmp2 (make-array (* 2 size-h) :element-type '(unsigned-byte 64)
+                                                  :displaced-to o :displaced-index-offset (* 2 size-l))))
+        (hqc-karatsuba o a b size-l)
+        (hqc-karatsuba tmp2 ah bh size-h)
+        (hqc-karatsuba-add1 alh blh a b size-l size-h)
+        (hqc-karatsuba tmp1 alh blh size-l)
+        (hqc-karatsuba-add2 o tmp1 tmp2 size-l size-h)
+        (values))))
+
+(defun hqc-vec-reduce (o a)
+  (let ((n64 (hqc-vec-n-64))
+        (rem (mod (hqc-n) 64)))
+    (dotimes (i n64)
+      (let ((r (ash (aref a (+ i n64 -1)) (- rem)))
+            (carry (logand (ash (aref a (+ i n64)) (- 64 rem)) #xFFFFFFFFFFFFFFFF)))
+        (setf (aref o i) (logxor (aref a i) r carry))))
+    (setf (aref o (1- n64)) (logand (aref o (1- n64)) (hqc-red-mask)))
+    (values)))
+
+(defun hqc-vec-mul (o v1 v2)
+  (let* ((n64 (hqc-vec-n-64))
+         (karat (hqc-u64vec (* 2 n64))))
+    (hqc-karatsuba karat v1 v2 n64)
+    (hqc-vec-reduce o karat)
+    (values)))
