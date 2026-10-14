@@ -205,12 +205,18 @@
         (setf mask (logand mask (- (- 1 bit))))))
     tmp))
 
-(declaim (inline hqc-u32-eq-mask))
+(declaim (inline hqc-u32-eq-mask hqc-u64-eq-mask))
 (defun hqc-u32-eq-mask (a b)
   "All-ones (32-bit) iff A equals B; mirrors (0 - (1 - (((a-b)|(-(a-b)))>>31)))."
   (let* ((d (logand (- a b) #xFFFFFFFF))
          (s (ldb (byte 1 31) (logior d (logand (- d) #xFFFFFFFF)))))
     (if (zerop s) #xFFFFFFFF 0)))
+
+(defun hqc-u64-eq-mask (a b)
+  "All-ones (64-bit) iff A equals B; mirrors the 64-bit mask idiom."
+  (let* ((d (logand (- a b) #xFFFFFFFFFFFFFFFF))
+         (s (ldb (byte 1 63) (logior d (logand (- d) #xFFFFFFFFFFFFFFFF)))))
+    (if (zerop s) #xFFFFFFFFFFFFFFFF 0)))
 
 (defun hqc-gf-cmul (a b)
   "Carryless multiply of bytes A B; returns (low high)."
@@ -218,16 +224,16 @@
         (u (make-array 4 :initial-element 0))
         (tmp1 0) (mask 0))
     (setf (aref u 0) 0
-          (aref u 1) (logand b #x7F)
+          (aref u 1) (logand b (1- (ash 1 60)))
           (aref u 2) (ash (aref u 1) 1)
           (aref u 3) (logxor (aref u 2) (aref u 1)))
-    (setf tmp1 (logand a 3))
+    (setf tmp1 (logand a #xF))
     (dotimes (i 4)
       (setf g (logxor g (logand (aref u i) (hqc-u32-eq-mask tmp1 i)))))
     (setf l g h 0)
     (loop for i from 2 below 8 by 2
           do (setf g 0
-                   tmp1 (logand (ash a (- i)) 3))
+                   tmp1 (logand (ash a (- i)) #xF))
              (dotimes (j 4)
                (setf g (logxor g (logand (aref u j) (hqc-u32-eq-mask tmp1 j)))))
              (setf l (logxor l (ash g i)))
@@ -463,14 +469,14 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
           tmp1 (logand a #xF))
     (dotimes (i 16)
       (setf tmp2 (hqc-u32 (- tmp1 i)))
-      (setf g (logxor g (logand (aref u i) (hqc-u32-eq-mask tmp1 i)))))
+      (setf g (logxor g (logand (aref u i) (hqc-u64-eq-mask tmp1 i)))))
     (setf l (logand g #xFFFFFFFFFFFFFFFF) h 0)
     (loop for i from 4 below 64 by 4
           do (setf g 0
                    tmp1 (logand (ash a (- i)) #xF))
              (dotimes (j 16)
                (setf tmp2 (hqc-u32 (- tmp1 j)))
-               (setf g (logxor g (logand (aref u j) (hqc-u32-eq-mask tmp1 j)))))
+               (setf g (logxor g (logand (aref u j) (hqc-u64-eq-mask tmp1 j)))))
              (setf l (logand (logxor l (ash g i)) #xFFFFFFFFFFFFFFFF))
              (setf h (logand (logxor h (ash g (- i 64))) #xFFFFFFFFFFFFFFFF)))
     (setf (aref mask-tab 0) (if (zerop (logand (ash b -60) 1)) 0 #xFFFFFFFFFFFFFFFF))
@@ -547,4 +553,92 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
          (karat (hqc-u64vec (* 2 n64))))
     (hqc-karatsuba karat v1 v2 n64)
     (hqc-vec-reduce o karat)
+    (values)))
+
+
+;;;
+;;; Reed-Muller RM(1,7) codec (duplicated).
+;;;
+
+(defun hqc-rm-encode-word (cword message)
+  (let ((first 0))
+    (setf first (logxor (if (logbitp 7 message) #xFFFFFFFF 0)
+                        (logand (if (logbitp 0 message) #xAAAAAAAA 0) #xFFFFFFFF)
+                        (logand (if (logbitp 1 message) #xCCCCCCCC 0) #xFFFFFFFF)
+                        (logand (if (logbitp 2 message) #xF0F0F0F0 0) #xFFFFFFFF)
+                        (logand (if (logbitp 3 message) #xFF00FF00 0) #xFFFFFFFF)
+                        (logand (if (logbitp 4 message) #xFFFF0000 0) #xFFFFFFFF)))
+    (setf first (logand first #xFFFFFFFF))
+    (setf (aref cword 0) first)
+    (setf first (logxor first (if (logbitp 5 message) #xFFFFFFFF 0)))
+    (setf (aref cword 0) (logior (aref cword 0) (ash (logand first #xFFFFFFFF) 32)))
+    (setf first (logxor first (if (logbitp 6 message) #xFFFFFFFF 0)))
+    (setf (aref cword 1) (logior (ash (logand first #xFFFFFFFF) 32) 0))
+    (setf first (logxor first (if (logbitp 5 message) #xFFFFFFFF 0)))
+    (setf (aref cword 1) (logior (aref cword 1) (logand first #xFFFFFFFF)))
+    (values)))
+
+(defun hqc-rm-hadamard (src dst)
+  (let ((p1 src) (p2 dst))
+    (dotimes (pass 7)
+      (dotimes (i 64)
+        (setf (aref p2 i) (+ (aref p1 (* 2 i)) (aref p1 (+ (* 2 i) 1))))
+        (setf (aref p2 (+ i 64)) (- (aref p1 (* 2 i)) (aref p1 (+ (* 2 i) 1)))))
+      (let ((p3 p1))
+        (setf p1 p2
+              p2 p3))))
+  (values))
+
+(defun hqc-rm-expand-and-sum (dest src mult)
+  (dotimes (part 2)
+    (dotimes (bit 64)
+      (setf (aref dest (+ (* part 64) bit))
+            (ldb (byte 1 bit) (aref src part)))))
+  (loop for copy from 1 below mult
+        do (dotimes (part 2)
+             (dotimes (bit 64)
+               (incf (aref dest (+ (* part 64) bit))
+                     (ldb (byte 1 bit) (aref src (+ (* 2 copy) part)))))))
+  (values))
+
+(defun hqc-rm-find-peaks (transform)
+  (let ((best-abs -1)
+        (best-pos 0)
+        (best-peak 0))
+    (dotimes (i 128)
+      (let* ((raw (aref transform i))
+             (tv (if (>= raw #x8000) (- raw #x10000) raw))
+             (av (abs tv)))
+        (when (> av best-abs)
+          (setf best-abs av
+                best-pos i
+                best-peak tv))))
+    (logior best-pos (if (minusp best-peak) 0 128))))
+
+(defun hqc-rm-encode (cdw msg)
+  (let ((mult (hqc-multiplicity))
+        (n1 (hqc-vec-n1-bytes)))
+    (dotimes (i n1)
+      (let ((w (hqc-u64vec 2)))
+        (hqc-rm-encode-word w (aref msg i))
+        (setf (aref cdw (* 2 i mult)) (aref w 0)
+              (aref cdw (+ (* 2 i mult) 1)) (aref w 1))
+        (loop for copy from 1 below mult
+              do (setf (aref cdw (+ (* 2 i mult) (* 2 copy))) (aref w 0)
+                       (aref cdw (+ (* 2 i mult) (* 2 copy) 1)) (aref w 1)))))
+    (values)))
+
+(defun hqc-rm-decode (msg cdw)
+  (let ((mult (hqc-multiplicity))
+        (n1 (hqc-vec-n1-bytes))
+        (expanded (make-array 128 :element-type 'fixnum :initial-element 0))
+        (transform (make-array 128 :element-type 'fixnum :initial-element 0)))
+    (dotimes (i n1)
+      (let ((src (make-array (* 2 mult) :element-type '(unsigned-byte 64))))
+        (dotimes (k (* 2 mult))
+          (setf (aref src k) (aref cdw (+ (* 2 i mult) k))))
+        (hqc-rm-expand-and-sum expanded src mult)
+        (hqc-rm-hadamard expanded transform)
+        (setf (aref transform 0) (- (aref transform 0) (* 64 mult)))
+        (setf (aref msg i) (hqc-rm-find-peaks transform))))
     (values)))
