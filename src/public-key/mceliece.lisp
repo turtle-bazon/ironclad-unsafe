@@ -888,12 +888,27 @@ PIV is permutation-sized scratch/output. Returns T on success, NIL on failure."
                            (dotimes (c (ash (mce-sys-n) -3))
                              (setf (aref rk c)
                                    (logxor (aref rk c) (aref rr c))))))))))))
-    (dotimes (i (mce-pk-nrows))
-      (let ((rr (aref rows i)))
-        (declare (type (simple-array (unsigned-byte 8) (*)) rr))
-        (dotimes (j (mce-pk-row-bytes))
-          (setf (aref pk (+ (* i (mce-pk-row-bytes)) j))
-                (aref rr (+ (truncate (mce-pk-nrows) 8) j))))))
+    (let ((tail (mod (mce-pk-nrows) 8))
+          (nbytes (ash (mce-sys-n) -3)))
+      (if (zerop tail)
+          (dotimes (i (mce-pk-nrows))
+            (let ((rr (aref rows i)))
+              (declare (type (simple-array (unsigned-byte 8) (*)) rr))
+              (dotimes (j (mce-pk-row-bytes))
+                (setf (aref pk (+ (* i (mce-pk-row-bytes)) j))
+                      (aref rr (+ (truncate (mce-pk-nrows) 8) j))))))
+          (let ((base (truncate (1- (mce-pk-nrows)) 8)))
+            (dotimes (i (mce-pk-nrows))
+              (let ((rr (aref rows i))
+                    (po (* i (mce-pk-row-bytes))))
+                (declare (type (simple-array (unsigned-byte 8) (*)) rr))
+                (loop for j from base below (1- nbytes)
+                      do (setf (aref pk po)
+                               (logand #xFF
+                                       (logior (ash (aref rr j) (- tail))
+                                               (ash (aref rr (1+ j)) (- 8 tail)))))
+                         (incf po))
+                (setf (aref pk po) (ash (aref rr (1- nbytes)) (- tail))))))))
     t))
 
 
@@ -992,6 +1007,12 @@ PIV is permutation-sized scratch/output. Returns T on success, NIL on failure."
       (replace row pk :start1 (- nbytes (mce-pk-row-bytes))
                          :start2 (* i (mce-pk-row-bytes))
                          :end2 (+ (* i (mce-pk-row-bytes)) (mce-pk-row-bytes)))
+      (loop for j from (1- nbytes) downto (- nbytes (mce-pk-row-bytes))
+            do (setf (aref row j)
+                     (logand #xFF
+                             (logior (ash (aref row j) (mod (mce-pk-nrows) 8))
+                                     (ash (aref row (1- j))
+                                          (- (mod (mce-pk-nrows) 8) 8))))))
       (let ((q (ash i -3)))
         (setf (aref row q) (logior (aref row q) (ash 1 (logand i 7)))))
       (let ((b 0))
@@ -1044,6 +1065,24 @@ PIV is permutation-sized scratch/output. Returns T on success, NIL on failure."
              (unless (= (aref s i) (aref s-cmp i))
                (return nil)))))))
 
+(defun mce-check-pk-padding (pk)
+  "T when pk row padding bits are all zero (vacuous if byte-aligned)."
+  (let ((rem (mod (- (mce-sys-n) (mce-pk-nrows)) 8)))
+    (if (zerop rem)
+        t
+        (let ((b 0)
+              (rb (mce-pk-row-bytes)))
+          (dotimes (i (mce-pk-nrows))
+            (setf b (logior b (aref pk (+ (* i rb) (1- rb))))))
+          (zerop (ash b (- rem)))))))
+
+(defun mce-check-c-padding (ct)
+  "T when ct padding bits are all zero (vacuous if byte-aligned)."
+  (let ((rem (mod (mce-pk-nrows) 8)))
+    (if (zerop rem)
+        t
+        (zerop (ash (aref ct (1- (mce-synd-bytes))) (- rem))))))
+
 (defun mce-encaps-from-error (e pk)
   "Deterministic encapsulation with error vector E; returns (ct ss)."
   (let* ((nbytes (ash (mce-sys-n) -3))
@@ -1056,7 +1095,11 @@ PIV is permutation-sized scratch/output. Returns T on success, NIL on failure."
       (setf (aref pre 0) 1)
       (replace pre e :start1 1)
       (replace pre ct :start1 (+ 1 nbytes))
-      (values ct (mce-shake256 pre 32)))))
+      (let ((ss (mce-shake256 pre 32)))
+        (unless (mce-check-pk-padding pk)
+          (fill ct 0)
+          (fill ss 0))
+        (values ct ss)))))
 
 (defun mce-decapsulate (ct sk)
   "Decapsulation with implicit rejection; returns 32-byte secret."
@@ -1072,7 +1115,10 @@ PIV is permutation-sized scratch/output. Returns T on success, NIL on failure."
         (progn (setf (aref pre 0) 0)
                (replace pre sk :start1 1 :start2 s-off :end2 (mce-sk-bytes))))
     (replace pre ct :start1 (+ 1 nbytes))
-    (mce-shake256 pre 32)))
+    (let ((ss (mce-shake256 pre 32)))
+      (unless (mce-check-c-padding ct)
+        (fill ss #xFF))
+      ss)))
 
 
 ;;;
