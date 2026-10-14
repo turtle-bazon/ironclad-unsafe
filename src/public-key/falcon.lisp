@@ -440,7 +440,24 @@
 
 (defun falcon-div-fft (a b)
   (let* ((n (length a)) (r (falcon-cvec n)))
-    (dotimes (i n r) (setf (aref r i) (/ (aref a i) (aref b i))))))
+    (dotimes (i n r) (setf (aref r i) (falcon-cdiv (aref a i) (aref b i))))))
+
+(declaim (inline falcon-cdiv))
+(defun falcon-cdiv (a b)
+  "Complex division replicating CPython's Smith algorithm op-for-op,
+so results are bit-identical to the reference."
+  (let* ((ar (realpart a)) (ai (imagpart a))
+         (br (realpart b)) (bi (imagpart b))
+         (abre (abs br)) (abim (abs bi)))
+    (if (>= abre abim)
+        (let* ((ratio (/ bi br))
+               (denom (+ br (* bi ratio))))
+          (complex (/ (+ ar (* ai ratio)) denom)
+                   (/ (- ai (* ar ratio)) denom)))
+        (let* ((ratio (/ br bi))
+               (denom (+ (* br ratio) bi)))
+          (complex (/ (+ (* ar ratio) ai) denom)
+                   (/ (- (* ai ratio) ar) denom))))))
 
 (defun falcon-adj-fft (a)
   (let* ((n (length a)) (r (falcon-cvec n)))
@@ -486,7 +503,8 @@
 (defconst +falcon-sampler-c+
   #(#x00000004741183A3 #x00000036548CFC06 #x0000024FDCBF140A #x0000171D939DE045
     #x0000D00CF58F6F84 #x000680681CF796E3 #x002D82D8305B0FEA #x011111110E066FD0
-    #x0555555555070F00 #x155555555581FF00 #x400000000002B400 #x7FFFFFFFFFFF4800))
+    #x0555555555070F00 #x155555555581FF00 #x400000000002B400 #x7FFFFFFFFFFF4800
+    #x8000000000000000))
 
 (defun falcon-basesampler (randbytes)
   (let ((u 0))
@@ -500,10 +518,10 @@
 
 (defun falcon-approxexp (x ccs)
   (let ((y (aref +falcon-sampler-c+ 0))
-        (z (floor (* x (ash 1 63)))))
+        (z (truncate (* x (ash 1 63)))))
     (dotimes (i (1- (length +falcon-sampler-c+)))
       (setf y (- (aref +falcon-sampler-c+ (+ i 1)) (ash (* z y) -63))))
-    (setf z (ash (floor (* ccs (ash 1 63))) 1))
+    (setf z (ash (truncate (* ccs (ash 1 63))) 1))
     (ash (* z y) -63)))
 
 (defun falcon-berexp (x ccs randbytes)
@@ -528,7 +546,7 @@
       (let* ((z0 (falcon-basesampler randbytes))
              (b (ldb (byte 1 0) (aref (funcall randbytes 1) 0)))
              (z (+ b (* (- (* 2 b) 1) z0)))
-             (x (- (* (expt (- z r) 2) dss) (* (expt z0 2) +falcon-inv-2sigma2+))))
+             (x (- (* (- z r) (- z r) dss) (* z0 z0 +falcon-inv-2sigma2+))))
         (when (falcon-berexp x ccs randbytes)
           (return (+ z s)))))))
 
@@ -648,24 +666,26 @@
         (g11 (falcon-add (falcon-mul b2 b2) (falcon-mul b3 b3))))
     (list (list g00 g01) (list g01 g11))))
 
-(defun falcon-ldl-fft (g00 g01 g11)
+(defun falcon-ldl-fft (g00 g10 g11)
   (let* ((n (length g00))
          (zero (falcon-cvec n))
          (one (falcon-cvec n #C(1d0 0d0)))
-         (l10 (falcon-div-fft (falcon-adj-fft g01) g00))
+         (l10 (falcon-div-fft g10 g00))
          (d11 (falcon-sub-fft g11 (falcon-mul-fft (falcon-mul-fft l10 (falcon-adj-fft l10)) g00))))
     (values l10 d11)))
 
-(defun falcon-ffldl-fft (g00 g01 g11)
-  "ffLDL decomposition tree: (L10 T0 T1); bottom holds the LDL diagonals."
-  (multiple-value-bind (l10 d11) (falcon-ldl-fft g00 g01 g11)
+(defun falcon-ffldl-fft (g00 g10 g11)
+  "ffLDL decomposition tree: (L10 T0 T1); bottom holds the LDL diagonals.
+G10 is the FFT of the (1,0) Gram entry at top level, elementwise-adjoint
+diagonals below (matching the reference construction)."
+  (multiple-value-bind (l10 d11) (falcon-ldl-fft g00 g10 g11)
     (let ((n (length g00)))
       (if (> n 2)
           (multiple-value-bind (d00 d01) (falcon-split-fft g00)
             (multiple-value-bind (d10 d11s) (falcon-split-fft d11)
               (list l10
-                    (falcon-ffldl-fft d00 d01 d00)
-                    (falcon-ffldl-fft d10 d11s d10))))
+                    (falcon-ffldl-fft d00 (falcon-adj-fft d01) d00)
+                    (falcon-ffldl-fft d10 (falcon-adj-fft d11s) d10))))
           (list l10 g00 d11)))))
 
 (defun falcon-normalize-vec (vec sigma)
@@ -743,14 +763,15 @@
       ;; Gram matrix of B0 = [[g -f] [G -F]]: G[i][j] = sum B[i][k]*adj(B[j][k]).
       (let* ((g00 (falcon-add (falcon-mul poly-g (falcon-adj poly-g))
                               (falcon-mul poly-f (falcon-adj poly-f))))
-             (g01 (falcon-add (falcon-mul poly-g (falcon-adj poly-gg))
-                              (falcon-mul poly-f (falcon-adj poly-ff))))
+             (g10 (falcon-add (falcon-mul poly-gg (falcon-adj poly-g))
+                              (falcon-mul (falcon-neg poly-ff)
+                                          (falcon-adj (falcon-neg poly-f)))))
              (g11 (falcon-add (falcon-mul poly-gg (falcon-adj poly-gg))
                               (falcon-mul poly-ff (falcon-adj poly-ff))))
-             (g00f (falcon-fft g00)) (g01f (falcon-fft g01)) (g11f (falcon-fft g11))
+             (g00f (falcon-fft g00)) (g10f (falcon-fft g10)) (g11f (falcon-fft g11))
              (b0f (falcon-fft poly-g)) (b1f (falcon-fft (falcon-neg poly-f)))
              (b2f (falcon-fft poly-gg)) (b3f (falcon-fft (falcon-neg poly-ff)))
-             (tree (falcon-ffldl-fft g00f g01f g11f)))
+             (tree (falcon-ffldl-fft g00f g10f g11f)))
         (falcon-normalize-tree tree (falcon-params-sigma *falcon-params*))
         (values (list (list b0f b1f) (list b2f b3f)) tree)))))
 
@@ -764,8 +785,9 @@
     ;; t = (point*d/q, -point*b/q) in FFT domain (scalar q division).
     (let* ((pointf (falcon-fft (map 'vector (lambda (x) (float x 0d0)) hashed)))
            (qf (float +falcon-q+ 0d0))
-           (tt0 (map 'vector (lambda (e) (/ e qf)) (falcon-mul-fft pointf d)))
-           (tt1 (map 'vector (lambda (e) (/ e qf))
+           (qfc (complex qf 0d0))
+           (tt0 (map 'vector (lambda (e) (falcon-cdiv e qfc)) (falcon-mul-fft pointf d)))
+           (tt1 (map 'vector (lambda (e) (falcon-cdiv e qfc))
                                     (falcon-mul-fft (falcon-negate-fft pointf) b))))
       (multiple-value-bind (z0f z1f)
           (falcon-ffsampling tt0 tt1 tree sigmin randbytes)
@@ -788,11 +810,12 @@
       (falcon-sample-preimage b0fft tree hashed sigmin
                               (falcon-make-randbytes (falcon-prng-init seed)))))
 
-(defun falcon-sign-kat (fbytes gbytes ffbytes ggbbytes msg randbytes)
+(defun falcon-sign-kat (fbytes gbytes ffbytes ggbbytes msg randbytes
+                         &optional (params +falcon-512-params+))
   "KAT driver: salt and per-attempt seeds come from the caller's stream,
 and each attempt uses a fresh ChaCha20 PRNG (as the reference does).
 Inputs are the raw little-endian int16 NTRU polynomials."
-  (let* ((*falcon-params* +falcon-512-params+)
+  (let* ((*falcon-params* params)
          (n (falcon-params-n *falcon-params*))
          (decode (lambda (bytes)
                    (let ((v (make-array n :element-type 'fixnum)))
