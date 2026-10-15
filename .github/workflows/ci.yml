@@ -14,7 +14,7 @@ jobs:
         # current releases, except Allegro: bare `allegro` resolves to
         # the withdrawn 10.1express (Franz now ships 11.0), which breaks
         # the Roswell install step, so it is pinned to 11.0express.
-        lisp: [abcl-bin, allegro/11.0express, ccl-bin, clisp, ecl, sbcl-bin]
+        lisp: [abcl-bin, allegro/11.0express, ccl-bin, ecl, sbcl-bin]
         os: [ubuntu-latest]
         include:
           # CCL again with an :invert readtable, via a real env var

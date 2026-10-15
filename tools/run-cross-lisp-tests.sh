@@ -5,15 +5,17 @@
 #   ros install sbcl-bin
 #   ros install ccl-bin/1.13
 #   ros install ecl
-#   ros install clisp/2.49
 #   ros install abcl-bin/1.9.3
+#
+# CLISP is intentionally excluded: the Quicklisp bordeaux-threads release does
+# not support it, and Ironclad depends on bordeaux-threads.
 #
 # Allegro CL and LispWorks are proprietary, so they are intentionally not
 # auto-installed here.  Install them manually, then add their Roswell names
 # to LISPS when they are available locally.
 set -u
 
-LISPS="${LISPS:-sbcl-bin ccl-bin ecl clisp abcl-bin}"
+LISPS="${LISPS:-sbcl-bin ccl-bin ecl abcl-bin}"
 export PATH="$HOME/.roswell/bin:$HOME/.local/bin:$PATH"
 
 if ! command -v ros >/dev/null 2>&1; then
