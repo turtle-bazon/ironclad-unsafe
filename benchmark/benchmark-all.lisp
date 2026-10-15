@@ -684,19 +684,27 @@
        (format nil "~,4F" value)
        (format nil "~,8F" value))))
 
+(defun format-significant (value)
+  "Format VALUE with about four significant digits and no exponent."
+  (let ((string (format nil "~,4g" value)))
+    (if (or (search "d" string :test #'char-equal)
+            (search "e" string :test #'char-equal))
+        (format-decimal value 8)
+        (trim-decimal string))))
+
 (defun format-rate (value)
   "Format a plain positive rate with readable k/M/G/T suffixes."
   (if (> value 0.0d0)
       (cond
         ((>= value 1.0d12)
-         (concatenate 'string (format-decimal (/ value 1.0d12) 4) "T"))
+         (concatenate 'string (format-significant (/ value 1.0d12)) "T"))
         ((>= value 1.0d9)
-         (concatenate 'string (format-decimal (/ value 1.0d9) 4) "G"))
+         (concatenate 'string (format-significant (/ value 1.0d9)) "G"))
         ((>= value 1.0d6)
-         (concatenate 'string (format-decimal (/ value 1.0d6) 4) "M"))
+         (concatenate 'string (format-significant (/ value 1.0d6)) "M"))
         ((>= value 1.0d3)
-         (concatenate 'string (format-decimal (/ value 1.0d3) 4) "k"))
-        (t (format-decimal value 8)))
+         (concatenate 'string (format-significant (/ value 1.0d3)) "k"))
+        (t (format-significant value)))
       "-"))
 
 (defun sort-results (results)
