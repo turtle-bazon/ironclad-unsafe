@@ -10,9 +10,8 @@
 # CLISP is intentionally excluded: the Quicklisp bordeaux-threads release does
 # not support it, and Ironclad depends on bordeaux-threads.
 #
-# Allegro CL and LispWorks are proprietary, so they are intentionally not
-# auto-installed here.  Install them manually, then add their Roswell names
-# to LISPS when they are available locally.
+# Allegro CL and LispWorks are proprietary. LispWorks remains supported in
+# the source tree, but it is intentionally not installed or tested here.
 set -u
 
 LISPS="${LISPS:-sbcl-bin ccl-bin ecl abcl-bin}"
