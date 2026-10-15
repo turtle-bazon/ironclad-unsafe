@@ -1,0 +1,137 @@
+#+TITLE: Ironclad Lisp vs C benchmark
+
+Generated: 4001042178
+
+Lisp: SBCL 2.6.7
+Platform: Linux 6.1.0-20-amd64 (X86-64)
+
+* Detailed results
+
+| Algorithm | Operation | Lisp ms | C ms | Lisp/C |
+|---|---|---:|---:|---:|
+| hqc-128 | keygen | 21.231 | 1.636 | 12.98 |
+| hqc-128 | encaps | 37.688 | 1.736 | 21.71 |
+| hqc-128 | decaps | 59.421 | 2.616 | 22.72 |
+| hqc-192 | keygen | 56.742 | 5.100 | 11.13 |
+| hqc-192 | encaps | 116.298 | 4.894 | 23.76 |
+| hqc-192 | decaps | 174.642 | 7.390 | 23.63 |
+| hqc-256 | keygen | 99.829 | 9.120 | 10.95 |
+| hqc-256 | encaps | 206.782 | 9.125 | 22.66 |
+| hqc-256 | decaps | 319.013 | 13.768 | 23.17 |
+| mceliece348864-clean | keygen | 1587.674 | 39.338 | 40.36 |
+| mceliece348864-clean | encaps | 2.560 | 0.027 | 94.42 |
+| mceliece348864-clean | decaps | 96.631 | 16.193 | 5.97 |
+| mceliece348864-avx2 | keygen | 1587.674 | 29.356 | 54.08 |
+| mceliece348864-avx2 | encaps | 2.560 | 0.009 | 285.43 |
+| mceliece348864-avx2 | decaps | 96.631 | 0.028 | 3505.82 |
+| mceliece460896 | keygen | 11063.405 | 137.167 | 80.66 |
+| mceliece460896 | encaps | 5.340 | 0.067 | 79.79 |
+| mceliece460896 | decaps | 135.691 | 33.706 | 4.03 |
+| mceliece6688128 | keygen | 7685.633 | 553.732 | 13.88 |
+| mceliece6688128 | encaps | 10.479 | 0.112 | 93.51 |
+| mceliece6688128 | decaps | 250.198 | 65.080 | 3.84 |
+| mceliece6960119 | keygen | 2737.781 | 515.835 | 5.31 |
+| mceliece6960119 | encaps | 10.185 | 0.155 | 65.76 |
+| mceliece6960119 | decaps | 237.974 | 63.003 | 3.78 |
+| mceliece8192128 | keygen | 3441.899 | 454.568 | 7.57 |
+| mceliece8192128 | encaps | 12.954 | 0.093 | 139.51 |
+| mceliece8192128 | decaps | 294.496 | 79.155 | 3.72 |
+| falcon-512-clean | keygen | 1156.711 | 11.033 | 104.84 |
+| falcon-512-clean | sign | 41.684 | 3.692 | 11.29 |
+| falcon-512-clean | verify | 0.613 | 0.038 | 16.33 |
+| falcon-512-avx2 | keygen | 1156.711 | 5.627 | 205.56 |
+| falcon-512-avx2 | sign | 41.684 | 0.191 | 218.35 |
+| falcon-512-avx2 | verify | 0.613 | 0.037 | 16.45 |
+| mldsa-44-ref | keygen | 0.666 | 0.162 | 4.12 |
+| mldsa-44-ref | sign | 1.804 | 0.358 | 5.04 |
+| mldsa-44-ref | verify | 0.463 | 0.077 | 6.04 |
+| mldsa-65-ref | keygen | 1.442 | 0.282 | 5.12 |
+| mldsa-65-ref | sign | 3.310 | 0.521 | 6.36 |
+| mldsa-65-ref | verify | 0.726 | 0.118 | 6.14 |
+| mldsa-87-ref | keygen | 2.502 | 0.426 | 5.88 |
+| mldsa-87-ref | sign | 3.901 | 0.738 | 5.29 |
+| mldsa-87-ref | verify | 1.161 | 0.202 | 5.76 |
+| mldsa-44-avx2 | keygen | 0.666 | 0.073 | 9.12 |
+| mldsa-44-avx2 | sign | 1.804 | 0.067 | 26.97 |
+| mldsa-44-avx2 | verify | 0.463 | 0.024 | 19.60 |
+| mldsa-65-avx2 | keygen | 1.442 | 0.090 | 16.09 |
+| mldsa-65-avx2 | sign | 3.310 | 0.147 | 22.55 |
+| mldsa-65-avx2 | verify | 0.726 | 0.059 | 12.39 |
+| mldsa-87-avx2 | keygen | 2.502 | 0.161 | 15.56 |
+| mldsa-87-avx2 | sign | 3.901 | 0.168 | 23.19 |
+| mldsa-87-avx2 | verify | 1.161 | 0.077 | 15.13 |
+| slh-dsa-sha2-128s | keygen | 190.743 | 138.710 | 1.38 |
+| slh-dsa-sha2-128s | sign | 1452.391 | 1005.116 | 1.44 |
+| slh-dsa-sha2-128s | verify | 1.422 | 1.011 | 1.41 |
+| slh-dsa-sha2-128f | keygen | 3.247 | 2.070 | 1.57 |
+| slh-dsa-sha2-128f | sign | 69.857 | 48.858 | 1.43 |
+| slh-dsa-sha2-128f | verify | 4.173 | 3.071 | 1.36 |
+| slh-dsa-sha2-192s | keygen | 275.212 | 189.100 | 1.46 |
+| slh-dsa-sha2-192s | sign | 2631.789 | 1644.800 | 1.60 |
+| slh-dsa-sha2-192s | verify | 2.205 | 1.473 | 1.50 |
+| slh-dsa-sha2-192f | keygen | 4.715 | 4.986 | 0.95 |
+| slh-dsa-sha2-192f | sign | 115.492 | 74.477 | 1.55 |
+| slh-dsa-sha2-192f | verify | 6.126 | 4.327 | 1.42 |
+| slh-dsa-sha2-256s | keygen | 177.114 | 171.512 | 1.03 |
+| slh-dsa-sha2-256s | sign | 2370.876 | 1862.113 | 1.27 |
+| slh-dsa-sha2-256s | verify | 3.145 | 2.838 | 1.11 |
+| slh-dsa-sha2-256f | keygen | 13.007 | 13.194 | 0.99 |
+| slh-dsa-sha2-256f | sign | 237.661 | 204.776 | 1.16 |
+| slh-dsa-sha2-256f | verify | 6.287 | 5.677 | 1.11 |
+| slh-dsa-shake-128s | keygen | 482.690 | 189.543 | 2.55 |
+| slh-dsa-shake-128s | sign | 3733.661 | 1424.296 | 2.62 |
+| slh-dsa-shake-128s | verify | 3.582 | 1.606 | 2.23 |
+| slh-dsa-shake-128f | keygen | 9.792 | 4.253 | 2.30 |
+| slh-dsa-shake-128f | sign | 177.436 | 70.864 | 2.50 |
+| slh-dsa-shake-128f | verify | 10.025 | 4.226 | 2.37 |
+| slh-dsa-shake-192s | keygen | 729.617 | 279.269 | 2.61 |
+| slh-dsa-shake-192s | sign | 6616.964 | 2391.238 | 2.77 |
+| slh-dsa-shake-192s | verify | 5.319 | 2.140 | 2.49 |
+| slh-dsa-shake-192f | keygen | 14.229 | 6.399 | 2.22 |
+| slh-dsa-shake-192f | sign | 301.169 | 109.448 | 2.75 |
+| slh-dsa-shake-192f | verify | 16.500 | 6.086 | 2.71 |
+| slh-dsa-shake-256s | keygen | 490.782 | 182.579 | 2.69 |
+| slh-dsa-shake-256s | sign | 5966.498 | 2079.105 | 2.87 |
+| slh-dsa-shake-256s | verify | 8.715 | 3.014 | 2.89 |
+| slh-dsa-shake-256f | keygen | 34.650 | 11.804 | 2.94 |
+| slh-dsa-shake-256f | sign | 620.406 | 224.163 | 2.77 |
+| slh-dsa-shake-256f | verify | 16.608 | 6.338 | 2.62 |
+| xmss-sha2_10_256 | keygen | 6144.027 | 1707.030 | 3.60 |
+| xmss-sha2_10_256 | sign | 6181.470 | 1707.027 | 3.62 |
+| xmss-sha2_10_256 | verify | 3.341 | 0.903 | 3.70 |
+
+* Summary
+
+| Algorithm | Lisp total ms | C total ms | Lisp/C |
+|---|---:|---:|---:|
+| hqc-128 | 118.340 | 5.988 | 19.76 |
+| hqc-192 | 347.682 | 17.384 | 20.00 |
+| hqc-256 | 625.624 | 32.014 | 19.54 |
+| mceliece348864-clean | 1686.865 | 55.559 | 30.36 |
+| mceliece348864-avx2 | 1686.865 | 29.392 | 57.39 |
+| mceliece460896 | 11204.437 | 170.940 | 65.55 |
+| mceliece6688128 | 7946.310 | 618.924 | 12.84 |
+| mceliece6960119 | 2985.940 | 578.993 | 5.16 |
+| mceliece8192128 | 3749.349 | 533.816 | 7.02 |
+| falcon-512-clean | 1199.007 | 14.762 | 81.22 |
+| falcon-512-avx2 | 1199.007 | 5.855 | 204.78 |
+| mldsa-44-ref | 2.933 | 0.596 | 4.92 |
+| mldsa-65-ref | 5.479 | 0.921 | 5.95 |
+| mldsa-87-ref | 7.563 | 1.365 | 5.54 |
+| mldsa-44-avx2 | 2.933 | 0.164 | 17.94 |
+| mldsa-65-avx2 | 5.479 | 0.295 | 18.57 |
+| mldsa-87-avx2 | 7.563 | 0.406 | 18.64 |
+| slh-dsa-sha2-128s | 1644.556 | 1144.837 | 1.44 |
+| slh-dsa-sha2-128f | 77.277 | 54.000 | 1.43 |
+| slh-dsa-sha2-192s | 2909.206 | 1835.373 | 1.59 |
+| slh-dsa-sha2-192f | 126.333 | 83.790 | 1.51 |
+| slh-dsa-sha2-256s | 2551.135 | 2036.462 | 1.25 |
+| slh-dsa-sha2-256f | 256.955 | 223.647 | 1.15 |
+| slh-dsa-shake-128s | 4219.933 | 1615.444 | 2.61 |
+| slh-dsa-shake-128f | 197.253 | 79.343 | 2.49 |
+| slh-dsa-shake-192s | 7351.900 | 2672.646 | 2.75 |
+| slh-dsa-shake-192f | 331.898 | 121.933 | 2.72 |
+| slh-dsa-shake-256s | 6465.995 | 2264.698 | 2.86 |
+| slh-dsa-shake-256f | 671.664 | 242.305 | 2.77 |
+| xmss-sha2_10_256 | 12328.838 | 3414.960 | 3.61 |
+

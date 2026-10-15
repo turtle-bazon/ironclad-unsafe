@@ -1,0 +1,18 @@
+syntax: glob
+*.fasl
+*.FASL
+*.ufasl
+*.ufsl
+*.dx32fsl
+*.dx64fsl
+*.pfsl
+*.dfsl
+*.p64fsl
+*.d64fsl
+*.lx32fsl
+*.lx64fsl
+*.fx32fsl
+*.fas
+*.lib
+*~
+benchmark/c-bin/
