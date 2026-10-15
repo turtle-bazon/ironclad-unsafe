@@ -40,7 +40,10 @@
 
 (defun run-test-vector-file (name function-map)
   (let ((filename (test-vector-filename name))
-        (*readtable* (copy-readtable)))
+        ;; Ironclad loads some sources with its custom readtable, and some
+        ;; implementations leak that readtable to later loads.  Test vector
+        ;; files must be read with a pristine standard readtable.
+        (*readtable* (copy-readtable nil)))
     (set-dispatch-macro-character #\# #\a #'sharp-a *readtable*)
     (set-dispatch-macro-character #\# #\h #'sharp-h *readtable*)
     (with-open-file (stream filename :direction :input

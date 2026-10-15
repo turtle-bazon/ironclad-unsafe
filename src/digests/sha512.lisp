@@ -28,7 +28,11 @@
 
 (defconst +pristine-sha512/224-registers+ (initial-sha512/224-regs))
 
-(define-digest-registers (sha512/256 :endian :big :size 8)
+;; SHA-512/256 outputs only the first four registers.  Without
+;; :DIGEST-REGISTERS 4, the generated register-digest helper unpacks all
+;; eight registers and writes 64 octets through the 32-octet digest
+;; buffer; ECL and ABCL expose this as neighboring-object corruption.
+(define-digest-registers (sha512/256 :endian :big :size 8 :digest-registers 4)
   (a #x22312194FC2BF72C)
   (b #x9F555FA3C84C64C2)
   (c #x2393B86B6F53B151)
