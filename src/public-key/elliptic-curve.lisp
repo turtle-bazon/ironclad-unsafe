@@ -50,13 +50,41 @@ specified coordinates."))
 ;;; trick.  Both are written against the EC-ADD/EC-DOUBLE generics so
 ;;; they work for every Jacobian point class; the methods handle the
 ;;; point at infinity, which the loops below rely on.
+;;;
+;;; SECRET/Public split:
+;;;
+;;; * %EC-LADDER-MULT is the path used for secret scalars.  It has a fixed
+;;;   number of doublings/additions when BITS is supplied and does not use
+;;;   secret-dependent table indices.
+;;; * %EC-WINDOW-MULT and %EC-SHAMIR-MULT remain for public-only uses such
+;;;   as verification.  Do not call them with a private key, nonce, or
+;;;   ECDH secret.
 
 (defun %ec-infinity-like (point)
   "A fresh point at infinity of the same class as POINT."
   (make-instance (class-of point) :x 1 :y 1 :z 0))
 
+(defun %ec-ladder-mult (point e &key (bits (integer-length e)))
+  "Return E * POINT using a fixed-schedule Montgomery ladder."
+  (declare (type integer e)
+           (type (integer 0 *) bits))
+  (when (minusp e)
+    (error "negative scalars are not supported by ~A" '%ec-ladder-mult))
+  (if (zerop e)
+      (%ec-infinity-like point)
+      (let ((r0 (%ec-infinity-like point))
+            (r1 point))
+        (loop for i from (1- bits) downto 0
+              do (if (logbitp i e)
+                     (setf r0 (ec-add r0 r1)
+                           r1 (ec-double r1))
+                     (setf r1 (ec-add r1 r0)
+                           r0 (ec-double r0))))
+        r0)))
+
 (defun %ec-window-mult (point e &key (width 4))
-  "Left-to-right fixed-WIDTH scalar multiplication: E * POINT."
+  "Left-to-right fixed-WIDTH scalar multiplication: E * POINT.
+Public-only: the selected window index is a secret-dependent table index."
   (declare (type integer e)
            (type (integer 1 8) width))
   (let ((infinity (%ec-infinity-like point)))
@@ -83,7 +111,8 @@ specified coordinates."))
             r)))))
 
 (defun %ec-shamir-mult (p q a b)
-  "Joint scalar multiplication A*P + B*Q (Shamir's trick)."
+  "Joint scalar multiplication A*P + B*Q using Shamir's trick.
+Public-only: the branch schedule depends on the scalar bits."
   (declare (type integer a b))
   (let ((r (%ec-infinity-like p))
         (pq (ec-add p q))

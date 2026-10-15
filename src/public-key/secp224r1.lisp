@@ -110,9 +110,10 @@
                  (make-instance 'secp224r1-point :x x3 :y y3 :z z3)))))))))
 
 (defmethod ec-scalar-mult ((p secp224r1-point) e)
-  ;; Fixed-window multiplication; see %EC-WINDOW-MULT.
+  ;; Secret scalars use the fixed-schedule ladder.  Public-only callers
+  ;; can keep using %EC-WINDOW-MULT or %EC-SHAMIR-MULT directly.
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (%ec-window-mult p e))
+  (%ec-ladder-mult p e :bits +secp224r1-bits+))
 
 (defmethod ec-point-on-curve-p ((p secp224r1-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
