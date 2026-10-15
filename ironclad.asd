@@ -246,6 +246,7 @@
   ("hqc" :depends-on ("ironclad/digest/sha3"))
   ("bike" :depends-on ("ironclad/digest/sha512" "ironclad/cipher/aes"))
   ("lms" :depends-on ("ironclad/digest/sha256"))
+  ("xmss" :depends-on ("ironclad/digest/sha256"))
   ("x-wing" :depends-on ("ironclad/public-key/ml-kem"
                          "ironclad/public-key/curve25519"
                          "ironclad/digest/sha3")))
@@ -486,6 +487,7 @@
                                            (:test-vector-file "lms-h5w8")
                                            (:test-vector-file "lms-h10w4")
                                            (:test-vector-file "hss-2xh5w8")
+                                           (:test-vector-file "xmss-h10")
                                            (:test-vector-file "x-wing")
                                            (:test-vector-file "hpke")
                                            (:test-vector-file "ml-dsa")

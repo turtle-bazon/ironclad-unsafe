@@ -139,6 +139,7 @@
    #:bike-l3-public-key #:bike-l3-private-key
    #:bike-l5-public-key #:bike-l5-private-key
    #:lms-sha256-h5-w8-public-key #:lms-sha256-h5-w8-private-key
+   #:xmss-sha256-h10-public-key #:xmss-sha256-h10-private-key
    #:lms-sha256-h10-w4-public-key #:lms-sha256-h10-w4-private-key
    #:lms-sha256-h10-w8-public-key #:lms-sha256-h10-w8-private-key
    #:lms-sha256-h15-w8-public-key #:lms-sha256-h15-w8-private-key

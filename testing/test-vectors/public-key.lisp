@@ -11,6 +11,7 @@
 (rtest:deftest :mceliece6960119-encapsulation (run-test-vector-file :mceliece6960119 *public-key-encryption-tests*) t)
 (rtest:deftest :mceliece8192128-encapsulation (run-test-vector-file :mceliece8192128 *public-key-encryption-tests*) t)
 (rtest:deftest :x-wing-encapsulation (run-test-vector-file :x-wing *public-key-encryption-tests*) t)
+(rtest:deftest :xmss (run-test-vector-file :xmss-h10 *public-key-encryption-tests*) t)
 (rtest:deftest :hpke (run-test-vector-file :hpke *hpke-tests*) t)
 (rtest:deftest :ml-dsa-signature (run-test-vector-file :ml-dsa *public-key-signature-tests*) t)
 (rtest:deftest :slh-dsa-signature (run-test-vector-file :slh-dsa *public-key-signature-tests*) t)

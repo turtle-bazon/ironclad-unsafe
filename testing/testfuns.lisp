@@ -911,6 +911,21 @@
       (when (ironclad:verify-signature pk msg bad)
         (error "HSS tampered signature accepted for ~A" name)))))
 
+(defun xmss-test (file kind name pk-bytes sk-bytes sig msg)
+  (declare (ignore file))
+  (let ((pk (ironclad:make-public-key kind :bytes pk-bytes))
+        (sk (ironclad:make-private-key kind :bytes sk-bytes)))
+    (unless (ironclad:verify-signature pk msg sig)
+      (error "XMSS verification failed for ~A" name))
+    (let ((sig2 (ironclad:sign-message sk msg)))
+      (unless (and (= (length sig2) (length sig))
+                   (ironclad:verify-signature pk msg sig2))
+        (error "XMSS roundtrip failed for ~A" name)))
+    (let ((bad (copy-seq sig)))
+      (setf (aref bad 100) (logxor (aref bad 100) 1))
+      (when (ironclad:verify-signature pk msg bad)
+        (error "XMSS tampered signature accepted for ~A" name)))))
+
 (defun ml-dsa-test (file kind name pk-bytes sk-bytes sig msg)
   (declare (ignore file))
   (let ((pk (ironclad:make-public-key kind :bytes pk-bytes))
@@ -1118,6 +1133,7 @@
         (cons :bike-test 'bike-test)
         (cons :lms-test 'lms-test)
         (cons :hss-test 'hss-test)
+        (cons :xmss-test 'xmss-test)
         (cons :x-wing-test 'x-wing-test)))
 
 (defparameter *public-key-signature-tests*
