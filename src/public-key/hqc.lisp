@@ -1305,3 +1305,90 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
                 (replace mc ub :start1 kbytes)
                 (replace mc vb :start1 (+ kbytes nbytes)))
               (hqc-shake256-512-ds mc 4))))))))
+
+
+;;;
+;;; Public API: key classes, generation, encapsulation.
+;;;
+
+(defclass hqc-key ()
+  ((kind :initarg :kind :reader hqc-key-kind)
+   (bytes :initarg :bytes :reader hqc-key-bytes)))
+
+(defclass hqc-public-key (hqc-key)
+  ())
+
+(defclass hqc-private-key (hqc-key)
+  ())
+
+(defclass hqc-128-public-key (hqc-public-key)
+  ())
+
+(defclass hqc-128-private-key (hqc-private-key)
+  ())
+
+(defclass hqc-192-public-key (hqc-public-key)
+  ())
+
+(defclass hqc-192-private-key (hqc-private-key)
+  ())
+
+(defclass hqc-256-public-key (hqc-public-key)
+  ())
+
+(defclass hqc-256-private-key (hqc-private-key)
+  ())
+
+(defun hqc-check-bytes (bytes length kind)
+  (unless (and (typep bytes '(simple-array (unsigned-byte 8) (*)))
+               (= (length bytes) length))
+    (error 'missing-key-parameter
+           :kind kind
+           :parameter 'bytes
+           :description "HQC key bytes"))
+  (copy-seq bytes))
+
+(defmacro hqc-define-key-constructors (kind public-class private-class)
+  `(progn
+     (defmethod make-public-key ((kind (eql ,kind)) &key bytes &allow-other-keys)
+       (let ((*hqc-params* (hqc-params-for-kind ,kind)))
+         (make-instance ',public-class :kind ,kind
+                        :bytes (hqc-check-bytes bytes (hqc-pk-bytes) ,kind))))
+     (defmethod make-private-key ((kind (eql ,kind)) &key bytes &allow-other-keys)
+       (let ((*hqc-params* (hqc-params-for-kind ,kind)))
+         (make-instance ',private-class :kind ,kind
+                        :bytes (hqc-check-bytes bytes (hqc-sk-bytes) ,kind))))
+     (defmethod generate-key-pair ((kind (eql ,kind)) &key &allow-other-keys)
+       (let ((*hqc-params* (hqc-params-for-kind ,kind)))
+         (multiple-value-bind (pk sk) (hqc-generate-keypair)
+           (values (make-private-key ,kind :bytes sk)
+                   (make-public-key ,kind :bytes pk)))))))
+
+(hqc-define-key-constructors :hqc-128 hqc-128-public-key hqc-128-private-key)
+(hqc-define-key-constructors :hqc-192 hqc-192-public-key hqc-192-private-key)
+(hqc-define-key-constructors :hqc-256 hqc-256-public-key hqc-256-private-key)
+
+(defmethod destructure-public-key ((public-key hqc-public-key))
+  (list :bytes (copy-seq (hqc-key-bytes public-key))))
+
+(defmethod destructure-private-key ((private-key hqc-private-key))
+  (list :bytes (copy-seq (hqc-key-bytes private-key))))
+
+(defun hqc-encaps-from-parts (m salt pk-bytes kind)
+  (let ((*hqc-params* (hqc-params-for-kind kind)))
+    (hqc-kem-encaps-deterministic m salt pk-bytes)))
+
+(defmethod encapsulate-key ((public-key hqc-public-key))
+  (let* ((kind (hqc-key-kind public-key))
+         (*hqc-params* (hqc-params-for-kind kind))
+         (m (random-data (hqc-vec-k-bytes)))
+         (salt (random-data (hqc-salt-bytes))))
+    (hqc-kem-encaps-deterministic m salt (hqc-key-bytes public-key))))
+
+(defmethod decapsulate-key ((private-key hqc-private-key) ciphertext)
+  (let* ((kind (hqc-key-kind private-key))
+         (*hqc-params* (hqc-params-for-kind kind)))
+    (unless (and (typep ciphertext '(simple-array (unsigned-byte 8) (*)))
+                 (= (length ciphertext) (hqc-ct-bytes)))
+      (error 'invalid-message-length :kind kind))
+    (hqc-kem-decaps ciphertext (hqc-key-bytes private-key))))

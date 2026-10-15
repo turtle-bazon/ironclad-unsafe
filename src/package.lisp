@@ -132,6 +132,9 @@
    #:mceliece6688128-public-key #:mceliece6688128-private-key
    #:mceliece6960119-public-key #:mceliece6960119-private-key
    #:mceliece8192128-public-key #:mceliece8192128-private-key
+   #:hqc-128-public-key #:hqc-128-private-key #:hqc-key-bytes
+   #:hqc-192-public-key #:hqc-192-private-key
+   #:hqc-256-public-key #:hqc-256-private-key
 
    ;; HPKE (RFC 9180)
    #:hpke-derive-keypair #:hpke-setup-sender #:hpke-setup-recipient
