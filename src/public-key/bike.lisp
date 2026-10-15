@@ -329,3 +329,142 @@
     (dotimes (i pad)
       (setf (aref c i) (aref tvec i)))
     (values)))
+
+
+;;;
+;;; AES-256-CTR PRF.
+;;;
+
+(defstruct bike-prf
+  (ctx nil)
+  (ctr (make-array 16 :element-type '(unsigned-byte 8) :initial-element 0))
+  (buffer (make-array 16 :element-type '(unsigned-byte 8) :initial-element 0))
+  (pos 16 :type fixnum)
+  (rem-calls #xFFFFFFFF :type (unsigned-byte 32)))
+
+(defun bike-prf-init (seed32)
+  (let ((ctx (make-cipher :aes :key (copy-seq seed32) :mode :ecb)))
+    (make-bike-prf :ctx ctx)))
+
+(defun bike-prf-perform (out out-start prf)
+  (when (zerop (bike-prf-rem-calls prf))
+    (error "BIKE PRF overused"))
+  (aes-encrypt-block (bike-prf-ctx prf) (bike-prf-ctr prf) 0 out out-start)
+  (let ((c 1))
+    (dotimes (i 8)
+      (let ((s (+ (aref (bike-prf-ctr prf) i) c)))
+        (setf (aref (bike-prf-ctr prf) i) (logand s #xFF))
+        (setf c (ash s -8)))))
+  (decf (bike-prf-rem-calls prf))
+  (values))
+
+(defun bike-prf-output (out out-len prf)
+  (let ((pos (bike-prf-pos prf)))
+    (if (<= (+ out-len pos) 16)
+        (progn
+          (replace out (bike-prf-buffer prf)
+                   :start1 0 :end1 out-len :start2 pos :end2 (+ pos out-len))
+          (setf (bike-prf-pos prf) (+ pos out-len))
+          (values))
+        (let ((idx (- 16 pos)))
+          (replace out (bike-prf-buffer prf)
+                   :start1 0 :end1 idx :start2 pos :end2 16)
+          (setf (bike-prf-pos prf) 0)
+          (loop while (>= (- out-len idx) 16)
+                do (bike-prf-perform out idx prf)
+                   (incf idx 16))
+          (bike-prf-perform (bike-prf-buffer prf) 0 prf)
+          (let ((tail (- out-len idx)))
+            (replace out (bike-prf-buffer prf)
+                     :start1 idx :end1 out-len :start2 0 :end2 tail))
+          (setf (bike-prf-pos prf) (- out-len idx))
+          (values)))))
+
+
+;;;
+;;; Sparse sampling: Fisher-Yates indices + constant-time set-bits.
+;;;
+
+(declaim (inline bike-u32eq))
+(defun bike-u32eq (a b)
+  (if (= (logand a #xFFFFFFFF) (logand b #xFFFFFFFF))
+      #xFFFFFFFF 0))
+
+(defun bike-sample-fisher-yates (out num-indices max-idx prf)
+  (let ((tmp (make-array 4 :element-type '(unsigned-byte 8))))
+    (loop for i from (1- num-indices) downto 0
+          do (bike-prf-output tmp 4 prf)
+             (let* ((rand (logior (aref tmp 0)
+                                  (ash (aref tmp 1) 8)
+                                  (ash (aref tmp 2) 16)
+                                  (ash (aref tmp 3) 24)))
+                    (prod (* rand (- max-idx i)))
+                    (l (+ i (ash prod -32)))
+                    (is-dup 0))
+               (loop for j from (1+ i) below num-indices
+                     do (setf is-dup (logior is-dup
+                                             (if (= l (aref out j)) 1 0))))
+               (let ((mask (if (zerop is-dup) 0 #xFFFFFFFF)))
+                 (setf (aref out i)
+                       (logand #xFFFFFFFF
+                               (logxor (logand mask i) (logand (lognot mask) l))))))))
+  (values))
+
+(defun bike-secure-set-bits (r first-pos wlist w-size)
+  (let ((nwords (bike-r-padded-qwords)))
+    (let ((pos-qw (make-array w-size :element-type '(unsigned-byte 32))))
+      (let ((pos-bit (make-array w-size :element-type '(unsigned-byte 64))))
+        (dotimes (i w-size)
+          (let ((w (- (aref wlist i) first-pos)))
+            (setf (aref pos-qw i) (logand (ash w -6) #xFFFFFFFF))
+            (setf (aref pos-bit i) (ash 1 (logand w 63)))))
+        (dotimes (i nwords)
+          (let ((val 0))
+            (dotimes (j w-size)
+              (let ((w (- (aref wlist j) first-pos)))
+                (when (>= w 0)
+                  (setf val (logior val (logand (aref pos-bit j)
+                                               (bike-u64eq-mask (aref pos-qw j) i)))))))
+            (setf (aref r i) (logand val #xFFFFFFFFFFFFFFFF))))
+        (values)))))
+
+(defun bike-u64eq-mask (a b)
+  (if (= (logand a #xFFFFFFFF) (logand b #xFFFFFFFF))
+      #xFFFFFFFFFFFFFFFF 0))
+
+(defun bike-generate-secret-key (h0 h1 wlist0 wlist1 seed32)
+  (let ((prf (bike-prf-init seed32))
+        (dd (bike-dd)))
+    (let ((wt (make-array dd :element-type '(unsigned-byte 32) :initial-element 0)))
+      (bike-sample-fisher-yates wt dd (bike-r-bits) prf)
+      (dotimes (i dd) (setf (aref wlist0 i) (aref wt i)))
+      (bike-secure-set-bits h0 0 wlist0 dd))
+    (let ((wt (make-array dd :element-type '(unsigned-byte 32) :initial-element 0)))
+      (bike-sample-fisher-yates wt dd (bike-r-bits) prf)
+      (dotimes (i dd) (setf (aref wlist1 i) (aref wt i)))
+      (bike-secure-set-bits h1 0 wlist1 dd))
+    (values)))
+
+(defun bike-mask-tail (e)
+  (let* ((rb (bike-r-bytes))
+         (pad (bike-r-padded-qwords))
+         (lw (ash (1- rb) -3))
+         (lp (logand (1- rb) 7)))
+    (loop for i from (1+ lw) below pad
+          do (setf (aref e i) 0))
+    (let ((m (logior (1- (ash 1 (* 8 lp)))
+                     (ash (bike-last-byte-mask) (* 8 lp)))))
+      (setf (aref e lw) (logand (aref e lw) m))))
+  (values))
+
+(defun bike-generate-error-vector (e0 e1 seed32)
+  (let ((prf (bike-prf-init seed32))
+        (tt (bike-tt))
+        (nbits (* 2 (bike-r-bits))))
+    (let ((wlist (make-array tt :element-type '(unsigned-byte 32) :initial-element 0)))
+      (bike-sample-fisher-yates wlist tt nbits prf)
+      (bike-secure-set-bits e0 0 wlist tt)
+      (bike-secure-set-bits e1 (bike-r-bits) wlist tt))
+    (bike-mask-tail e0)
+    (bike-mask-tail e1)
+    (values)))
