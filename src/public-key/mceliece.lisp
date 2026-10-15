@@ -995,8 +995,55 @@ PIV is permutation-sized scratch/output. Returns T on success, NIL on failure."
                               (ash 1 (logand tgt 7))))))
             (return e)))))))
 
-(defun mce-syndrome-bytes (s pk e)
-  "Niederreiter syndrome S of error vector E under PK."
+(declaim (inline mce-parity-byte))
+(defun mce-parity-byte (b)
+  "Parity bit of B (octet); only the final bit is meaningful."
+  (setf b (logxor b (ash b -4)))
+  (setf b (logxor b (ash b -2)))
+  (setf b (logxor b (ash b -1)))
+  (logand b 1))
+
+(defun mce-syndrome-bytes-aligned (s pk e)
+  "Fast syndrome computation for byte-aligned public-key row counts."
+  (let* ((nbytes (ash (mce-sys-n) -3))
+         (nrows (mce-pk-nrows))
+         (rowbytes (mce-pk-row-bytes))
+         (offset (- nbytes rowbytes))
+         (id-pos (make-array nbytes :element-type 'fixnum :initial-element 0))
+         (row-pos (make-array nbytes :element-type 'fixnum :initial-element 0))
+         (n-id 0)
+         (n-row 0))
+    (dotimes (j nbytes)
+      (unless (zerop (aref e j))
+        (if (< j offset)
+            (progn
+              (setf (aref id-pos n-id) j)
+              (incf n-id))
+            (progn
+              (setf (aref row-pos n-row) j)
+              (incf n-row)))))
+    (dotimes (i (mce-synd-bytes))
+      (setf (aref s i) 0))
+    (dotimes (i nrows)
+      (let ((b 0)
+            (q (ash i -3)))
+        (dotimes (k n-id)
+          (let ((j (aref id-pos k)))
+            (when (and (= j q)
+                       (logbitp (logand i 7) (aref e q)))
+              (setf b (logxor b 1)))))
+        (let ((base (* i rowbytes)))
+          (dotimes (k n-row)
+            (let ((j (aref row-pos k)))
+              (setf b (logxor b (logand (aref pk (+ base (- j offset)))
+                                        (aref e j)))))))
+        (setf b (mce-parity-byte b))
+        (setf (aref s q)
+              (logior (aref s q) (ash (logand b 1) (logand i 7))))))
+    (values)))
+
+(defun mce-syndrome-bytes-unaligned (s pk e)
+  "Niederreiter syndrome for public-key rows that are not byte-aligned."
   (dotimes (i (mce-synd-bytes))
     (setf (aref s i) 0))
   (let ((nbytes (ash (mce-sys-n) -3))
@@ -1006,8 +1053,8 @@ PIV is permutation-sized scratch/output. Returns T on success, NIL on failure."
     (dotimes (i (mce-pk-nrows))
       (fill row 0)
       (replace row pk :start1 (- nbytes (mce-pk-row-bytes))
-                         :start2 (* i (mce-pk-row-bytes))
-                         :end2 (+ (* i (mce-pk-row-bytes)) (mce-pk-row-bytes)))
+                       :start2 (* i (mce-pk-row-bytes))
+                       :end2 (+ (* i (mce-pk-row-bytes)) (mce-pk-row-bytes)))
       (loop for j from (1- nbytes) downto (- nbytes (mce-pk-row-bytes))
             do (setf (aref row j)
                      (logand #xFF
@@ -1025,6 +1072,12 @@ PIV is permutation-sized scratch/output. Returns T on success, NIL on failure."
           (setf (aref s q)
                 (logior (aref s q) (ash (logand b 1) (logand i 7))))))))
   (values))
+
+(defun mce-syndrome-bytes (s pk e)
+  "Niederreiter syndrome S of error vector E under PK."
+  (if (zerop (mod (mce-pk-nrows) 8))
+      (mce-syndrome-bytes-aligned s pk e)
+      (mce-syndrome-bytes-unaligned s pk e)))
 
 (defun mce-encrypt (ct pk e)
   "Syndrome ciphertext CT of the given error vector E under PK."

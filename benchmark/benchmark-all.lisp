@@ -670,9 +670,33 @@
 ;;; ------------------------------------------------------------------
 ;;; Output
 
+(defun trim-decimal (string)
+  "Remove trailing zeroes after the decimal point."
+  (let ((trimmed (string-right-trim "0" string)))
+    (if (and (plusp (length trimmed))
+             (char= (char trimmed (1- (length trimmed))) #\.))
+        (subseq trimmed 0 (1- (length trimmed)))
+        trimmed)))
+
+(defun format-decimal (value &optional (decimals 8))
+  (trim-decimal
+   (if (= decimals 4)
+       (format nil "~,4F" value)
+       (format nil "~,8F" value))))
+
 (defun format-rate (value)
+  "Format a plain positive rate with readable k/M/G/T suffixes."
   (if (> value 0.0d0)
-      (format nil "~,3g" value)
+      (cond
+        ((>= value 1.0d12)
+         (concatenate 'string (format-decimal (/ value 1.0d12) 4) "T"))
+        ((>= value 1.0d9)
+         (concatenate 'string (format-decimal (/ value 1.0d9) 4) "G"))
+        ((>= value 1.0d6)
+         (concatenate 'string (format-decimal (/ value 1.0d6) 4) "M"))
+        ((>= value 1.0d3)
+         (concatenate 'string (format-decimal (/ value 1.0d3) 4) "k"))
+        (t (format-decimal value 8)))
       "-"))
 
 (defun sort-results (results)
