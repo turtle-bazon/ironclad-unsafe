@@ -718,6 +718,35 @@
                               (equalp (result-key result) key))
                             *results*)))
 
+(defun make-table-row (key lisp-result c-result)
+  (let ((c (and c-result (getf c-result :value)))
+        (lisp (getf lisp-result :value)))
+    (list :category (first key)
+          :algorithm (second key)
+          :operation (third key)
+          :unit (getf lisp-result :unit)
+          :lisp (format-rate lisp)
+          :c (if c-result (format-rate c) "-")
+          :source (if c-result (getf c-result :source) "-")
+          :ratio (if (and c (> c 0.0d0))
+                     (/ c lisp)
+                     nil)
+          :sort-ratio (if (and c (> c 0.0d0))
+                          (/ c lisp)
+                          -1.0d0))))
+
+(defun table-rows ()
+  (loop for key in (remove-duplicates
+                     (mapcar #'result-key (sort-results *results*))
+                     :test #'equalp)
+        for lisp = (find-lisp-result key)
+        when lisp
+        append (let ((c-results (find-c-results key)))
+                 (if c-results
+                     (loop for c-result in c-results
+                           collect (make-table-row key lisp c-result))
+                     (list (make-table-row key lisp nil))))))
+
 (defun write-table ()
   (ensure-directories-exist *table-output*)
   (with-open-file (stream *table-output* :direction :output
@@ -729,29 +758,23 @@
     (format stream "Platform: ~a ~a (~a)~%~%"
             (software-type) (software-version) (machine-type))
     (format stream "* Results~%~%")
+    (format stream "Sorted by C/Lisp ratio, descending. Rows without a local C reference are listed last.~%~%")
     (format stream "| Category | Algorithm | Operation | Unit | Lisp | C | C source | C/Lisp |~%")
     (format stream "|---|---|---|---|---:|---:|---|---:|~%")
-    (dolist (key (remove-duplicates
-                   (mapcar #'result-key (sort-results *results*))
-                   :test #'equalp))
-      (let ((lisp (find-lisp-result key)))
-        (when lisp
-          (let ((c-results (find-c-results key)))
-            (if c-results
-                (dolist (c-result c-results)
-                  (format stream "| ~a | ~a | ~a | ~a | ~a | ~a | ~a | ~a |~%"
-                          (first key) (second key) (third key)
-                          (getf lisp :unit) (format-rate (getf lisp :value))
-                          (format-rate (getf c-result :value))
-                          (getf c-result :source)
-                          (let ((c (getf c-result :value)))
-                            (if (> c 0.0d0)
-                                (format nil "~,3g" (/ c (getf lisp :value)))
-                                "-"))))
-                (format stream "| ~a | ~a | ~a | ~a | ~a | ~a | ~a | ~a |~%"
-                        (first key) (second key) (third key)
-                        (getf lisp :unit) (format-rate (getf lisp :value))
-                        "-" "-" "-"))))))
+    (dolist (row (sort (table-rows)
+                       #'>
+                       :key (lambda (row) (getf row :sort-ratio))))
+      (format stream "| ~a | ~a | ~a | ~a | ~a | ~a | ~a | ~a |~%"
+              (getf row :category)
+              (getf row :algorithm)
+              (getf row :operation)
+              (getf row :unit)
+              (getf row :lisp)
+              (getf row :c)
+              (getf row :source)
+              (if (getf row :ratio)
+                  (format nil "~,3g" (getf row :ratio))
+                  "-")))
     (terpri stream)))
 
 ;;; ------------------------------------------------------------------
@@ -830,8 +853,9 @@
                     "bytes/s" rate)))))
     (dolist (pair *openssl-public-key-map*)
       (add-openssl-public-key-results (car pair))))
-  (dolist (kind (ironclad:list-all-key-pair-kinds))
-    (add-local-c-results (canonical-kind kind)))
+  (dolist (kind (remove-duplicates (mapcar #'canonical-kind
+                                        (ironclad:list-all-key-pair-kinds))))
+    (add-local-c-results kind))
   (write-raw)
   (write-table)
   (format t "Wrote ~a and ~a~%" (namestring *raw-output*) (namestring *table-output*)))
