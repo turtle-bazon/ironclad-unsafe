@@ -544,3 +544,229 @@
       (unless hh
         (return-from hss-verify-sig nil))
       (lms-verify-sig cur-pub msg rest))))
+;;; Stateful key classes + Ironclad API, chunk F.
+
+(defstruct lms-key
+  kind seed32 ii counter tree derive pub)
+
+(defun lms-new-key (kind seed32 ii)
+  (let* ((*lms-params* (lms-params-for-kind kind)))
+    (make-lms-key :kind kind
+                  :seed32 (copy-seq seed32)
+                  :ii (copy-seq ii)
+                  :counter 0
+                  :tree nil
+                  :derive nil
+                  :pub nil)))
+
+(defun lms-ensure-key (key)
+  (let* ((*lms-params* (lms-params-for-kind (lms-key-kind key))))
+    (unless (lms-key-tree key)
+      (let ((derive (make-lms-seed-derive)))
+        (setf (lms-seed-derive-ii derive) (copy-seq (lms-key-ii key)))
+        (setf (lms-seed-derive-master derive) (copy-seq (lms-key-seed32 key)))
+        (multiple-value-bind (pk tree dd)
+            (lms-keypair-from-seed (lms-key-seed32 key) (lms-key-ii key))
+          (declare (ignore dd))
+          (setf (lms-key-tree key) tree)
+          (setf (lms-key-derive key) derive)
+          (setf (lms-key-pub key) pk))))
+    (values)))
+
+(defun lms-key-exhausted (key)
+  (let* ((*lms-params* (lms-params-for-kind (lms-key-kind key))))
+    (>= (lms-key-counter key) (ash 1 (lms-height)))))
+
+(defun lms-sign-key-message (key msg)
+  (let* ((*lms-params* (lms-params-for-kind (lms-key-kind key))))
+    (lms-ensure-key key)
+    (when (lms-key-exhausted key)
+      (error "LMS key exhausted"))
+    (let ((q (lms-key-counter key)))
+      (let ((sig (lms-sign-at (lms-key-ii key) q
+                              (lms-key-derive key) (lms-key-tree key) msg)))
+        (setf (lms-key-counter key) (1+ q))
+        sig))))
+
+(defun lms-sk-bytes (key)
+  (let ((out (lms-bytes 52)))
+    (replace out (lms-key-seed32 key))
+    (replace out (lms-key-ii key) :start1 32)
+    (let ((q (lms-key-counter key)))
+      (setf (aref out 48) (ldb (byte 8 24) q))
+      (setf (aref out 49) (ldb (byte 8 16) q))
+      (setf (aref out 50) (ldb (byte 8 8) q))
+      (setf (aref out 51) (ldb (byte 8 0) q)))
+    out))
+
+(defun lms-key-from-bytes (kind bytes)
+  (let ((key (lms-new-key kind (subseq bytes 0 32) (subseq bytes 32 48))))
+    (setf (lms-key-counter key) (lms-get-u32 bytes 48))
+    key))
+
+(defclass lms-public-key ()
+  ((kind :initarg :kind :reader lms-key-kind-pub)
+   (bytes :initarg :bytes :reader lms-key-bytes-pub)))
+
+(defclass lms-private-key ()
+  ((kind :initarg :kind :reader lms-key-kind-priv)
+   (bytes :initarg :bytes :reader lms-key-bytes-priv)
+   (state :initarg :state :accessor lms-key-state)))
+
+(defclass lms-sha256-h5-w8-public-key (lms-public-key) ())
+(defclass lms-sha256-h5-w8-private-key (lms-private-key) ())
+(defclass lms-sha256-h10-w4-public-key (lms-public-key) ())
+(defclass lms-sha256-h10-w4-private-key (lms-private-key) ())
+(defclass lms-sha256-h10-w8-public-key (lms-public-key) ())
+(defclass lms-sha256-h10-w8-private-key (lms-private-key) ())
+(defclass lms-sha256-h15-w8-public-key (lms-public-key) ())
+(defclass lms-sha256-h15-w8-private-key (lms-private-key) ())
+
+(defun lms-pk-len () 56)
+(defun lms-sk-len () 52)
+
+(defun lms-check-bytes (bytes length kind)
+  (unless (and (typep bytes '(simple-array (unsigned-byte 8) (*)))
+               (= (length bytes) length))
+    (error 'missing-key-parameter
+           :kind kind
+           :parameter 'bytes
+           :description "LMS key bytes"))
+  (copy-seq bytes))
+
+(defmacro lms-define-key-constructors (kind public-class private-class)
+  `(progn
+     (defmethod make-public-key ((kind (eql ,kind)) &key bytes &allow-other-keys)
+       (make-instance ',public-class :kind ,kind
+                      :bytes (lms-check-bytes bytes (lms-pk-len) ,kind)))
+     (defmethod make-private-key ((kind (eql ,kind)) &key bytes &allow-other-keys)
+       (let ((state (lms-key-from-bytes ,kind (lms-check-bytes bytes (lms-sk-len) ,kind))))
+         (make-instance ',private-class :kind ,kind
+                        :bytes (lms-check-bytes bytes (lms-sk-len) ,kind)
+                        :state state)))
+     (defmethod generate-key-pair ((kind (eql ,kind)) &key &allow-other-keys)
+       (let ((key (lms-new-key ,kind (random-data 32) (random-data 16))))
+         (lms-ensure-key key)
+         (values (make-instance ',private-class :kind ,kind
+                                :bytes (lms-sk-bytes key)
+                                :state key)
+                 (make-instance ',public-class :kind ,kind
+                                :bytes (copy-seq (lms-key-pub key))))))))
+
+(lms-define-key-constructors :lms-sha256-h5-w8
+    lms-sha256-h5-w8-public-key lms-sha256-h5-w8-private-key)
+(lms-define-key-constructors :lms-sha256-h10-w4
+    lms-sha256-h10-w4-public-key lms-sha256-h10-w4-private-key)
+(lms-define-key-constructors :lms-sha256-h10-w8
+    lms-sha256-h10-w8-public-key lms-sha256-h10-w8-private-key)
+(lms-define-key-constructors :lms-sha256-h15-w8
+    lms-sha256-h15-w8-public-key lms-sha256-h15-w8-private-key)
+
+(defmethod destructure-public-key ((public-key lms-public-key))
+  (list :bytes (copy-seq (lms-key-bytes-pub public-key))))
+
+(defmethod destructure-private-key ((private-key lms-private-key))
+  (list :bytes (copy-seq (lms-sk-bytes (lms-key-state private-key)))))
+
+(defmethod sign-message ((private-key lms-private-key) message &key &allow-other-keys)
+  (let ((sig (lms-sign-key-message (lms-key-state private-key) message)))
+    (setf (slot-value private-key 'bytes)
+          (copy-seq (lms-sk-bytes (lms-key-state private-key))))
+    sig))
+
+(defmethod verify-signature ((public-key lms-public-key) message signature &key &allow-other-keys)
+  (let* ((*lms-params* (lms-params-for-kind (lms-key-kind-pub public-key))))
+    (lms-verify-sig (lms-key-bytes-pub public-key) message signature)))
+;;; HSS key classes, chunk G.
+
+(defclass hss-public-key ()
+  ((kind :initarg :kind :reader hss-key-kind-pub)
+   (bytes :initarg :bytes :reader hss-key-bytes-pub)))
+
+(defclass hss-private-key ()
+  ((kind :initarg :kind :reader hss-key-kind-priv)
+   (bytes :initarg :bytes :reader hss-key-bytes-priv)
+   (state :initarg :state :accessor hss-key-state)))
+
+(defclass hss-sha256-2xh5-w8-public-key (hss-public-key) ())
+(defclass hss-sha256-2xh5-w8-private-key (hss-private-key) ())
+(defclass hss-sha256-3xh5-w8-public-key (hss-public-key) ())
+(defclass hss-sha256-3xh5-w8-private-key (hss-private-key) ())
+
+(defun hss-sk-len (kind)
+  (let* ((*hss-params* (hss-params-for-kind kind)))
+    (+ 48 (* 4 (hss-params-levels *hss-params*)))))
+
+(defun hss-key-to-bytes (key)
+  (let* ((*hss-params* (hss-params-for-kind (hss-key-kind key)))
+         (levels (hss-params-levels *hss-params*))
+         (out (lms-bytes (+ 48 (* 4 levels)))))
+    (replace out (hss-key-seed48 key))
+    (dotimes (i levels)
+      (let ((q (aref (hss-key-counters key) i)))
+        (setf (aref out (+ 48 (* 4 i))) (ldb (byte 8 24) q))
+        (setf (aref out (+ 48 (* 4 i) 1)) (ldb (byte 8 16) q))
+        (setf (aref out (+ 48 (* 4 i) 2)) (ldb (byte 8 8) q))
+        (setf (aref out (+ 48 (* 4 i) 3)) (ldb (byte 8 0) q))))
+    out))
+
+(defun hss-key-from-bytes (kind bytes)
+  (let* ((*hss-params* (hss-params-for-kind kind))
+         (levels (hss-params-levels *hss-params*))
+         (key (hss-new-key kind (subseq bytes 0 48))))
+    (dotimes (i levels)
+      (setf (aref (hss-key-counters key) i)
+            (lms-get-u32 bytes (+ 48 (* 4 i)))))
+    key))
+
+(defun hss-check-bytes (bytes length kind)
+  (unless (and (typep bytes '(simple-array (unsigned-byte 8) (*)))
+               (= (length bytes) length))
+    (error 'missing-key-parameter
+           :kind kind
+           :parameter 'bytes
+           :description "HSS key bytes"))
+  (copy-seq bytes))
+
+(defun hss-pk-len (kind)
+  (declare (ignore kind))
+  60)
+
+(defmacro hss-define-key-constructors (kind public-class private-class)
+  `(progn
+     (defmethod make-public-key ((kind (eql ,kind)) &key bytes &allow-other-keys)
+       (make-instance ',public-class :kind ,kind
+                      :bytes (hss-check-bytes bytes (hss-pk-len ,kind) ,kind)))
+     (defmethod make-private-key ((kind (eql ,kind)) &key bytes &allow-other-keys)
+       (let ((state (hss-key-from-bytes ,kind (hss-check-bytes bytes (hss-sk-len ,kind) ,kind))))
+         (make-instance ',private-class :kind ,kind
+                        :bytes (hss-check-bytes bytes (hss-sk-len ,kind) ,kind)
+                        :state state)))
+     (defmethod generate-key-pair ((kind (eql ,kind)) &key &allow-other-keys)
+       (let ((key (hss-new-key ,kind (random-data 48))))
+         (let ((pub (hss-top-pub key)))
+           (values (make-instance ',private-class :kind ,kind
+                                  :bytes (hss-key-to-bytes key)
+                                  :state key)
+                   (make-instance ',public-class :kind ,kind
+                                  :bytes (copy-seq pub))))))))
+
+(hss-define-key-constructors :hss-sha256-2xh5-w8
+    hss-sha256-2xh5-w8-public-key hss-sha256-2xh5-w8-private-key)
+(hss-define-key-constructors :hss-sha256-3xh5-w8
+    hss-sha256-3xh5-w8-public-key hss-sha256-3xh5-w8-private-key)
+
+(defmethod destructure-public-key ((public-key hss-public-key))
+  (list :bytes (copy-seq (hss-key-bytes-pub public-key))))
+
+(defmethod destructure-private-key ((private-key hss-private-key))
+  (list :bytes (copy-seq (hss-key-to-bytes (hss-key-state private-key)))))
+
+(defmethod sign-message ((private-key hss-private-key) message &key &allow-other-keys)
+  (let ((sig (hss-sign-message (hss-key-state private-key) message)))
+    (setf (slot-value private-key 'bytes)
+          (copy-seq (hss-key-to-bytes (hss-key-state private-key))))
+    sig))
+
+(defmethod verify-signature ((public-key hss-public-key) message signature &key &allow-other-keys)
+  (hss-verify-sig (hss-key-bytes-pub public-key) message signature))

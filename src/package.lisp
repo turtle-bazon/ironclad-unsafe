@@ -138,6 +138,12 @@
    #:bike-l1-public-key #:bike-l1-private-key #:bike-key-bytes
    #:bike-l3-public-key #:bike-l3-private-key
    #:bike-l5-public-key #:bike-l5-private-key
+   #:lms-sha256-h5-w8-public-key #:lms-sha256-h5-w8-private-key
+   #:lms-sha256-h10-w4-public-key #:lms-sha256-h10-w4-private-key
+   #:lms-sha256-h10-w8-public-key #:lms-sha256-h10-w8-private-key
+   #:lms-sha256-h15-w8-public-key #:lms-sha256-h15-w8-private-key
+   #:hss-sha256-2xh5-w8-public-key #:hss-sha256-2xh5-w8-private-key
+   #:hss-sha256-3xh5-w8-public-key #:hss-sha256-3xh5-w8-private-key
 
    ;; HPKE (RFC 9180)
    #:hpke-derive-keypair #:hpke-setup-sender #:hpke-setup-recipient
