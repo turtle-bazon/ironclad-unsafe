@@ -244,6 +244,7 @@
                 (:file "falcon")))
   ("mceliece" :depends-on ("ironclad/digest/sha3"))
   ("hqc" :depends-on ("ironclad/digest/sha3"))
+  ("bike" :depends-on ("ironclad/digest/sha512" "ironclad/cipher/aes"))
   ("x-wing" :depends-on ("ironclad/public-key/ml-kem"
                          "ironclad/public-key/curve25519"
                          "ironclad/digest/sha3")))
