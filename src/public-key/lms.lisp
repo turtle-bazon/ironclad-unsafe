@@ -1,0 +1,327 @@
+;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
+;;;; lms.lisp -- LMS/HSS stateful hash-based signatures (RFC 8554).
+;;;;
+;;;; Direct translation of the Cisco hash-sigs reference implementation,
+;;;; single-threaded portable paths, SHA-256 only.
+
+(in-package :crypto)
+
+
+;;;
+;;; Parameters.
+;;;
+
+(defstruct lms-params
+  kind lm-type ots-type height w n p ls)
+
+(defparameter +lms-h5-w8-params+
+  (make-lms-params :kind :lms-sha256-h5-w8 :lm-type 5 :ots-type 4
+                   :height 5 :w 8 :n 32 :p 34 :ls 0))
+
+(defparameter +lms-h10-w4-params+
+  (make-lms-params :kind :lms-sha256-h10-w4 :lm-type 6 :ots-type 3
+                   :height 10 :w 4 :n 32 :p 67 :ls 4))
+
+(defparameter +lms-h10-w8-params+
+  (make-lms-params :kind :lms-sha256-h10-w8 :lm-type 6 :ots-type 4
+                   :height 10 :w 8 :n 32 :p 34 :ls 0))
+
+(defparameter +lms-h15-w8-params+
+  (make-lms-params :kind :lms-sha256-h15-w8 :lm-type 7 :ots-type 4
+                   :height 15 :w 8 :n 32 :p 34 :ls 0))
+
+(defparameter *lms-params* +lms-h5-w8-params+)
+
+(defun lms-params-for-kind (kind)
+  (case kind
+    (:lms-sha256-h5-w8 +lms-h5-w8-params+)
+    (:lms-sha256-h10-w4 +lms-h10-w4-params+)
+    (:lms-sha256-h10-w8 +lms-h10-w8-params+)
+    (:lms-sha256-h15-w8 +lms-h15-w8-params+)
+    (otherwise (error "unknown LMS kind ~A" kind))))
+
+(declaim (inline lms-height lms-ots-w lms-ots-n lms-ots-p lms-ots-ls
+                 lms-lm-type lms-ots-type))
+
+(defun lms-height () (lms-params-height *lms-params*))
+(defun lms-ots-w () (lms-params-w *lms-params*))
+(defun lms-ots-n () (lms-params-n *lms-params*))
+(defun lms-ots-p () (lms-params-p *lms-params*))
+(defun lms-ots-ls () (lms-params-ls *lms-params*))
+(defun lms-lm-type () (lms-params-lm-type *lms-params*))
+(defun lms-ots-type () (lms-params-ots-type *lms-params*))
+
+(defun lms-bytes (n)
+  (make-array n :element-type '(unsigned-byte 8) :initial-element 0))
+
+(defun lms-put-u32 (v off x)
+  (setf (aref v off) (ldb (byte 8 24) x))
+  (setf (aref v (+ off 1)) (ldb (byte 8 16) x))
+  (setf (aref v (+ off 2)) (ldb (byte 8 8) x))
+  (setf (aref v (+ off 3)) (ldb (byte 8 0) x))
+  (values))
+
+(defun lms-put-u16 (v off x)
+  (setf (aref v off) (ldb (byte 8 8) x))
+  (setf (aref v (+ off 1)) (ldb (byte 8 0) x))
+  (values))
+
+(defun lms-get-u32 (v off)
+  (logior (ash (aref v off) 24)
+          (ash (aref v (+ off 1)) 16)
+          (ash (aref v (+ off 2)) 8)
+          (aref v (+ off 3))))
+
+(defun lms-sha256 (parts)
+  (let ((d (make-digest :sha256)))
+    (dolist (p parts)
+      (update-digest d p))
+    (produce-digest d)))
+
+
+;;;
+;;; Seed derivation: SHA-256(I || u32(q) || u16(j) || 0xff || seed).
+;;;
+
+(defstruct lms-seed-derive
+  (ii (lms-bytes 16))
+  (master (lms-bytes 32))
+  (q 0 :type (unsigned-byte 32))
+  (j 0 :type (unsigned-byte 32)))
+
+(defun lms-derive (derive increment-j)
+  (let ((buf (lms-bytes 55))
+        (out nil))
+    (replace buf (lms-seed-derive-ii derive))
+    (lms-put-u32 buf 16 (lms-seed-derive-q derive))
+    (lms-put-u16 buf 20 (lms-seed-derive-j derive))
+    (setf (aref buf 22) #xFF)
+    (replace buf (lms-seed-derive-master derive) :start1 23)
+    (setf out (lms-sha256 (list buf)))
+    (when increment-j
+      (setf (lms-seed-derive-j derive)
+            (logand (1+ (lms-seed-derive-j derive)) #xFFFFFFFF)))
+    out))
+
+
+;;;
+;;; LM-OTS: coefficients, checksum, keygen, sign, verify-compute.
+;;;
+
+(defun lms-ots-coef (qq i w)
+  (let ((bidx (truncate (* i w) 8)))
+    (let ((dpb (truncate 8 w)))
+      (let ((shift (* w (logand (lognot i) (1- dpb)))))
+        (let ((mask (1- (ash 1 w))))
+          (logand (ash (aref qq bidx) (- shift)) mask))))))
+
+(defun lms-ots-checksum (qq n w ls)
+  (let ((sum 0)
+        (u (truncate (* 8 n) w))
+        (max-digit (1- (ash 1 w))))
+    (dotimes (i u)
+      (incf sum (- max-digit (lms-ots-coef qq i w))))
+    (ash sum ls)))
+
+(defun lms-ots-gen-pubkey (ii q derive)
+  (let* ((w (lms-ots-w))
+         (n (lms-ots-n))
+         (p (lms-ots-p))
+         (pre (lms-bytes 22))
+         (d (make-digest :sha256))
+         (buf (lms-bytes (+ 23 n))))
+    (replace pre ii)
+    (lms-put-u32 pre 16 q)
+    (setf (aref pre 20) #x80)
+    (setf (aref pre 21) #x80)
+    (update-digest d pre)
+    (replace buf ii)
+    (lms-put-u32 buf 16 q)
+    (setf (lms-seed-derive-j derive) 0)
+    (dotimes (i p)
+      (lms-put-u16 buf 20 i)
+      (let ((x (lms-derive derive (< i (1- p)))))
+        (replace buf x :start1 23)
+        (dotimes (j (1- (ash 1 w)))
+          (setf (aref buf 22) j)
+          (let ((h (lms-sha256 (list buf))))
+            (replace buf h :start1 23)))
+        (update-digest d (subseq buf 23 (+ 23 n)))))
+    (produce-digest d)))
+;;; LM-OTS sign/verify + LMS tree, chunk B.
+
+(defun lms-ots-sign (ii q derive msg)
+  (let* ((w (lms-ots-w))
+         (n (lms-ots-n))
+         (p (lms-ots-p))
+         (ls (lms-ots-ls))
+         (sig (lms-bytes (+ 4 n (* p n))))
+         (pre (lms-bytes (+ 22 n)))
+         (qq (lms-bytes (+ n 2)))
+         (buf (lms-bytes (+ 23 n))))
+    (lms-put-u32 sig 0 (lms-ots-type))
+    (setf (lms-seed-derive-j derive) #xFFFFFFFD)
+    (let ((rand (lms-derive derive nil)))
+      (replace sig rand :start1 4 :end1 (+ 4 n)))
+    (replace pre ii)
+    (lms-put-u32 pre 16 q)
+    (setf (aref pre 20) #x81)
+    (setf (aref pre 21) #x81)
+    (replace pre sig :start1 22 :start2 4 :end2 (+ 4 n))
+    (let ((qqh (lms-sha256 (list pre msg))))
+      (replace qq qqh))
+    (lms-put-u16 qq n (lms-ots-checksum qq n w ls))
+    (replace buf ii)
+    (lms-put-u32 buf 16 q)
+    (setf (lms-seed-derive-j derive) 0)
+    (dotimes (i p)
+      (lms-put-u16 buf 20 i)
+      (let ((x (lms-derive derive (< i (1- p)))))
+        (replace buf x :start1 23)
+        (let ((a (lms-ots-coef qq i w)))
+          (dotimes (j a)
+            (setf (aref buf 22) j)
+            (let ((h (lms-sha256 (list buf))))
+              (replace buf h :start1 23)))
+          (replace sig buf :start1 (+ 4 n (* n i)) :start2 23 :end2 (+ 23 n)))))
+    sig))
+
+(defun lms-ots-verify-compute (ii q msg sig expected-ots-type)
+  (let* ((w (lms-ots-w))
+         (n (lms-ots-n))
+         (p (lms-ots-p))
+         (ls (lms-ots-ls)))
+    (unless (= (lms-get-u32 sig 0) expected-ots-type)
+      (return-from lms-ots-verify-compute nil))
+    (let ((cc (subseq sig 4 (+ 4 n))))
+      (let ((yy (subseq sig (+ 4 n))))
+        (let ((pre (lms-bytes (+ 22 n))))
+          (replace pre ii)
+          (lms-put-u32 pre 16 q)
+          (setf (aref pre 20) #x81)
+          (setf (aref pre 21) #x81)
+          (replace pre cc :start1 22)
+          (let ((qqh (lms-sha256 (list pre msg))))
+            (let ((qq (lms-bytes (+ n 2))))
+              (replace qq qqh)
+              (lms-put-u16 qq n (lms-ots-checksum qq n w ls))
+              (let ((d (make-digest :sha256)))
+                (let ((pp (lms-bytes 22)))
+                  (replace pp ii)
+                  (lms-put-u32 pp 16 q)
+                  (setf (aref pp 20) #x80)
+                  (setf (aref pp 21) #x80)
+                  (update-digest d pp)
+                  (let ((tmp (lms-bytes (+ 23 n))))
+                    (replace tmp ii)
+                    (lms-put-u32 tmp 16 q)
+                    (dotimes (i p)
+                      (lms-put-u16 tmp 20 i)
+                      (replace tmp yy :start1 23 :start2 (* n i) :end2 (* n (1+ i)))
+                      (let ((a (lms-ots-coef qq i w)))
+                        (dotimes (j (- (1- (ash 1 w)) a))
+                          (setf (aref tmp 22) (+ a j))
+                          (let ((h (lms-sha256 (list tmp))))
+                            (replace tmp h :start1 23))))
+                      (update-digest d (subseq tmp 23 (+ 23 n))))
+                    (produce-digest d)))))))))))
+;;; LMS tree build, sign, verify. Chunk C.
+
+(defun lms-leaf-hash (ii r ots-pubkey)
+  (let ((pre (lms-bytes (+ 22 32))))
+    (replace pre ii)
+    (lms-put-u32 pre 16 r)
+    (setf (aref pre 20) #x82)
+    (setf (aref pre 21) #x82)
+    (replace pre ots-pubkey :start1 22)
+    (lms-sha256 (list pre))))
+
+(defun lms-intr-hash (ii r left right)
+  (let ((pre (lms-bytes (+ 22 64))))
+    (replace pre ii)
+    (lms-put-u32 pre 16 r)
+    (setf (aref pre 20) #x83)
+    (setf (aref pre 21) #x83)
+    (replace pre left :start1 22)
+    (replace pre right :start1 (+ 22 32))
+    (lms-sha256 (list pre))))
+
+(defun lms-build-tree (ii derive)
+  (let* ((h (lms-height))
+         (nleaf (ash 1 h))
+         (tree (make-array (* 2 nleaf))))
+    (dotimes (q nleaf)
+      (setf (lms-seed-derive-q derive) q)
+      (setf (aref tree (+ nleaf q)) (lms-leaf-hash ii (+ nleaf q) (lms-ots-gen-pubkey ii q derive))))
+    (loop for lvl from (1- h) downto 0
+          do (loop for i from 0 below (ash 1 lvl)
+                   do (setf (aref tree (+ (ash 1 lvl) i))
+                            (lms-intr-hash ii
+                                           (+ (ash 1 lvl) i)
+                                           (aref tree (* 2 (+ (ash 1 lvl) i)))
+                                           (aref tree (1+ (* 2 (+ (ash 1 lvl) i))))))))
+    tree))
+
+(defun lms-auth-path (tree q)
+  (let* ((h (lms-height))
+         (nleaf (ash 1 h))
+         (path (lms-bytes (* h 32)))
+         (node (+ nleaf q)))
+    (dotimes (i h)
+      (let ((sib (if (oddp node) (1- node) (1+ node))))
+        (replace path (aref tree sib) :start1 (* 32 i)))
+      (setf node (ash node -1)))
+    path))
+
+(defun lms-pubkey-bytes (ii root)
+  (let ((pk (lms-bytes (+ 8 16 32))))
+    (lms-put-u32 pk 0 (lms-lm-type))
+    (lms-put-u32 pk 4 (lms-ots-type))
+    (replace pk ii :start1 8)
+    (replace pk root :start1 (+ 8 16))
+    pk))
+
+(defun lms-keypair-from-seed (master-seed ii)
+  (let ((derive (make-lms-seed-derive)))
+    (setf (lms-seed-derive-ii derive) (copy-seq ii))
+    (setf (lms-seed-derive-master derive) (copy-seq master-seed))
+    (let ((tree (lms-build-tree ii derive)))
+      (values (lms-pubkey-bytes ii (aref tree 1)) tree derive))))
+
+(defun lms-sign-at (ii q derive tree msg)
+  (setf (lms-seed-derive-q derive) q)
+  (let* ((ots-sig (lms-ots-sign ii q derive msg))
+         (path (lms-auth-path tree q))
+         (sig (lms-bytes (+ 4 (length ots-sig) 4 (length path)))))
+    (lms-put-u32 sig 0 q)
+    (replace sig ots-sig :start1 4)
+    (lms-put-u32 sig (+ 4 (length ots-sig)) (lms-lm-type))
+    (replace sig path :start1 (+ 8 (length ots-sig)))
+    sig))
+
+(defun lms-verify-sig (pk msg sig)
+  (let* ((lm-type (lms-get-u32 pk 0))
+         (ots-type (lms-get-u32 pk 4))
+         (ii (subseq pk 8 (+ 8 16)))
+         (root (subseq pk (+ 8 16) (+ 8 16 32)))
+         (q (lms-get-u32 sig 0))
+         (ots-len (+ 4 32 (* (lms-ots-p) 32)))
+         (ots-sig (subseq sig 4 (+ 4 ots-len)))
+         (lm-in-sig (lms-get-u32 sig (+ 4 ots-len)))
+         (path (subseq sig (+ 8 ots-len))))
+    (unless (and (= lm-type (lms-lm-type)) (= ots-type (lms-ots-type)) (= lm-in-sig (lms-lm-type)))
+      (return-from lms-verify-sig nil))
+    (when (>= q (ash 1 (lms-height)))
+      (return-from lms-verify-sig nil))
+    (let ((kc (lms-ots-verify-compute ii q msg ots-sig ots-type)))
+      (unless kc
+        (return-from lms-verify-sig nil))
+      (let ((node (+ (ash 1 (lms-height)) q)))
+        (let ((cur (lms-leaf-hash ii (+ (ash 1 (lms-height)) q) kc)))
+          (dotimes (i (lms-height))
+            (let ((sib (subseq path (* 32 i) (* 32 (1+ i)))))
+              (setf cur (if (oddp node)
+                            (lms-intr-hash ii (ash node -1) sib cur)
+                            (lms-intr-hash ii (ash node -1) cur sib)))
+              (setf node (ash node -1))))
+          (equalp cur root))))))

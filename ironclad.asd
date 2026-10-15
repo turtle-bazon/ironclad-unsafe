@@ -245,6 +245,7 @@
   ("mceliece" :depends-on ("ironclad/digest/sha3"))
   ("hqc" :depends-on ("ironclad/digest/sha3"))
   ("bike" :depends-on ("ironclad/digest/sha512" "ironclad/cipher/aes"))
+  ("lms" :depends-on ("ironclad/digest/sha256"))
   ("x-wing" :depends-on ("ironclad/public-key/ml-kem"
                          "ironclad/public-key/curve25519"
                          "ironclad/digest/sha3")))
