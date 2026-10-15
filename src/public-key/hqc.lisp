@@ -443,23 +443,29 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
 ;;; GF(2)[x] Karatsuba multiply + reduce mod x^n - 1.
 ;;;
 
-(defun hqc-base-mul (c a b)
-  "Carryless 64x64 -> 128-bit product into C[0..1].
+(defconstant +hqc-low-bit-masks+
+  (let ((masks (make-array 64 :element-type '(unsigned-byte 64))))
+    (setf (aref masks 0) #xFFFFFFFFFFFFFFFF)
+    (loop for j from 1 to 63
+          do (setf (aref masks j) (1- (ash 1 (- 64 j)))))
+    masks))
 
-A direct bit-serial carryless multiply is both shorter and faster here than
-the reference's 4-bit table/mask loop; it produces the same 128-bit word."
+(declaim (inline hqc-base-mul))
+(defun hqc-base-mul (c a b)
+  "Constant-time bit-serial carryless 64x64 -> 128-bit product into C[0..1]."
   (let ((l 0) (h 0))
     (dotimes (j 64)
-      (unless (zerop (logand b (ash 1 j)))
+      (let ((bmask (- (ldb (byte 1 j) b))))
         (if (zerop j)
-            (setf l (logxor l a))
-            (let ((low-bits (logand a (1- (ash 1 (- 64 j))))))
-              (setf l (logxor l (ash low-bits j)))
-              (setf h (logxor h (ash a (- (- 64 j)))))))))
+            (setf l (logxor l (logand a bmask)))
+            (let ((low-bits (logand a (aref +hqc-low-bit-masks+ j))))
+              (setf l (logxor l (logand (ash low-bits j) bmask)))
+              (setf h (logxor h (logand (ash a (- (- 64 j))) bmask)))))))
     (setf (aref c 0) l
           (aref c 1) h)
     (values)))
 
+(declaim (inline hqc-karatsuba-add1 hqc-karatsuba-add2 hqc-vec-reduce))
 (defun hqc-karatsuba-add1 (alh blh a b size-l size-h)
   (dotimes (i size-h)
     (setf (aref alh i) (logxor (aref a i) (aref a (+ i size-l))))
@@ -486,22 +492,22 @@ the reference's 4-bit table/mask loop; it produces the same 128-bit word."
               (aref o 1) (aref c 1))
         (values))
       (let* ((size-h (truncate size 2))
-             (size-l (truncate (1+ size) 2))
-             (alh (hqc-u64vec (1+ size-l)))
-             (blh (hqc-u64vec (1+ size-l)))
-             (tmp1 (hqc-u64vec (* 2 size-l)))
-             (ah (make-array size-h :element-type '(unsigned-byte 64)
-                                        :displaced-to a :displaced-index-offset size-l))
-             (bh (make-array size-h :element-type '(unsigned-byte 64)
-                                        :displaced-to b :displaced-index-offset size-l))
-             (tmp2 (make-array (* 2 size-h) :element-type '(unsigned-byte 64)
-                                                  :displaced-to o :displaced-index-offset (* 2 size-l))))
-        (hqc-karatsuba o a b size-l)
-        (hqc-karatsuba tmp2 ah bh size-h)
-        (hqc-karatsuba-add1 alh blh a b size-l size-h)
-        (hqc-karatsuba tmp1 alh blh size-l)
-        (hqc-karatsuba-add2 o tmp1 tmp2 size-l size-h)
-        (values))))
+         (size-l (truncate (1+ size) 2))
+         (alh (hqc-u64vec (1+ size-l)))
+         (blh (hqc-u64vec (1+ size-l)))
+         (tmp1 (hqc-u64vec (* 2 size-l)))
+         (ah (make-array size-h :element-type '(unsigned-byte 64)
+                             :displaced-to a :displaced-index-offset size-l))
+         (bh (make-array size-h :element-type '(unsigned-byte 64)
+                             :displaced-to b :displaced-index-offset size-l))
+         (tmp2 (make-array (* 2 size-h) :element-type '(unsigned-byte 64)
+                               :displaced-to o :displaced-index-offset (* 2 size-l))))
+    (hqc-karatsuba o a b size-l)
+    (hqc-karatsuba tmp2 ah bh size-h)
+    (hqc-karatsuba-add1 alh blh a b size-l size-h)
+    (hqc-karatsuba tmp1 alh blh size-l)
+    (hqc-karatsuba-add2 o tmp1 tmp2 size-l size-h)
+    (values))))
 
 (defun hqc-vec-reduce (o a)
   (let ((n64 (hqc-vec-n-64))
