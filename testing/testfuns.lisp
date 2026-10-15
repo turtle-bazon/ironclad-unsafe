@@ -1,6 +1,12 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 (in-package :crypto-tests)
 
+(defparameter *test-vector-verbose*
+  (and (uiop:getenv "IRONCLAD_TEST_VERBOSE")
+       (string/= (uiop:getenv "IRONCLAD_TEST_VERBOSE") ""))
+  "When true, each test vector form is printed before it is evaluated.")
+
+
 (defun hex-string-to-byte-array (string &key (start 0) (end nil))
   ;; This function disappears from profiles if SBCL can inline the
   ;; POSITION call, so declare SPEED high enough to trigger that.
@@ -38,8 +44,20 @@
   (declare (ignore sub-char numarg))
   (hex-string-to-byte-array (read stream t nil t)))
 
+(defun vector-form-summary (form)
+  "Print only the shape of a test vector form; byte arrays become lengths."
+  (cons (car form)
+        (loop for item in (cdr form)
+              repeat 5
+              collect (typecase item
+                        (array (array-total-size item))
+                        (string (length item))
+                        (cons (length item))
+                        (t item)))))
+
 (defun run-test-vector-file (name function-map)
   (let ((filename (test-vector-filename name))
+        (count 0)
         ;; Ironclad loads some sources with its custom readtable, and some
         ;; implementations leak that readtable to later loads.  Test vector
         ;; files must be read with a pristine standard readtable.
@@ -51,6 +69,10 @@
                             :if-does-not-exist :error)
       (loop for form = (read stream nil stream)
          until (eq form stream) do
+         (when *test-vector-verbose*
+           (format t "~&VECTOR-FORM ~D ~S~%"
+                   (incf count) (vector-form-summary form))
+           (finish-output))
          (cond
            ((not (listp form))
             (error "Invalid form in test vector file ~A: ~A" filename form))

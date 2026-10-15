@@ -19,10 +19,14 @@
 
 (in-package :crypto)
 
-
-(defconstant +ml-dsa-q+ 8380417)
-(defconstant +ml-dsa-n+ 256)
-(defconstant +ml-dsa-d+ 13)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  ;; Define the modulus at compile time as well as load time.  Some
+  ;; compilers (e.g. Allegro CL) otherwise see the parameter definitions
+  ;; below before +ML-DSA-Q+ has a compile-time value.
+  (defconstant +ml-dsa-q+ 8380417)
+  (defconstant +ml-dsa-n+ 256)
+  (defconstant +ml-dsa-d+ 13)
+  (defconstant +ml-dsa-invntt-f+ 41978))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defstruct ml-dsa-params
@@ -92,9 +96,6 @@
                     -426683 1723600 -1803090 1910376 -1667432 -1104333 -260646 -3833893
                     -2939036 -2235985 -420899 -2286327 183443 -976891 1612842 -3545687
                     -554416 3919660 -48306 -1362209 3937738 1400424 -846154 1976782)))
-
-;;; mont^2/256, final scale of the inverse NTT.
-(defconstant +ml-dsa-invntt-f+ 41978)
 
 (deftype ml-dsa-poly () '(simple-array fixnum (256)))
 

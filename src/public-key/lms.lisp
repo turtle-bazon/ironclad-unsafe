@@ -12,23 +12,23 @@
 ;;;
 
 (defstruct lms-params
-  kind lm-type ots-type height w n p ls)
+  kind lm-type ots-type height w n ots-p ls)
 
 (defparameter +lms-h5-w8-params+
   (make-lms-params :kind :lms-sha256-h5-w8 :lm-type 5 :ots-type 4
-                   :height 5 :w 8 :n 32 :p 34 :ls 0))
+                   :height 5 :w 8 :n 32 :ots-p 34 :ls 0))
 
 (defparameter +lms-h10-w4-params+
   (make-lms-params :kind :lms-sha256-h10-w4 :lm-type 6 :ots-type 3
-                   :height 10 :w 4 :n 32 :p 67 :ls 4))
+                   :height 10 :w 4 :n 32 :ots-p 67 :ls 4))
 
 (defparameter +lms-h10-w8-params+
   (make-lms-params :kind :lms-sha256-h10-w8 :lm-type 6 :ots-type 4
-                   :height 10 :w 8 :n 32 :p 34 :ls 0))
+                   :height 10 :w 8 :n 32 :ots-p 34 :ls 0))
 
 (defparameter +lms-h15-w8-params+
   (make-lms-params :kind :lms-sha256-h15-w8 :lm-type 7 :ots-type 4
-                   :height 15 :w 8 :n 32 :p 34 :ls 0))
+                   :height 15 :w 8 :n 32 :ots-p 34 :ls 0))
 
 (defparameter *lms-params* +lms-h5-w8-params+)
 
@@ -46,7 +46,7 @@
 (defun lms-height () (lms-params-height *lms-params*))
 (defun lms-ots-w () (lms-params-w *lms-params*))
 (defun lms-ots-n () (lms-params-n *lms-params*))
-(defun lms-ots-p () (lms-params-p *lms-params*))
+(defun lms-ots-p () (lms-params-ots-p *lms-params*))
 (defun lms-ots-ls () (lms-params-ls *lms-params*))
 (defun lms-lm-type () (lms-params-lm-type *lms-params*))
 (defun lms-ots-type () (lms-params-ots-type *lms-params*))
@@ -367,7 +367,7 @@
                         ((= ots-type 3) 4)
                         ((= ots-type 4) 0))))
           (make-lms-params :kind :hss-level :lm-type lm-type :ots-type ots-type
-                           :height height :w w :n 32 :p p :ls ls))))))
+                           :height height :w w :n 32 :ots-p p :ls ls))))))
 
 (defmacro with-hss-level-params (lvl &body body)
   `(let ((*lms-params* (lms-params-for-height-ots
