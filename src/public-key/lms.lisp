@@ -472,7 +472,12 @@
   (let* ((*hss-params* (hss-params-for-kind (hss-key-kind key)))
          (levels (hss-params-levels *hss-params*)))
     (when (hss-exhausted key)
-      (error "HSS key exhausted"))
+      (error 'stateful-key-exhausted
+             :kind (hss-key-kind key)
+             :index (aref (hss-key-counters key) 0)
+             :limit (ash 1 (aref (hss-params-heights
+                                  (hss-params-for-kind (hss-key-kind key)))
+                                 0))))
     (dotimes (lvl levels)
       (hss-ensure-level key lvl))
     (let ((parts (make-array levels)))
@@ -581,7 +586,10 @@
   (let* ((*lms-params* (lms-params-for-kind (lms-key-kind key))))
     (lms-ensure-key key)
     (when (lms-key-exhausted key)
-      (error "LMS key exhausted"))
+      (error 'stateful-key-exhausted
+             :kind (lms-key-kind key)
+             :index (lms-key-counter key)
+             :limit (ash 1 (lms-height))))
     (let ((q (lms-key-counter key)))
       (let ((sig (lms-sign-at (lms-key-ii key) q
                               (lms-key-derive key) (lms-key-tree key) msg)))

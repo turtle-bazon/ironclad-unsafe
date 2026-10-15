@@ -13,33 +13,68 @@
 (rtest:deftest :x-wing-encapsulation (run-test-vector-file :x-wing *public-key-encryption-tests*) t)
 (rtest:deftest :xmss (run-test-vector-file :xmss-h10 *public-key-encryption-tests*) t)
 
-(rtest:deftest :xmss-state-exhaustion
+(defun lms-hss-state-exhaustion-test ()
+  (let ((msg (make-array 32 :element-type '(unsigned-byte 8)
+                        :initial-element 7)))
+    (flet ((set-big-endian-u32 (bytes offset value)
+             (setf (aref bytes offset) (ldb (byte 8 24) value)
+                   (aref bytes (+ offset 1)) (ldb (byte 8 16) value)
+                   (aref bytes (+ offset 2)) (ldb (byte 8 8) value)
+                   (aref bytes (+ offset 3)) (ldb (byte 8 0) value))))
+      (and
+       ;; LMS h=5 has 32 one-time signatures; counter 32 is exhausted.
+       (multiple-value-bind (priv pub) (ironclad:generate-key-pair :lms-sha256-h5-w8)
+         (declare (ignore pub))
+         (let* ((sk-bytes (getf (ironclad:destructure-private-key priv) :bytes))
+                (exhausted (copy-seq sk-bytes)))
+           (set-big-endian-u32 exhausted 48 32)
+           (let ((key (ironclad:make-private-key :lms-sha256-h5-w8 :bytes exhausted)))
+             (handler-case (progn (ironclad:sign-message key msg) nil)
+               (ironclad:stateful-key-exhausted () t)))))
+       ;; HSS 2xh5-w8 has a top-level h=5 tree; counter 32 is exhausted.
+       (multiple-value-bind (priv pub) (ironclad:generate-key-pair :hss-sha256-2xh5-w8)
+         (declare (ignore pub))
+         (let* ((sk-bytes (getf (ironclad:destructure-private-key priv) :bytes))
+                (exhausted (copy-seq sk-bytes)))
+           (set-big-endian-u32 exhausted 48 32)
+           (let ((key (ironclad:make-private-key :hss-sha256-2xh5-w8 :bytes exhausted)))
+             (handler-case (progn (ironclad:sign-message key msg) nil)
+               (ironclad:stateful-key-exhausted () t)))))))))
+
+(rtest:deftest :lms-hss-state-exhaustion
+  (lms-hss-state-exhaustion-test)
+  t)
+
+(defun xmss-state-exhaustion-test ()
   (multiple-value-bind (priv pub) (ironclad:generate-key-pair :xmss-sha256-h10)
     (declare (ignore pub))
     (let* ((msg (make-array 32 :element-type '(unsigned-byte 8)
                            :initial-element 7))
            (sk-bytes (getf (ironclad:destructure-private-key priv) :bytes)))
-      ;; 1024 = 0x00000400, one past the final XMSS index.
-      (let ((exhausted (copy-seq sk-bytes)))
-        (setf (aref exhausted 0) 0
-              (aref exhausted 1) 0
-              (aref exhausted 2) 4
-              (aref exhausted 3) 0)
-        (let ((key (ironclad:make-private-key :xmss-sha256-h10 :bytes exhausted)))
-          (handler-case (progn (ironclad:sign-message key msg) t)
-            (ironclad:stateful-key-exhausted () nil))))
-      ;; The final index (1023) must still sign once and then become exhausted.
-      (let ((last (copy-seq sk-bytes)))
-        ;; 1023 = 0x000003FF.
-        (setf (aref last 0) 0
-              (aref last 1) 0
-              (aref last 2) 3
-              (aref last 3) 255)
-        (let ((key (ironclad:make-private-key :xmss-sha256-h10 :bytes last)))
-          (ironclad:sign-message key msg)
-          (handler-case (progn (ironclad:sign-message key msg) t)
-            (ironclad:stateful-key-exhausted () nil))))
-      t))
+      (and
+       ;; 1024 = 0x00000400, one past the final XMSS index.
+       (let ((exhausted (copy-seq sk-bytes)))
+         (setf (aref exhausted 0) 0
+               (aref exhausted 1) 0
+               (aref exhausted 2) 4
+               (aref exhausted 3) 0)
+         (let ((key (ironclad:make-private-key :xmss-sha256-h10 :bytes exhausted)))
+           (handler-case (progn (ironclad:sign-message key msg) nil)
+             (ironclad:stateful-key-exhausted () t))))
+       ;; The final index (1023) must still sign once and then become exhausted.
+       (let ((last (copy-seq sk-bytes)))
+         ;; 1023 = 0x000003FF.
+         (setf (aref last 0) 0
+               (aref last 1) 0
+               (aref last 2) 3
+               (aref last 3) 255)
+         (let ((key (ironclad:make-private-key :xmss-sha256-h10 :bytes last)))
+           (ironclad:sign-message key msg)
+           (handler-case (progn (ironclad:sign-message key msg) nil)
+             (ironclad:stateful-key-exhausted () t))))))))
+
+(rtest:deftest :xmss-state-exhaustion
+  (xmss-state-exhaustion-test)
   t)
 
 (rtest:deftest :hpke (run-test-vector-file :hpke *hpke-tests*) t)
