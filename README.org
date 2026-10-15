@@ -1114,6 +1114,7 @@ Encryption algorithms:
  - RSA
 
 Key encapsulation:
+ - HQC-128/192/256
  - ML-KEM-512/768/1024 (FIPS 203)
  - X-Wing (X25519 + ML-KEM-768 hybrid, draft-connolly-cfrg-xwing-kem)
 
@@ -1124,6 +1125,7 @@ Signature algorithms:
  - Elgamal
  - ML-DSA-44/65/87 (FIPS 204)
  - RSA
+ - XMSS-SHA2_10_256 (RFC 8391, stateful; also aliased as :xmss-sha256-h10)
  - Secp224r1 (a.k.a. NIST P-224)
  - Secp256k1
  - Secp256r1 (a.k.a. NIST P-256)
@@ -1194,6 +1196,10 @@ methods that specialize on /kind/, below.
 (make-public-key :ml-dsa-44 &key bytes) => public-key
 (make-public-key :ml-dsa-65 &key bytes) => public-key
 (make-public-key :ml-dsa-87 &key bytes) => public-key
+(make-public-key :hqc-128 &key bytes) => public-key
+(make-public-key :hqc-192 &key bytes) => public-key
+(make-public-key :hqc-256 &key bytes) => public-key
+(make-public-key :xmss-sha256-h10 &key bytes) => public-key
 (make-public-key :rsa &key e n) => public-key
 (make-public-key :secp224r1 &key y) => public-key
 (make-public-key :secp256k1 &key y) => public-key
@@ -1225,6 +1231,10 @@ specialize on /kind/, below.
 (make-private-key :ml-dsa-44 &key bytes) => private-key
 (make-private-key :ml-dsa-65 &key bytes) => private-key
 (make-private-key :ml-dsa-87 &key bytes) => private-key
+(make-private-key :hqc-128 &key bytes) => private-key
+(make-private-key :hqc-192 &key bytes) => private-key
+(make-private-key :hqc-256 &key bytes) => private-key
+(make-private-key :xmss-sha256-h10 &key bytes) => private-key
 (make-private-key :rsa &key d n p q) => private-key
 (make-private-key :secp224r1 &key x y) => private-key
 (make-private-key :secp256k1 &key x y) => private-key
@@ -2414,6 +2424,16 @@ bad-authentication-tag
 
 This error is signaled when the verification of authenticity of a message fails.
 
+
+#+NAME: stateful-key-exhausted
+#+BEGIN_SRC lisp
+stateful-key-exhausted
+#+END_SRC
+
+This error is signaled when a stateful signature key, such as an XMSS or
+LMS/HSS key, has no remaining one-time signatures. The condition includes the
+key /kind/, the current /index/, and the exhaustion /limit/.
+
 * Subsystems (experimental)
   :PROPERTIES:
   :CUSTOM_ID: subsystems
@@ -2515,8 +2535,10 @@ For example if you need only AES and SHA256:
     - ironclad/public-key/ed25519
     - ironclad/public-key/ed448
     - ironclad/public-key/elgamal
+    - ironclad/public-key/hqc
     - ironclad/public-key/rsa
     - ironclad/public-key/secp256k1
     - ironclad/public-key/secp256r1
     - ironclad/public-key/secp384r1
     - ironclad/public-key/secp521r1
+    - ironclad/public-key/xmss
