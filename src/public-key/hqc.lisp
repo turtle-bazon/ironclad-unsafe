@@ -132,7 +132,7 @@
     (otherwise (error "unknown HQC kind ~A" kind))))
 
 (declaim (inline hqc-n hqc-n1 hqc-n2 hqc-n1n2 hqc-omega hqc-omega-e hqc-omega-r
-                 hqc-gf-m hqc-k hqc-gg hqc-fft hqc-delta hqc-red-mask
+                 hqc-gf-m hqc-k hqc-gg hqc-fft-bits hqc-delta hqc-red-mask
                  hqc-seed-bytes hqc-salt-bytes hqc-ss-bytes hqc-sk-bytes
                  hqc-pk-bytes hqc-ct-bytes hqc-vec-n-bytes hqc-vec-k-bytes
                  hqc-vec-n1-bytes hqc-vec-n1n2-bytes hqc-vec-n-64
@@ -149,7 +149,7 @@
 (defun hqc-gf-m () (hqc-params-m *hqc-params*))
 (defun hqc-k () (hqc-params-k *hqc-params*))
 (defun hqc-gg () (hqc-params-g *hqc-params*))
-(defun hqc-fft () (hqc-params-fft *hqc-params*))
+(defun hqc-fft-bits () (hqc-params-fft *hqc-params*))
 (defun hqc-delta () (hqc-params-delta *hqc-params*))
 (defun hqc-red-mask () (hqc-params-red-mask *hqc-params*))
 (defun hqc-seed-bytes () (hqc-params-seed-bytes *hqc-params*))
@@ -224,16 +224,16 @@
         (u (make-array 4 :initial-element 0))
         (tmp1 0) (mask 0))
     (setf (aref u 0) 0
-          (aref u 1) (logand b (1- (ash 1 60)))
+          (aref u 1) (logand b #x7F)
           (aref u 2) (ash (aref u 1) 1)
           (aref u 3) (logxor (aref u 2) (aref u 1)))
-    (setf tmp1 (logand a #xF))
+    (setf tmp1 (logand a 3))
     (dotimes (i 4)
       (setf g (logxor g (logand (aref u i) (hqc-u32-eq-mask tmp1 i)))))
     (setf l g h 0)
     (loop for i from 2 below 8 by 2
           do (setf g 0
-                   tmp1 (logand (ash a (- i)) #xF))
+                   tmp1 (logand (ash a (- i)) 3))
              (dotimes (j 4)
                (setf g (logxor g (logand (aref u j) (hqc-u32-eq-mask tmp1 j)))))
              (setf l (logxor l (ash g i)))
@@ -641,4 +641,464 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
         (hqc-rm-hadamard expanded transform)
         (setf (aref transform 0) (- (aref transform 0) (* 64 mult)))
         (setf (aref msg i) (hqc-rm-find-peaks transform))))
+    (values)))
+(defparameter +hqc-gf-exp+
+  #(
+    1 2 4 8 16 32 64 128 29 58 116 232 205 135 19 38
+    76 152 45 90 180 117 234 201 143 3 6 12 24 48 96 192
+    157 39 78 156 37 74 148 53 106 212 181 119 238 193 159 35
+    70 140 5 10 20 40 80 160 93 186 105 210 185 111 222 161
+    95 190 97 194 153 47 94 188 101 202 137 15 30 60 120 240
+    253 231 211 187 107 214 177 127 254 225 223 163 91 182 113 226
+    217 175 67 134 17 34 68 136 13 26 52 104 208 189 103 206
+    129 31 62 124 248 237 199 147 59 118 236 197 151 51 102 204
+    133 23 46 92 184 109 218 169 79 158 33 66 132 21 42 84
+    168 77 154 41 82 164 85 170 73 146 57 114 228 213 183 115
+    230 209 191 99 198 145 63 126 252 229 215 179 123 246 241 255
+    227 219 171 75 150 49 98 196 149 55 110 220 165 87 174 65
+    130 25 50 100 200 141 7 14 28 56 112 224 221 167 83 166
+    81 162 89 178 121 242 249 239 195 155 43 86 172 69 138 9
+    18 36 72 144 61 122 244 245 247 243 251 235 203 139 11 22
+    44 88 176 125 250 233 207 131 27 54 108 216 173 71 142 1
+    2 4
+    ))
+(defparameter +hqc-gf-log+
+  #(
+    0 0 1 25 2 50 26 198 3 223 51 238 27 104 199 75
+    4 100 224 14 52 141 239 129 28 193 105 248 200 8 76 113
+    5 138 101 47 225 36 15 33 53 147 142 218 240 18 130 69
+    29 181 194 125 106 39 249 185 201 154 9 120 77 228 114 166
+    6 191 139 98 102 221 48 253 226 152 37 179 16 145 34 136
+    54 208 148 206 143 150 219 189 241 210 19 92 131 56 70 64
+    30 66 182 163 195 72 126 110 107 58 40 84 250 133 186 61
+    202 94 155 159 10 21 121 43 78 212 229 172 115 243 167 87
+    7 112 192 247 140 128 99 13 103 74 222 237 49 197 254 24
+    227 165 153 119 38 184 180 124 17 68 146 217 35 32 137 46
+    55 63 209 91 149 188 207 205 144 135 151 178 220 252 190 97
+    242 86 211 171 20 42 93 158 132 60 57 83 71 109 65 162
+    31 45 67 216 183 123 164 118 196 23 73 236 127 12 111 246
+    108 161 59 82 41 157 85 170 251 96 134 177 187 204 62 90
+    203 89 95 176 156 169 160 81 11 245 22 235 122 117 44 215
+    79 174 213 233 230 231 173 232 116 214 244 234 168 80 88 175
+    ))
+
+
+;;;
+;;; Reed-Solomon codec over GF(256).
+;;;
+
+(defun hqc-rs-encode (cdw msg)
+  (let* ((n1 (hqc-n1))
+         (kk (hqc-k))
+         (gg (hqc-gg))
+         (poly (hqc-rs-poly))
+         (tmp (make-array gg :element-type '(unsigned-byte 16) :initial-element 0))
+         (gate 0))
+    (dotimes (i n1)
+      (setf (aref cdw i) 0))
+    (dotimes (ii kk)
+      (let ((i ii))
+        (setf gate (logxor (aref msg (- kk 1 i)) (aref cdw (- n1 kk 1))))
+        (dotimes (j gg)
+          (setf (aref tmp j) (hqc-gf-mul gate (aref poly j))))
+        (loop for k from (- n1 kk 1) downto 1
+              do (setf (aref cdw k) (logand #xFF (logxor (aref cdw (1- k)) (aref tmp k)))))
+        (setf (aref cdw 0) (logand #xFF (aref tmp 0)))))
+    (dotimes (i kk)
+      (setf (aref cdw (+ (- n1 kk) i)) (aref msg i)))
+    (values)))
+
+(defun hqc-rs-syndromes (syndromes cdw)
+  (let ((n1 (hqc-n1))
+        (delta (hqc-delta)))
+    (dotimes (i (* 2 delta))
+      (setf (aref syndromes i) 0))
+    (dotimes (i (* 2 delta))
+      (loop for j from 1 below n1
+            do (setf (aref syndromes i)
+                     (logxor (aref syndromes i)
+                             (hqc-gf-mul (aref cdw j)
+                                         (aref +hqc-gf-exp+
+                                               (mod (* (1+ i) j) 255))))))
+      (setf (aref syndromes i) (logxor (aref syndromes i) (aref cdw 0))))
+    (values)))
+
+(defun hqc-u16-nonzero-mask (x)
+  "0xFFFF iff (-X mod 2^16) has high bit set (nonzero for small values)."
+  (if (zerop (ldb (byte 1 15) (logand (- x) #xFFFF))) 0 #xFFFF))
+
+(defun hqc-u16-lt-mask (a b)
+  "0xFFFF iff (A-B mod 2^16) has high bit set (a<b for small values)."
+  (if (zerop (ldb (byte 1 15) (logand (- a b) #xFFFF))) 0 #xFFFF))
+
+(defun hqc-rs-elp (sigma syndromes)
+  (let* ((delta (hqc-delta))
+         (deg-sigma 0)
+         (deg-sigma-p 0)
+         (deg-sigma-copy 0)
+         (sigma-copy (make-array (1+ delta) :element-type '(unsigned-byte 16)
+                                                   :initial-element 0))
+         (x-sigma-p (make-array (1+ delta) :element-type '(unsigned-byte 16)
+                                                   :initial-element 0))
+         (pp #xFFFF)
+         (d-p 1)
+         (d (aref syndromes 0))
+         (mask1 0) (mask2 0) (mask12 0)
+         (deg-x 0) (deg-x-sigma-p 0)
+         (dd 0) (mu 0))
+    (setf (aref x-sigma-p 0) 0)
+    (when (> delta 0)
+      (setf (aref x-sigma-p 1) 1))
+    (setf (aref sigma 0) 1)
+    (dotimes (muloop (* 2 delta))
+      (setf mu muloop)
+      (dotimes (i delta)
+        (setf (aref sigma-copy i) (aref sigma i)))
+      (setf deg-sigma-copy deg-sigma)
+      (setf dd (hqc-gf-mul d (hqc-gf-inv d-p)))
+      (loop for i from 1 to (min (1+ mu) delta)
+            do (setf (aref sigma i)
+                     (logxor (aref sigma i)
+                             (hqc-gf-mul dd (aref x-sigma-p i)))))
+      (setf deg-x (logand (- mu pp) #xFFFF))
+      (setf deg-x-sigma-p (logand (+ deg-x deg-sigma-p) #xFFFF))
+      (setf mask1 (hqc-u16-nonzero-mask d))
+      (setf mask2 (hqc-u16-lt-mask deg-sigma deg-x-sigma-p))
+      (setf mask12 (logand mask1 mask2))
+      (setf deg-sigma (logxor deg-sigma (logand mask12 (logxor deg-x-sigma-p deg-sigma))))
+      (when (= mu (1- (* 2 delta)))
+        (return deg-sigma))
+      (setf pp (logxor pp (logand mask12 (logxor mu pp))))
+      (setf d-p (logxor d-p (logand mask12 (logxor d d-p))))
+      (loop for i from delta downto 1
+            do (setf (aref x-sigma-p i)
+                     (logior (logand mask12 (aref sigma-copy (1- i)))
+                             (logand (logxor mask12 #xFFFF) (aref x-sigma-p (1- i))))))
+      (setf deg-sigma-p (logxor deg-sigma-p (logand mask12 (logxor deg-sigma-copy deg-sigma-p))))
+      (setf d (aref syndromes (1+ mu)))
+      (loop for i from 1 to (min (1+ mu) delta)
+            do (setf d (logxor d (hqc-gf-mul (aref sigma i) (aref syndromes (- (1+ mu) i)))))))
+    deg-sigma))
+
+
+;;;
+;;; Additive FFT over GF(256) (Gao-Mateer).
+;;;
+
+(defun hqc-fft-betas (betas)
+  (let ((m (hqc-gf-m)))
+    (dotimes (i (1- m))
+      (setf (aref betas i) (ash 1 (- (1- m) i)))))
+  (values))
+
+(defun hqc-subset-sums (sums set set-size)
+  (setf (aref sums 0) 0)
+  (dotimes (i set-size)
+    (dotimes (j (ash 1 i))
+      (setf (aref sums (+ (ash 1 i) j))
+            (logxor (aref set i) (aref sums j)))))
+  (values))
+
+(defun hqc-radix (f0 f1 f m-f)
+  (case m-f
+    (4 (setf (aref f0 4) (logxor (aref f 8) (aref f 12))
+             (aref f0 6) (logxor (aref f 12) (aref f 14))
+             (aref f0 7) (logxor (aref f 14) (aref f 15))
+             (aref f1 5) (logxor (aref f 11) (aref f 13))
+             (aref f1 6) (logxor (aref f 13) (aref f 14))
+             (aref f1 7) (aref f 15)
+             (aref f0 5) (logxor (aref f 10) (aref f 12) (aref f1 5))
+             (aref f1 4) (logxor (aref f 9) (aref f 13) (aref f0 5))
+             (aref f0 0) (aref f 0)
+             (aref f1 3) (logxor (aref f 7) (aref f 11) (aref f 15))
+             (aref f0 3) (logxor (aref f 6) (aref f 10) (aref f 14) (aref f1 3))
+             (aref f0 2) (logxor (aref f 4) (aref f0 4) (aref f0 3) (aref f1 3))
+             (aref f1 1) (logxor (aref f 3) (aref f 5) (aref f 9) (aref f 13) (aref f1 3))
+             (aref f1 2) (logxor (aref f 3) (aref f1 1) (aref f0 3))
+             (aref f0 1) (logxor (aref f 2) (aref f0 2) (aref f1 1))
+             (aref f1 0) (logxor (aref f 1) (aref f0 1))))
+    (3 (setf (aref f0 0) (aref f 0)
+             (aref f0 2) (logxor (aref f 4) (aref f 6))
+             (aref f0 3) (logxor (aref f 6) (aref f 7))
+             (aref f1 1) (logxor (aref f 3) (aref f 5) (aref f 7))
+             (aref f1 2) (logxor (aref f 5) (aref f 6))
+             (aref f1 3) (aref f 7)
+             (aref f0 1) (logxor (aref f 2) (aref f0 2) (aref f1 1))
+             (aref f1 0) (logxor (aref f 1) (aref f0 1))))
+    (2 (setf (aref f0 0) (aref f 0)
+             (aref f0 1) (logxor (aref f 2) (aref f 3))
+             (aref f1 0) (logxor (aref f 1) (aref f0 1))
+             (aref f1 1) (aref f 3)))
+    (1 (setf (aref f0 0) (aref f 0)
+             (aref f1 0) (aref f 1)))
+    (otherwise (hqc-radix-big f0 f1 f m-f)))
+  (values))
+
+(defun hqc-radix-big (f0 f1 f m-f)
+  (let* ((qsize (1+ (* 2 (ash 1 (- (hqc-fft-bits) 2)))))
+         (hsize (ash 1 (- (hqc-fft-bits) 2)))
+         (q (make-array qsize :element-type '(unsigned-byte 16) :initial-element 0))
+         (r (make-array qsize :element-type '(unsigned-byte 16) :initial-element 0))
+         (q0 (make-array hsize :element-type '(unsigned-byte 16) :initial-element 0))
+         (q1 (make-array hsize :element-type '(unsigned-byte 16) :initial-element 0))
+         (r0 (make-array hsize :element-type '(unsigned-byte 16) :initial-element 0))
+         (r1 (make-array hsize :element-type '(unsigned-byte 16) :initial-element 0))
+         (n (ash 1 (- m-f 2))))
+    (dotimes (i n)
+      (setf (aref q i) (aref f (+ (* 3 n) i))
+            (aref q (+ n i)) (aref f (+ (* 3 n) i))))
+    (dotimes (i (* 2 n))
+      (setf (aref r i) (aref f i)))
+    (dotimes (i n)
+      (setf (aref q i) (logxor (aref q i) (aref f (+ (* 2 n) i))))
+      (setf (aref r (+ n i)) (logxor (aref r (+ n i)) (aref q i))))
+    (hqc-radix q0 q1 q (1- m-f))
+    (hqc-radix r0 r1 r (1- m-f))
+    (dotimes (i n)
+      (setf (aref f0 i) (aref r0 i))
+      (setf (aref f0 (+ n i)) (aref q0 i))
+      (setf (aref f1 i) (aref r1 i))
+      (setf (aref f1 (+ n i)) (aref q1 i)))
+    (values)))
+
+(defun hqc-fft-rec (w f f-coeffs m m-f betas)
+  (let* ((hsize (ash 1 (- (hqc-gf-m) 2)))
+         (f0 (make-array hsize :element-type '(unsigned-byte 16) :initial-element 0))
+         (f1 (make-array hsize :element-type '(unsigned-byte 16) :initial-element 0))
+         (gammas (make-array (- (hqc-gf-m) 2) :element-type '(unsigned-byte 16)
+                                                :initial-element 0))
+         (deltas (make-array (- (hqc-gf-m) 2) :element-type '(unsigned-byte 16)
+                                                :initial-element 0))
+         (gammas-sums (make-array hsize :element-type '(unsigned-byte 16)
+                                                   :initial-element 0))
+         (u (make-array hsize :element-type '(unsigned-byte 16) :initial-element 0))
+         (tvec (make-array hsize :element-type '(unsigned-byte 16) :initial-element 0))
+         (tmp (make-array (- (hqc-gf-m) (1- (hqc-fft-bits))) :element-type '(unsigned-byte 16)
+                                                              :initial-element 0)))
+    (when (= m-f 1)
+      (dotimes (i m)
+        (setf (aref tmp i) (hqc-gf-mul (aref betas i) (aref f 1))))
+      (setf (aref w 0) (aref f 0))
+      (let ((x 1))
+        (dotimes (j m)
+          (dotimes (k x)
+            (setf (aref w (+ x k)) (logxor (aref w k) (aref tmp j))))
+          (setf x (ash x 1))))
+      (return-from hqc-fft-rec (values)))
+    (when (/= (aref betas (1- m)) 1)
+      (let ((beta-m-pow 1)
+            (x (ash 1 m-f)))
+        (dotimes (ii (1- x))
+          (let ((i (1+ ii)))
+            (setf beta-m-pow (hqc-gf-mul beta-m-pow (aref betas (1- m))))
+            (setf (aref f i) (hqc-gf-mul beta-m-pow (aref f i)))))))
+    (hqc-radix f0 f1 f m-f)
+    (dotimes (i (1- m))
+      (setf (aref gammas i)
+            (hqc-gf-mul (aref betas i) (hqc-gf-inv (aref betas (1- m)))))
+      (setf (aref deltas i)
+            (logxor (hqc-gf-square (aref gammas i)) (aref gammas i))))
+    (hqc-subset-sums gammas-sums gammas (1- m))
+    (hqc-fft-rec u f0 (truncate (1+ f-coeffs) 2) (1- m) (1- m-f) deltas)
+    (let ((k (ash 1 (logand (1- m) #xF))))
+      (if (<= f-coeffs 3)
+          (progn
+            (setf (aref w 0) (aref u 0))
+            (setf (aref w k) (logxor (aref u 0) (aref f1 0)))
+            (dotimes (i k)
+              (unless (zerop i)
+                (setf (aref w i)
+                      (logxor (aref u i)
+                              (hqc-gf-mul (aref gammas-sums i) (aref f1 0))))
+                (setf (aref w (+ k i)) (logxor (aref w i) (aref f1 0))))))
+          (progn
+            (hqc-fft-rec tvec f1 (truncate f-coeffs 2) (1- m) (1- m-f) deltas)
+            (dotimes (i k)
+              (setf (aref w (+ k i)) (aref tvec i)))
+            (setf (aref w 0) (aref u 0))
+            (setf (aref w k) (logxor (aref w k) (aref u 0)))
+            (dotimes (i k)
+              (unless (zerop i)
+                (setf (aref w i)
+                      (logxor (aref u i)
+                              (hqc-gf-mul (aref gammas-sums i) (aref tvec i))))
+                (setf (aref w (+ k i)) (logxor (aref w (+ k i)) (aref w i))))))))
+    (values)))
+
+(defun hqc-fft (w f f-coeffs)
+  (let* ((mm (hqc-gf-m))
+         (ff (hqc-fft-bits))
+         (betas (make-array (1- mm) :element-type '(unsigned-byte 16)
+                                         :initial-element 0))
+         (betas-sums (make-array (ash 1 (1- mm)) :element-type '(unsigned-byte 16)
+                                                       :initial-element 0))
+         (f0 (make-array (ash 1 (1- ff)) :element-type '(unsigned-byte 16)
+                                               :initial-element 0))
+         (f1 (make-array (ash 1 (1- ff)) :element-type '(unsigned-byte 16)
+                                               :initial-element 0))
+         (deltas (make-array (1- mm) :element-type '(unsigned-byte 16)
+                                            :initial-element 0))
+         (u (make-array (ash 1 (1- mm)) :element-type '(unsigned-byte 16)
+                                              :initial-element 0))
+         (v (make-array (ash 1 (1- mm)) :element-type '(unsigned-byte 16)
+                                              :initial-element 0)))
+    (hqc-fft-betas betas)
+    (hqc-subset-sums betas-sums betas (1- mm))
+    (hqc-radix f0 f1 f ff)
+    (dotimes (i (1- mm))
+      (setf (aref deltas i)
+            (logxor (hqc-gf-square (aref betas i)) (aref betas i))))
+    (hqc-fft-rec u f0 (truncate (1+ f-coeffs) 2) (1- mm) (1- ff) deltas)
+    (hqc-fft-rec v f1 (truncate f-coeffs 2) (1- mm) (1- ff) deltas)
+    (let ((k (ash 1 (1- mm))))
+      (dotimes (i k)
+        (setf (aref w (+ k i)) (aref v i)))
+      (setf (aref w 0) (aref u 0))
+      (setf (aref w k) (logxor (aref w k) (aref u 0)))
+      (dotimes (i k)
+        (unless (zerop i)
+          (setf (aref w i)
+                (logxor (aref u i)
+                        (hqc-gf-mul (aref betas-sums i) (aref v i))))
+          (setf (aref w (+ k i)) (logxor (aref w (+ k i)) (aref w i))))))
+    (values)))
+
+(defun hqc-fft-retrieve-error-poly (error w)
+  (let* ((mm (hqc-gf-m))
+         (gammas (make-array (1- mm) :element-type '(unsigned-byte 16)
+                                            :initial-element 0))
+         (gammas-sums (make-array (ash 1 (1- mm)) :element-type '(unsigned-byte 16)
+                                                        :initial-element 0))
+         (k (ash 1 (1- mm))))
+    (hqc-fft-betas gammas)
+    (hqc-subset-sums gammas-sums gammas (1- mm))
+    (setf (aref error 0)
+          (logxor (aref error 0)
+                  (logxor 1 (if (zerop (ldb (byte 1 15) (logand (- (aref w 0)) #xFFFF))) 0 1))))
+    (setf (aref error 0)
+          (logxor (aref error 0)
+                  (logxor 1 (if (zerop (ldb (byte 1 15) (logand (- (aref w k)) #xFFFF))) 0 1))))
+    (dotimes (ii (1- k))
+      (let ((i (1+ ii)))
+        (let ((index (- 255 (aref +hqc-gf-log+ (aref gammas-sums i)))))
+          (setf (aref error index)
+                (logxor (aref error index)
+                        (logxor 1 (if (zerop (ldb (byte 1 15) (logand (- (aref w i)) #xFFFF))) 0 1)))))
+        (let ((index (- 255 (aref +hqc-gf-log+ (logxor (aref gammas-sums i) 1)))))
+          (setf (aref error index)
+                (logxor (aref error index)
+                        (logxor 1 (if (zerop (ldb (byte 1 15) (logand (- (aref w (+ k i))) #xFFFF))) 0 1)))))))
+    (values)))
+
+
+;;;
+;;; Reed-Solomon decode driver + concatenated codec.
+;;;
+
+(defun hqc-rs-compute-z (z sigma degree syndromes)
+  (let ((delta (hqc-delta)))
+    (setf (aref z 0) 1)
+    (dotimes (ii delta)
+      (let ((i (1+ ii)))
+        (setf (aref z i)
+              (if (<= i degree) (aref sigma i) 0))))
+    (setf (aref z 1) (logxor (aref z 1) (aref syndromes 0)))
+    (loop for i from 2 to delta
+          do (when (<= i degree)
+               (setf (aref z i) (logxor (aref z i) (aref syndromes (1- i))))
+               (loop for j from 1 below i
+                     do (setf (aref z i)
+                              (logxor (aref z i)
+                                      (hqc-gf-mul (aref sigma j)
+                                                  (aref syndromes (- i j 1))))))))
+    (values)))
+
+(defun hqc-rs-error-values (error-values z error)
+  (let* ((delta (hqc-delta))
+         (n1 (hqc-n1))
+         (beta-j (make-array delta :element-type '(unsigned-byte 16)
+                                         :initial-element 0))
+         (e-j (make-array delta :element-type '(unsigned-byte 16)
+                                       :initial-element 0))
+         (delta-counter 0)
+         (delta-real-value 0))
+    (dotimes (i n1)
+      (unless (zerop (aref error i))
+        (when (< delta-counter delta)
+          (setf (aref beta-j delta-counter)
+                (logand #xFFFF
+                        (+ (aref beta-j delta-counter)
+                           (aref +hqc-gf-exp+ i))))
+          (incf delta-counter))))
+    (setf delta-real-value delta-counter)
+    (dotimes (i delta)
+      (let ((tmp1 1)
+            (tmp2 1)
+            (inverse (hqc-gf-inv (aref beta-j i)))
+            (inverse-power-j 1))
+        (dotimes (jj delta)
+          (let ((j (1+ jj)))
+            (setf inverse-power-j (hqc-gf-mul inverse-power-j inverse))
+            (setf tmp1 (logxor tmp1 (hqc-gf-mul inverse-power-j (aref z j))))))
+        (loop for k from 1 below delta
+              do (setf tmp2
+                       (hqc-gf-mul tmp2
+                                   (logxor 1 (hqc-gf-mul inverse
+                                                         (aref beta-j (mod (+ i k) delta)))))))
+        (when (< i delta-real-value)
+          (setf (aref e-j i) (hqc-gf-mul tmp1 (hqc-gf-inv tmp2))))))
+    (setf delta-counter 0)
+    (dotimes (i n1)
+      (unless (zerop (aref error i))
+        (when (< delta-counter delta)
+          (setf (aref error-values i) (aref e-j delta-counter))
+          (incf delta-counter))))
+    (values)))
+
+(defun hqc-rs-correct (cdw error-values)
+  (dotimes (i (hqc-n1))
+    (setf (aref cdw i) (logxor (aref cdw i) (aref error-values i))))
+  (values))
+
+(defun hqc-rs-decode (msg cdw)
+  (let* ((delta (hqc-delta))
+         (n1 (hqc-n1))
+         (syndromes (make-array (* 2 delta) :element-type '(unsigned-byte 16)
+                                                   :initial-element 0))
+         (sigma (make-array (ash 1 (hqc-fft-bits)) :element-type '(unsigned-byte 16)
+                                                     :initial-element 0))
+         (error (make-array (ash 1 (hqc-gf-m)) :element-type '(unsigned-byte 8)
+                                                       :initial-element 0))
+         (z (make-array n1 :element-type '(unsigned-byte 16) :initial-element 0))
+         (error-values (make-array n1 :element-type '(unsigned-byte 16)
+                                                 :initial-element 0)))
+    (hqc-rs-syndromes syndromes cdw)
+    (let ((deg (hqc-rs-elp sigma syndromes)))
+      (hqc-rs-compute-roots error sigma)
+      (hqc-rs-compute-z z sigma deg syndromes)
+      (hqc-rs-error-values error-values z error)
+      (hqc-rs-correct cdw error-values)
+      (dotimes (i (hqc-k))
+        (setf (aref msg i) (aref cdw (+ (1- (hqc-gg)) i))))
+      (values))))
+
+(defun hqc-rs-compute-roots (error sigma)
+  (let ((w (make-array (ash 1 (hqc-gf-m)) :element-type '(unsigned-byte 16)
+                                                 :initial-element 0)))
+    (hqc-fft w sigma (1+ (hqc-delta)))
+    (hqc-fft-retrieve-error-poly error w)
+    (values)))
+
+(defun hqc-code-encode (em m)
+  (let ((tmp (make-array (hqc-vec-n1-bytes) :element-type '(unsigned-byte 8)
+                                                   :initial-element 0)))
+    (hqc-rs-encode tmp m)
+    (hqc-rm-encode em tmp)
+    (values)))
+
+(defun hqc-code-decode (m em)
+  (let ((tmp (make-array (hqc-vec-n1-bytes) :element-type '(unsigned-byte 8)
+                                                   :initial-element 0)))
+    (hqc-rm-decode tmp em)
+    (hqc-rs-decode m tmp)
     (values)))
