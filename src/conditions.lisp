@@ -239,3 +239,16 @@ provided to VERIFY-SIGNATURE."))
              (declare (ignore condition))
              (format stream "Bad authentication tag.")))
   (:documentation "Signaled when the verification of authenticity of a message fails."))
+
+(define-condition stateful-key-exhausted (ironclad-error)
+  ((kind :initarg :kind :reader kind)
+   (index :initarg :index :reader index)
+   (limit :initarg :limit :reader limit))
+  (:report (lambda (condition stream)
+             (format stream "~A key exhausted: index ~D has reached limit ~D."
+                     (kind condition)
+                     (index condition)
+                     (limit condition))))
+  (:documentation "Signaled when a stateful signature key has no remaining
+one-time signatures."))
+

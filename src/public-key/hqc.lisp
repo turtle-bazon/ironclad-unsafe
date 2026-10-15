@@ -443,13 +443,6 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
 ;;; GF(2)[x] Karatsuba multiply + reduce mod x^n - 1.
 ;;;
 
-(defconstant +hqc-low-bit-masks+
-  (let ((masks (make-array 64 :element-type '(unsigned-byte 64))))
-    (setf (aref masks 0) #xFFFFFFFFFFFFFFFF)
-    (loop for j from 1 to 63
-          do (setf (aref masks j) (1- (ash 1 (- 64 j)))))
-    masks))
-
 (declaim (inline hqc-base-mul))
 (defun hqc-base-mul (c a b)
   "Constant-time bit-serial carryless 64x64 -> 128-bit product into C[0..1]."
@@ -458,7 +451,7 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
       (let ((bmask (- (ldb (byte 1 j) b))))
         (if (zerop j)
             (setf l (logxor l (logand a bmask)))
-            (let ((low-bits (logand a (aref +hqc-low-bit-masks+ j))))
+            (let ((low-bits (logand a (1- (ash 1 (- 64 j))))))
               (setf l (logxor l (logand (ash low-bits j) bmask)))
               (setf h (logxor h (logand (ash a (- (- 64 j))) bmask)))))))
     (setf (aref c 0) l

@@ -349,6 +349,11 @@
     (xmss-mt-core-seed-keypair pk sk seed)
     (values pk sk)))
 
+(defun xmss-key-exhausted (sk)
+  "Return true when an XMSS secret key has no remaining one-time signatures."
+  (>= (xmss-bytes-to-ull sk 0 +xmss-index-bytes+)
+      (ash 1 +xmss-full-height+)))
+
 ;; Core sign.
 (defun xmss-core-sign (sk msg)
   (let* ((n +xmss-n+)
@@ -364,6 +369,11 @@
          (pub-root (subseq sk (+ index-bytes (* 2 n)) (+ index-bytes (* 3 n))))
          (pub-seed (subseq sk (+ index-bytes (* 3 n)) (+ index-bytes (* 4 n))))
          (root (xmss-bytes n)))
+    (when (xmss-key-exhausted sk)
+      (error 'stateful-key-exhausted
+             :kind :xmss-sha2-10-256
+             :index idx
+             :limit (ash 1 +xmss-full-height+)))
     (replace sm msg :start1 sigbytes)
     (let ((idx-bytes (xmss-bytes index-bytes)))
       (xmss-ull-to-bytes idx-bytes 0 index-bytes idx)

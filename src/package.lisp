@@ -207,7 +207,7 @@
     #:incompatible-keys #:invalid-curve-point #:invalid-private-key
     #:invalid-public-key-length #:oaep-decoding-error
    #:unsupported-authenticated-encryption-mode
-   #:bad-authentication-tag
+   #:bad-authentication-tag #:stateful-key-exhausted
 
    ;; utilities
    #:byte-array-to-hex-string #:hex-string-to-byte-array

@@ -12,6 +12,36 @@
 (rtest:deftest :mceliece8192128-encapsulation (run-test-vector-file :mceliece8192128 *public-key-encryption-tests*) t)
 (rtest:deftest :x-wing-encapsulation (run-test-vector-file :x-wing *public-key-encryption-tests*) t)
 (rtest:deftest :xmss (run-test-vector-file :xmss-h10 *public-key-encryption-tests*) t)
+
+(rtest:deftest :xmss-state-exhaustion
+  (multiple-value-bind (priv pub) (ironclad:generate-key-pair :xmss-sha256-h10)
+    (declare (ignore pub))
+    (let* ((msg (make-array 32 :element-type '(unsigned-byte 8)
+                           :initial-element 7))
+           (sk-bytes (getf (ironclad:destructure-private-key priv) :bytes)))
+      ;; 1024 = 0x00000400, one past the final XMSS index.
+      (let ((exhausted (copy-seq sk-bytes)))
+        (setf (aref exhausted 0) 0
+              (aref exhausted 1) 0
+              (aref exhausted 2) 4
+              (aref exhausted 3) 0)
+        (let ((key (ironclad:make-private-key :xmss-sha256-h10 :bytes exhausted)))
+          (handler-case (progn (ironclad:sign-message key msg) t)
+            (ironclad:stateful-key-exhausted () nil))))
+      ;; The final index (1023) must still sign once and then become exhausted.
+      (let ((last (copy-seq sk-bytes)))
+        ;; 1023 = 0x000003FF.
+        (setf (aref last 0) 0
+              (aref last 1) 0
+              (aref last 2) 3
+              (aref last 3) 255)
+        (let ((key (ironclad:make-private-key :xmss-sha256-h10 :bytes last)))
+          (ironclad:sign-message key msg)
+          (handler-case (progn (ironclad:sign-message key msg) t)
+            (ironclad:stateful-key-exhausted () nil))))
+      t))
+  t)
+
 (rtest:deftest :hpke (run-test-vector-file :hpke *hpke-tests*) t)
 (rtest:deftest :ml-dsa-signature (run-test-vector-file :ml-dsa *public-key-signature-tests*) t)
 (rtest:deftest :slh-dsa-signature (run-test-vector-file :slh-dsa *public-key-signature-tests*) t)
