@@ -550,7 +550,7 @@
         (when rate
           (record "aead" (stringify pair)
                   (format nil "openssl ~a" openssl-alg)
-                  (format nil "encrypt ~D-byte buffer" *size*)
+                  (format nil "encrypt ~D-byte message" *size*)
                   "bytes/s" rate))))))
 
 (defun add-openssl-public-key-results (kind)
