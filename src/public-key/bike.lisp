@@ -51,7 +51,7 @@
 
 (defparameter +bike-l5-params+
   (make-bike-params :kind :bike-l5 :r-bits 40973 :r-bytes 5122 :r-qwords 641
-                   :r-padded-qwords 768 :d 137 :tt 264
+                   :r-padded-qwords 1024 :d 137 :tt 264
                    :thr-coeff0 1787850000 :thr-coeff1 402312 :thr-min 69
                    :last-qword-lead 13 :last-qword-trail 51
                    :last-qword-mask #x1FFF
@@ -953,3 +953,81 @@
           (bike-words-to-bytes terr1 terr1w rb)))
       (let ((ok (and (equalp terr0 e0) (equalp terr1 e1))))
         (bike-function-k (if ok mp sigma) c0 c1)))))
+;;; BIKE public API: key classes, generation, encapsulation.
+
+(defclass bike-key ()
+  ((kind :initarg :kind :reader bike-key-kind)
+   (bytes :initarg :bytes :reader bike-key-bytes)))
+
+(defclass bike-public-key (bike-key)
+  ())
+
+(defclass bike-private-key (bike-key)
+  ())
+
+(defclass bike-l1-public-key (bike-public-key)
+  ())
+
+(defclass bike-l1-private-key (bike-private-key)
+  ())
+
+(defclass bike-l3-public-key (bike-public-key)
+  ())
+
+(defclass bike-l3-private-key (bike-private-key)
+  ())
+
+(defclass bike-l5-public-key (bike-public-key)
+  ())
+
+(defclass bike-l5-private-key (bike-private-key)
+  ())
+
+(defun bike-check-bytes (bytes length kind)
+  (unless (and (typep bytes '(simple-array (unsigned-byte 8) (*)))
+               (= (length bytes) length))
+    (error 'missing-key-parameter
+           :kind kind
+           :parameter 'bytes
+           :description "BIKE key bytes"))
+  (copy-seq bytes))
+
+(defmacro bike-define-key-constructors (kind public-class private-class)
+  `(progn
+     (defmethod make-public-key ((kind (eql ,kind)) &key bytes &allow-other-keys)
+       (let ((*bike-params* (bike-params-for-kind ,kind)))
+         (make-instance ',public-class :kind ,kind
+                        :bytes (bike-check-bytes bytes (bike-pk-bytes) ,kind))))
+     (defmethod make-private-key ((kind (eql ,kind)) &key bytes &allow-other-keys)
+       (let ((*bike-params* (bike-params-for-kind ,kind)))
+         (make-instance ',private-class :kind ,kind
+                        :bytes (bike-check-bytes bytes (bike-sk-bytes) ,kind))))
+     (defmethod generate-key-pair ((kind (eql ,kind)) &key &allow-other-keys)
+       (let ((*bike-params* (bike-params-for-kind ,kind)))
+         (multiple-value-bind (pk sk) (bike-generate-keypair)
+           (values (make-private-key ,kind :bytes sk)
+                   (make-public-key ,kind :bytes pk)))))))
+
+(bike-define-key-constructors :bike-l1 bike-l1-public-key bike-l1-private-key)
+(bike-define-key-constructors :bike-l3 bike-l3-public-key bike-l3-private-key)
+(bike-define-key-constructors :bike-l5 bike-l5-public-key bike-l5-private-key)
+
+(defmethod destructure-public-key ((public-key bike-public-key))
+  (list :bytes (copy-seq (bike-key-bytes public-key))))
+
+(defmethod destructure-private-key ((private-key bike-private-key))
+  (list :bytes (copy-seq (bike-key-bytes private-key))))
+
+(defmethod encapsulate-key ((public-key bike-public-key))
+  (let* ((kind (bike-key-kind public-key))
+         (*bike-params* (bike-params-for-kind kind)))
+    (let ((m (random-data 32)))
+      (bike-kem-encaps-deterministic m m (bike-key-bytes public-key)))))
+
+(defmethod decapsulate-key ((private-key bike-private-key) ciphertext)
+  (let* ((kind (bike-key-kind private-key))
+         (*bike-params* (bike-params-for-kind kind)))
+    (unless (and (typep ciphertext '(simple-array (unsigned-byte 8) (*)))
+                 (= (length ciphertext) (bike-ct-bytes)))
+      (error 'invalid-message-length :kind kind))
+    (bike-kem-decaps ciphertext (bike-key-bytes private-key))))

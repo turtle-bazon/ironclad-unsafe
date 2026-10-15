@@ -135,6 +135,9 @@
    #:hqc-128-public-key #:hqc-128-private-key #:hqc-key-bytes
    #:hqc-192-public-key #:hqc-192-private-key
    #:hqc-256-public-key #:hqc-256-private-key
+   #:bike-l1-public-key #:bike-l1-private-key #:bike-key-bytes
+   #:bike-l3-public-key #:bike-l3-private-key
+   #:bike-l5-public-key #:bike-l5-private-key
 
    ;; HPKE (RFC 9180)
    #:hpke-derive-keypair #:hpke-setup-sender #:hpke-setup-recipient

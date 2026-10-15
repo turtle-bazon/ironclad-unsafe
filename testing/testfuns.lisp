@@ -854,6 +854,27 @@
       (when (equalp (ironclad:decapsulate-key sk bad) ss)
         (error "HQC tampered ciphertext accepted for ~A" name)))))
 
+(defun bike-test (file kind name pk-bytes sk-bytes ct ss)
+  (declare (ignore file))
+  (let ((pk (ironclad:make-public-key kind :bytes pk-bytes))
+        (sk (ironclad:make-private-key kind :bytes sk-bytes)))
+    ;; KAT: decapsulation of the reference ciphertext reproduces
+    ;; the reference shared secret.
+    (unless (equalp (ironclad:decapsulate-key sk ct) ss)
+      (error "BIKE decapsulation failed for ~A" name))
+    ;; Roundtrip with fresh randomness.
+    (multiple-value-bind (ct2 ss2) (ironclad:encapsulate-key pk)
+      (unless (and (= (length ct2) (length ct))
+                   (= (length ss2) 32)
+                   (equalp (ironclad:decapsulate-key sk ct2) ss2))
+        (error "BIKE roundtrip failed for ~A" name)))
+    ;; A tampered ciphertext must decapsulate to a different secret
+    ;; (implicit rejection), never the real one.
+    (let ((bad (copy-seq ct)))
+      (setf (aref bad 0) (logxor (aref bad 0) 1))
+      (when (equalp (ironclad:decapsulate-key sk bad) ss)
+        (error "BIKE tampered ciphertext accepted for ~A" name)))))
+
 (defun ml-dsa-test (file kind name pk-bytes sk-bytes sig msg)
   (declare (ignore file))
   (let ((pk (ironclad:make-public-key kind :bytes pk-bytes))
@@ -1058,6 +1079,7 @@
         (cons :ml-kem-test 'ml-kem-test)
         (cons :mceliece-test 'mceliece-test)
         (cons :hqc-test 'hqc-test)
+        (cons :bike-test 'bike-test)
         (cons :x-wing-test 'x-wing-test)))
 
 (defparameter *public-key-signature-tests*
