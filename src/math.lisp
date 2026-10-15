@@ -161,13 +161,13 @@ denominator."
 
 ;;; modular arithmetic utilities
 
-(defun modular-inverse (n modulus)
+(defun modular-inverse-euclid (n modulus)
   "Returns M such that N * M mod MODULUS = 1"
   (declare (type (integer 1 *) modulus))
   (declare (type (integer 0 *) n))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (when (or (zerop n) (and (evenp n) (evenp modulus)))
-    (return-from modular-inverse 0))
+    (return-from modular-inverse-euclid 0))
   (loop
      with r1 of-type integer = n
      and r2 of-type integer = modulus
@@ -185,9 +185,52 @@ denominator."
      finally (return (let ((inverse u1))
                        (when (minusp inverse)
                          (setf inverse (mod inverse modulus)))
-                       (if (zerop (mod (* n inverse) modulus))
-                           0
-                           inverse)))))
+                       (if (= 1 (mod (* n inverse) modulus))
+                           inverse
+                           0)))))
+
+(defun modular-inverse-binary (n modulus)
+  "Returns M such that N * M mod an odd MODULUS = 1, without division."
+  (declare (type (integer 1 *) modulus))
+  (declare (type (integer 0 *) n))
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((u (mod n modulus))
+        (v modulus)
+        (x1 1)
+        (x2 0))
+    (declare (type integer u v x1 x2))
+    (loop
+      (loop while (and (plusp u) (evenp u))
+            do (setf u (ash u -1)
+                     x1 (if (oddp x1)
+                            (ash (+ x1 modulus) -1)
+                            (ash x1 -1))))
+      (loop while (and (plusp v) (evenp v))
+            do (setf v (ash v -1)
+                     x2 (if (oddp x2)
+                            (ash (+ x2 modulus) -1)
+                            (ash x2 -1))))
+      (when (or (zerop u) (zerop v))
+        (return))
+      (if (>= u v)
+          (setf u (- u v)
+                x1 (- x1 x2))
+          (setf v (- v u)
+                x2 (- x2 x1))))
+    (let ((inverse (if (zerop u) x2 x1)))
+      (setf inverse (mod inverse modulus))
+      (if (= 1 (mod (* n inverse) modulus))
+          inverse
+          0))))
+
+(defun modular-inverse (n modulus)
+  "Returns M such that N * M mod MODULUS = 1"
+  (declare (type (integer 1 *) modulus))
+  (declare (type (integer 0 *) n))
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (if (or (zerop n) (evenp modulus))
+      (modular-inverse-euclid n modulus)
+      (modular-inverse-binary n modulus)))
 
 (defun modular-inverse-with-blinding (n modulus)
   "As modular-inverse, but mask N with a blinding factor before
