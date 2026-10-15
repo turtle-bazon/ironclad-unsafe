@@ -204,27 +204,27 @@
                                    :displaced-index-offset (* 3 half))))
         (bike-karatsuba c a b half half sec-next)
         (when (> qwords-len half)
-          (let ((a-hi (make-array (max 1 (- qwords-len half))
+          (let ((a-hi (make-array (max 1 (- (length a) half))
                                   :element-type '(unsigned-byte 64)
                                   :displaced-to a
                                   :displaced-index-offset half))
-                (b-hi (make-array (max 1 (- qwords-len half))
+                (b-hi (make-array (max 1 (- (length b) half))
                                   :element-type '(unsigned-byte 64)
                                   :displaced-to b
                                   :displaced-index-offset half))
-                (c2 (make-array half :element-type '(unsigned-byte 64)
+                (c2 (make-array (* 2 half) :element-type '(unsigned-byte 64)
                                       :displaced-to c
                                       :displaced-index-offset (* 2 half))))
             (bike-karatsuba c2 a-hi b-hi (- qwords-len half) half sec-next))
           (bike-kara-add1 alah blbh a b half)
-          (let ((c1 (make-array half :element-type '(unsigned-byte 64)
+          (let ((c1 (make-array (* 2 half) :element-type '(unsigned-byte 64)
                                       :displaced-to c
                                       :displaced-index-offset half))
-                (c2 (make-array half :element-type '(unsigned-byte 64)
+                (c2 (make-array (* 2 half) :element-type '(unsigned-byte 64)
                                       :displaced-to c
                                       :displaced-index-offset (* 2 half))))
             (bike-kara-add2 tmp c1 c2 half))
-          (let ((c1 (make-array half :element-type '(unsigned-byte 64)
+          (let ((c1 (make-array (* 2 half) :element-type '(unsigned-byte 64)
                                       :displaced-to c
                                       :displaced-index-offset half)))
             (bike-karatsuba c1 alah blbh half half sec-next))
@@ -279,7 +279,7 @@
              (bit (logand (ash (aref a (ash pos -6)) (- (logand pos 63))) 1)))
         (setf (aref c (ash idx -6))
               (logior (aref c (ash idx -6)) (ash bit (logand idx 63))))))
-    (values))
+    (values)))
 
 
 ;;;
@@ -324,7 +324,7 @@
                  (if (<= (aref exp1-k i) 64)
                      (bike-gf2x-repeated-sqr g c (aref exp1-k i))
                      (bike-gf2x-ksqr g c (aref exp1-l i)))
-                 (bike-gf2x-mul-mod tvec g tvec)))))
+                 (bike-gf2x-mul-mod tvec g tvec))))
     (bike-gf2x-sqr-mod tvec tvec)
     (dotimes (i pad)
       (setf (aref c i) (aref tvec i)))
