@@ -62,7 +62,11 @@ specified coordinates."))
 
 (defun %ec-infinity-like (point)
   "A fresh point at infinity of the same class as POINT."
-  (make-instance (class-of point) :x 1 :y 1 :z 0))
+  (etypecase point
+    (secp256r1-point
+     (make-secp256r1-point :x 1 :y 1 :z 0))
+    (standard-object
+     (make-instance (class-of point) :x 1 :y 1 :z 0))))
 
 (defun %ec-ladder-mult (point e &key (bits (integer-length e)))
   "Return E * POINT using a fixed-schedule Montgomery ladder."

@@ -15,15 +15,17 @@
    (y :initarg :y :reader secp256r1-key-y :type (simple-array (unsigned-byte 8) (*)))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defclass secp256r1-point ()
-    ;; Internally, a point (x, y) is represented using the Jacobian projective
-    ;; coordinates (X, Y, Z), with x = X / Z^2 and y = Y / Z^3.
-    ((x :initarg :x :type integer)
-     (y :initarg :y :type integer)
-     (z :initarg :z :type integer)))
-  (defmethod make-load-form ((p secp256r1-point) &optional env)
-    (declare (ignore env))
-    (make-load-form-saving-slots p)))
+  ;; Internally, a point (x, y) is represented using the Jacobian projective
+  ;; coordinates (X, Y, Z), with x = X / Z^2 and y = Y / Z^3.
+  (defstruct (secp256r1-point
+              (:constructor make-secp256r1-point
+                  (&key (x 1) (y 1) (z 1)))
+              (:predicate nil))
+    (x 1 :type integer :read-only t)
+    (y 1 :type integer :read-only t)
+    (z 1 :type integer :read-only t)))
+
+(declaim (inline secp256r1-point-x secp256r1-point-y secp256r1-point-z))
 
 
 ;;; constant and function definitions
@@ -35,12 +37,12 @@
 (defconstant +secp256r1-i+ 28948022302589062190674361737351893382521535853822578548883407827216774463488)
 
 (defconst +secp256r1-g+
-  (make-instance 'secp256r1-point
+  (make-secp256r1-point
                  :x 48439561293906451759052585252797914202762949526041747995844080717082404635286
                  :y 36134250956749795798585127919587881956611106672985015071877198253568414405109
                  :z 1))
 (defconst +secp256r1-point-at-infinity+
-  (make-instance 'secp256r1-point :x 1 :y 1 :z 0))
+  (make-secp256r1-point :x 1 :y 1 :z 0))
 
 
 (defmethod ec-scalar-inv ((kind (eql :secp256r1)) n)
@@ -48,18 +50,23 @@
 
 (defmethod ec-point-equal ((p secp256r1-point) (q secp256r1-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (with-slots ((x1 x) (y1 y) (z1 z)) p
-    (declare (type integer x1 y1 z1))
-    (with-slots ((x2 x) (y2 y) (z2 z)) q
-      (declare (type integer x2 y2 z2))
-      (let ((z1z1 (mod (* z1 z1) +secp256r1-p+))
-            (z2z2 (mod (* z2 z2) +secp256r1-p+)))
-        (and (zerop (mod (- (* x1 z2z2) (* x2 z1z1)) +secp256r1-p+))
-             (zerop (mod (- (* y1 z2z2 z2) (* y2 z1z1 z1)) +secp256r1-p+)))))))
+  (let ((x1 (secp256r1-point-x p))
+        (y1 (secp256r1-point-y p))
+        (z1 (secp256r1-point-z p))
+        (x2 (secp256r1-point-x q))
+        (y2 (secp256r1-point-y q))
+        (z2 (secp256r1-point-z q)))
+    (declare (type integer x1 y1 z1 x2 y2 z2))
+    (let ((z1z1 (mod (* z1 z1) +secp256r1-p+))
+          (z2z2 (mod (* z2 z2) +secp256r1-p+)))
+      (and (zerop (mod (- (* x1 z2z2) (* x2 z1z1)) +secp256r1-p+))
+           (zerop (mod (- (* y1 z2z2 z2) (* y2 z1z1 z1)) +secp256r1-p+))))))
 
 (defmethod ec-double ((p secp256r1-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (with-slots ((x1 x) (y1 y) (z1 z)) p
+  (let ((x1 (secp256r1-point-x p))
+        (y1 (secp256r1-point-y p))
+        (z1 (secp256r1-point-z p)))
     (declare (type integer x1 y1 z1))
     (if (zerop z1)
         +secp256r1-point-at-infinity+
@@ -75,15 +82,18 @@
                (x2 u)
                (y2 (mod (- (* m (- s u)) (* 8 yyyy)) +secp256r1-p+))
                (z2 (mod (- (* y1+z1 y1+z1) yy zz) +secp256r1-p+)))
-          (make-instance 'secp256r1-point :x x2 :y y2 :z z2)))))
+          (make-secp256r1-point :x x2 :y y2 :z z2)))))
 
 (defmethod ec-add ((p secp256r1-point) (q secp256r1-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (with-slots ((x1 x) (y1 y) (z1 z)) p
-    (declare (type integer x1 y1 z1))
-    (with-slots ((x2 x) (y2 y) (z2 z)) q
-      (declare (type integer x2 y2 z2))
-      (cond
+  (let ((x1 (secp256r1-point-x p))
+        (y1 (secp256r1-point-y p))
+        (z1 (secp256r1-point-z p))
+        (x2 (secp256r1-point-x q))
+        (y2 (secp256r1-point-y q))
+        (z2 (secp256r1-point-z q)))
+    (declare (type integer x1 y1 z1 x2 y2 z2))
+    (cond
         ((zerop z1)
          q)
         ((zerop z2)
@@ -108,7 +118,7 @@
                       (y3 (mod (- (* r (- v x3)) (* 2 s1 j)) +secp256r1-p+))
                       (z1+z2 (mod (+ z1 z2) +secp256r1-p+))
                       (z3 (mod (* (- (* z1+z2 z1+z2) z1z1 z2z2) h) +secp256r1-p+)))
-                 (make-instance 'secp256r1-point :x x3 :y y3 :z z3)))))))))
+                 (make-secp256r1-point :x x3 :y y3 :z z3))))))))
 
 (defmethod ec-scalar-mult ((p secp256r1-point) e)
   ;; Secret scalars use the fixed-schedule ladder.  Public-only callers
@@ -141,7 +151,7 @@
            :kind 'secp256r1
            :parameter 'y
            :description "coordinate"))
-  (let ((p (make-instance 'secp256r1-point :x x :y y :z 1)))
+  (let ((p (make-secp256r1-point :x x :y y :z 1)))
     (if (ec-point-on-curve-p p)
         p
         (error 'invalid-curve-point :kind 'secp256r1))))
