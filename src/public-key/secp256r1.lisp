@@ -66,7 +66,8 @@
 (declaim (inline secp256r1-fe-zero secp256r1-fe-copy
                  secp256r1-fe-from-int secp256r1-fe-to-int
                  secp256r1-fe-add secp256r1-fe-sub
-                 secp256r1-fe-equal secp256r1-fe-is-zero))
+                 secp256r1-fe-equal secp256r1-fe-is-zero
+                 secp256r1-fe-sqr-raw secp256r1-fe-sq secp256r1-fesq))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun secp256r1-fe-zero ()
@@ -400,6 +401,46 @@ normalize first unless the words are already canonical."
     (secp256r1-fe-sub r a b)
     r))
 
+(defun secp256r1-fe-sqr-raw (r a)
+  "R := A * A as 16 limbs, no reduction."
+  (declare (type secp256r1-fe a)
+           (type (simple-array (unsigned-byte 64) (16)) r)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-assembly)
+  (secp256r1-fe-sqr-raw-asm r a)
+  #-(and sbcl x86-64 ironclad-assembly)
+  (progn
+    (dotimes (k 16)
+      (setf (aref r k) 0))
+    (secp256r1-fe-mul-raw r a a))
+  r)
+
+(defun secp256r1-fe-sq (r a)
+  "R := A^2 mod P."
+  (declare (type secp256r1-fe r a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((c (make-array 16 :element-type '(unsigned-byte 64)
+                       :initial-element 0)))
+    (declare (dynamic-extent c))
+    (secp256r1-fe-sqr-raw c a)
+    #+(and sbcl x86-64 ironclad-assembly)
+    (let ((q (secp256r1-fe-zero)))
+      (declare (dynamic-extent q))
+      (secp256r1-fe-reduce-asm r q c))
+    #-(and sbcl x86-64 ironclad-assembly)
+    (progn
+      (secp256r1-fe-normalize16 c)
+      (secp256r1-fe-solinas r c)))
+  r)
+
+(defun secp256r1-fesq (a)
+  "Square of field element A as a fresh vector."
+  (declare (type secp256r1-fe a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((r (secp256r1-fe-zero)))
+    (secp256r1-fe-sq r a)
+    r))
+
 (defconst +secp256r1-g+
   (secp256r1-point-from-ints
    48439561293906451759052585252797914202762949526041747995844080717082404635286
@@ -423,8 +464,8 @@ normalize first unless the words are already canonical."
         (y2 (secp256r1-point-y q))
         (z2 (secp256r1-point-z q)))
     (declare (type secp256r1-fe x1 y1 z1 x2 y2 z2))
-    (let ((z1z1 (secp256r1-femul z1 z1))
-          (z2z2 (secp256r1-femul z2 z2)))
+    (let ((z1z1 (secp256r1-fesq z1))
+          (z2z2 (secp256r1-fesq z2)))
       (and (secp256r1-fe-is-zero
             (secp256r1-fesub (secp256r1-femul x1 z2z2)
                              (secp256r1-femul x2 z1z1)))
@@ -440,21 +481,21 @@ normalize first unless the words are already canonical."
     (declare (type secp256r1-fe x1 y1 z1))
     (if (secp256r1-fe-is-zero z1)
         +secp256r1-point-at-infinity+
-        (let* ((xx (secp256r1-femul x1 x1))
-               (yy (secp256r1-femul y1 y1))
-               (yyyy (secp256r1-femul yy yy))
-               (zz (secp256r1-femul z1 z1))
+        (let* ((xx (secp256r1-fesq x1))
+               (yy (secp256r1-fesq y1))
+               (yyyy (secp256r1-fesq yy))
+               (zz (secp256r1-fesq z1))
                (x1+yy (secp256r1-feadd x1 yy))
                (y1+z1 (secp256r1-feadd y1 z1))
                (t1 (secp256r1-femul x1+yy x1+yy))
                (t2 (secp256r1-fesub t1 xx))
                (t3 (secp256r1-fesub t2 yyyy))
                (s (secp256r1-feadd t3 t3))
-               (t4 (secp256r1-femul zz zz))
+               (t4 (secp256r1-fesq zz))
                (t5 (secp256r1-fesub xx t4))
                (t6 (secp256r1-feadd t5 t5))
                (m (secp256r1-feadd t6 t5))
-               (t7 (secp256r1-femul m m))
+               (t7 (secp256r1-fesq m))
                (t8 (secp256r1-feadd s s))
                (u (secp256r1-fesub t7 t8))
                (x2 u)
@@ -484,8 +525,8 @@ normalize first unless the words are already canonical."
         ((secp256r1-fe-is-zero z2)
          p)
         (t
-         (let* ((z1z1 (secp256r1-femul z1 z1))
-                (z2z2 (secp256r1-femul z2 z2))
+         (let* ((z1z1 (secp256r1-fesq z1))
+                (z2z2 (secp256r1-fesq z2))
                 (u1 (secp256r1-femul x1 z2z2))
                 (u2 (secp256r1-femul x2 z1z1))
                 (t1 (secp256r1-femul y1 z2))
@@ -497,14 +538,14 @@ normalize first unless the words are already canonical."
                    (ec-double p)
                    +secp256r1-point-at-infinity+)
                (let* ((h (secp256r1-fesub u2 u1))
-                      (t3 (secp256r1-femul h h))
+                      (t3 (secp256r1-fesq h))
                       (t4 (secp256r1-feadd t3 t3))
                       (i (secp256r1-feadd t4 t4))
                       (j (secp256r1-femul h i))
                       (t5 (secp256r1-fesub s2 s1))
                       (r (secp256r1-feadd t5 t5))
                       (v (secp256r1-femul u1 i))
-                      (t6 (secp256r1-femul r r))
+                      (t6 (secp256r1-fesq r))
                       (t7 (secp256r1-fesub t6 j))
                       (t8 (secp256r1-feadd v v))
                       (x3 (secp256r1-fesub t7 t8))
@@ -582,11 +623,11 @@ normalize first unless the words are already canonical."
         (z (secp256r1-point-z p))
         (b (secp256r1-fe-from-int +secp256r1-b+)))
     (declare (type secp256r1-fe x y z b))
-    (let* ((y2 (secp256r1-femul y y))
-           (x2 (secp256r1-femul x x))
+    (let* ((y2 (secp256r1-fesq y))
+           (x2 (secp256r1-fesq x))
            (x3 (secp256r1-femul x2 x))
-           (z2 (secp256r1-femul z z))
-           (z4 (secp256r1-femul z2 z2))
+           (z2 (secp256r1-fesq z))
+           (z4 (secp256r1-fesq z2))
            (z6 (secp256r1-femul z4 z2))
            (xz4 (secp256r1-femul x z4))
            (xz4-3 (secp256r1-feadd xz4 (secp256r1-feadd xz4 xz4)))
@@ -623,7 +664,7 @@ normalize first unless the words are already canonical."
              :format-control "The point at infinity can't be encoded."))
     (let* ((invz (secp256r1-fe-from-int
                   (ec-scalar-inv :secp256r1 (secp256r1-fe-to-int z))))
-           (invz2 (secp256r1-femul invz invz))
+           (invz2 (secp256r1-fesq invz))
            (invz3 (secp256r1-femul invz2 invz)))
       (list :x (secp256r1-fe-to-int (secp256r1-femul x invz2))
             :y (secp256r1-fe-to-int (secp256r1-femul y invz3))))))
