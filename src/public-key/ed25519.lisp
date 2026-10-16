@@ -106,6 +106,108 @@
       (declare (type integer a b c d e f g h i x2 y2 z2 w2))
       (make-instance 'ed25519-point :x x2 :y y2 :z z2 :w w2))))
 
+(defun ed25519-double! (dst p)
+  "DST := 2*P. DST must differ from P. No consing."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (with-slots ((x1 x) (y1 y) (z1 z)) p
+    (declare (type integer x1 y1 z1))
+    (let* ((a (mod (* x1 x1) +ed25519-q+))
+           (b (mod (* y1 y1) +ed25519-q+))
+           (c (mod (* 2 z1 z1) +ed25519-q+))
+           (d (mod (+ x1 y1) +ed25519-q+))
+           (i (mod (* d d) +ed25519-q+))
+           (h (mod (+ a b) +ed25519-q+))
+           (e (mod (- h i) +ed25519-q+))
+           (g (mod (- a b) +ed25519-q+))
+           (f (mod (+ c g) +ed25519-q+))
+           (x2 (mod (* e f) +ed25519-q+))
+           (y2 (mod (* g h) +ed25519-q+))
+           (z2 (mod (* f g) +ed25519-q+))
+           (w2 (mod (* e h) +ed25519-q+)))
+      (declare (type integer x2 y2 z2 w2))
+      (setf (slot-value dst 'x) x2
+            (slot-value dst 'y) y2
+            (slot-value dst 'z) z2
+            (slot-value dst 'w) w2)
+      dst)))
+
+(defun ed25519-add! (dst p q)
+  "DST := P + Q. DST must differ from P and Q. No consing."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (with-slots ((x1 x) (y1 y) (z1 z) (w1 w)) p
+    (declare (type integer x1 y1 z1 w1))
+    (with-slots ((x2 x) (y2 y) (z2 z) (w2 w)) q
+      (declare (type integer x2 y2 z2 w2))
+      (let* ((a (mod (* (- y1 x1) (- y2 x2)) +ed25519-q+))
+             (b (mod (* (+ y1 x1) (+ y2 x2)) +ed25519-q+))
+             (i (mod (* w1 w2) +ed25519-q+))
+             (c (mod (* 2 i +ed25519-d+) +ed25519-q+))
+             (d (mod (* 2 z1 z2) +ed25519-q+))
+             (e (mod (- b a) +ed25519-q+))
+             (f (mod (- d c) +ed25519-q+))
+             (g (mod (+ d c) +ed25519-q+))
+             (h (mod (+ b a) +ed25519-q+))
+             (x3 (mod (* e f) +ed25519-q+))
+             (y3 (mod (* g h) +ed25519-q+))
+             (z3 (mod (* f g) +ed25519-q+))
+             (w3 (mod (* e h) +ed25519-q+)))
+        (declare (type integer x3 y3 z3 w3))
+        (setf (slot-value dst 'x) x3
+              (slot-value dst 'y) y3
+              (slot-value dst 'z) z3
+              (slot-value dst 'w) w3)
+        dst))))
+
+;;; Scalar multiplication for arbitrary points (not the generator).
+;;; Uses destination-based Montgomery ladder to avoid consing intermediate
+;;; points.  This is used by ed25519-verify for the public-key multiplication.
+(defun ed25519-scalar-mult-general (p e)
+  "Compute E*P for arbitrary point P using destination-based ladder.
+No consing of intermediate points - uses 4 pre-allocated point objects."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
+           (type integer e))
+  (when (minusp e)
+    (error "negative scalars not supported by ed25519-scalar-mult-general"))
+  (let* ((r0 (make-instance 'ed25519-point :x 0 :y 0 :z 0 :w 0))
+         (r1 (make-instance 'ed25519-point :x 0 :y 0 :z 0 :w 0))
+         (t0 (make-instance 'ed25519-point :x 0 :y 0 :z 0 :w 0))
+         (t1 (make-instance 'ed25519-point :x 0 :y 0 :z 0 :w 0)))
+    ;; Initialize r0 = infinity (0,1,1,0), r1 = P
+    (setf (slot-value r0 'x) 0 (slot-value r0 'y) 1
+          (slot-value r0 'z) 1 (slot-value r0 'w) 0)
+    (setf (slot-value r1 'x) (slot-value p 'x)
+          (slot-value r1 'y) (slot-value p 'y)
+          (slot-value r1 'z) (slot-value p 'z)
+          (slot-value r1 'w) (slot-value p 'w))
+    ;; Process bits from MSB to LSB
+    (do ((i (1- (integer-length e)) (1- i)))
+        ((minusp i) r0)
+      (if (logbitp i e)
+          (progn
+            (ed25519-add! t0 r0 r1)
+            (ed25519-double! t1 r1)
+            ;; Copy t0 -> r0, t1 -> r1 (no aliasing: copy slot values)
+            (setf (slot-value r0 'x) (slot-value t0 'x)
+                  (slot-value r0 'y) (slot-value t0 'y)
+                  (slot-value r0 'z) (slot-value t0 'z)
+                  (slot-value r0 'w) (slot-value t0 'w))
+            (setf (slot-value r1 'x) (slot-value t1 'x)
+                  (slot-value r1 'y) (slot-value t1 'y)
+                  (slot-value r1 'z) (slot-value t1 'z)
+                  (slot-value r1 'w) (slot-value t1 'w)))
+          (progn
+            (ed25519-add! t0 r1 r0)
+            (ed25519-double! t1 r0)
+            ;; Copy t0 -> r1, t1 -> r0
+            (setf (slot-value r1 'x) (slot-value t0 'x)
+                  (slot-value r1 'y) (slot-value t0 'y)
+                  (slot-value r1 'z) (slot-value t0 'z)
+                  (slot-value r1 'w) (slot-value t0 'w))
+            (setf (slot-value r0 'x) (slot-value t1 'x)
+                  (slot-value r0 'y) (slot-value t1 'y)
+                  (slot-value r0 'z) (slot-value t1 'z)
+                  (slot-value r0 'w) (slot-value t1 'w)))))))
+
 ;;; Fixed-base comb for the generator point.
 ;;;
 ;;; SIGN-MESSAGE and key generation always multiply G by a secret scalar.
@@ -320,7 +422,7 @@
          (a (ec-decode-point :ed25519 pk))
          (h (mod (ec-decode-scalar :ed25519 (ed25519-hash r pk m)) +ed25519-l+))
          (res1 (ec-scalar-mult +ed25519-b+ s))
-         (res2 (ec-add rp (ec-scalar-mult a h))))
+         (res2 (ec-add rp (ed25519-scalar-mult-general a h))))
     (declare (type (simple-array (unsigned-byte 8) (*)) r)
              (type integer s h)
              (type ed25519-point rp a res1 res2))

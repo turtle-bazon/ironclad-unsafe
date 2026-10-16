@@ -115,6 +115,99 @@
       (declare (type integer a b c d e f g x2 y2 z2))
       (make-instance 'ed448-point :x x2 :y y2 :z z2))))
 
+(defun ed448-double! (dst p)
+  "DST := 2*P. No consing."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (with-slots ((x1 x) (y1 y) (z1 z)) p
+    (declare (type integer x1 y1 z1))
+    (let* ((a (mod (+ x1 y1) +ed448-q+))
+           (b (mod (* a a) +ed448-q+))
+           (c (mod (* x1 x1) +ed448-q+))
+           (d (mod (* y1 y1) +ed448-q+))
+           (e (mod (+ c d) +ed448-q+))
+           (f (mod (* z1 z1) +ed448-q+))
+           (g (mod (- e (* 2 f)) +ed448-q+))
+           (x2 (mod (* (- b e) g) +ed448-q+))
+           (y2 (mod (* (- c d) e) +ed448-q+))
+           (z2 (mod (* e g) +ed448-q+)))
+      (declare (type integer x2 y2 z2))
+      (setf (slot-value dst 'x) x2
+            (slot-value dst 'y) y2
+            (slot-value dst 'z) z2)
+      dst)))
+
+(defun ed448-add! (dst p q)
+  "DST := P + Q. No consing."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (with-slots ((x1 x) (y1 y) (z1 z)) p
+    (declare (type integer x1 y1 z1))
+    (with-slots ((x2 x) (y2 y) (z2 z)) q
+      (declare (type integer x2 y2 z2))
+      (let* ((a (mod (* z1 z2) +ed448-q+))
+             (b (mod (* a a) +ed448-q+))
+             (c (mod (* x1 x2) +ed448-q+))
+             (d (mod (* y1 y2) +ed448-q+))
+             (k (mod (* c d) +ed448-q+))
+             (e (mod (* +ed448-d+ k) +ed448-q+))
+             (f (mod (- b e) +ed448-q+))
+             (g (mod (+ b e) +ed448-q+))
+             (h (mod (* (+ x1 y1) (+ x2 y2)) +ed448-q+))
+             (i (mod (* a f) +ed448-q+))
+             (j (mod (* a g) +ed448-q+))
+             (x3 (mod (* i (- h c d)) +ed448-q+))
+             (y3 (mod (* j (- d c)) +ed448-q+))
+             (z3 (mod (* f g) +ed448-q+)))
+        (declare (type integer x3 y3 z3))
+        (setf (slot-value dst 'x) x3
+              (slot-value dst 'y) y3
+              (slot-value dst 'z) z3)
+        dst))))
+
+;;; Scalar multiplication for arbitrary points (not the generator).
+;;; Uses destination-based Montgomery ladder to avoid consing intermediate
+;;; points.  This is used by ed448-verify for the public-key multiplication.
+(defun ed448-scalar-mult-general (p e)
+  "Compute E*P for arbitrary point P using destination-based ladder.
+No consing of intermediate points - uses 4 pre-allocated point objects."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
+           (type integer e))
+  (when (minusp e)
+    (error "negative scalars not supported by ed448-scalar-mult-general"))
+  (let* ((r0 (make-instance 'ed448-point :x 0 :y 0 :z 0))
+         (r1 (make-instance 'ed448-point :x 0 :y 0 :z 0))
+         (t0 (make-instance 'ed448-point :x 0 :y 0 :z 0))
+         (t1 (make-instance 'ed448-point :x 0 :y 0 :z 0)))
+    ;; Initialize r0 = infinity (0,1,1), r1 = P
+    (setf (slot-value r0 'x) 0 (slot-value r0 'y) 1
+          (slot-value r0 'z) 1)
+    (setf (slot-value r1 'x) (slot-value p 'x)
+          (slot-value r1 'y) (slot-value p 'y)
+          (slot-value r1 'z) (slot-value p 'z))
+    ;; Process bits from MSB to LSB
+    (do ((i (1- (integer-length e)) (1- i)))
+        ((minusp i) r0)
+      (if (logbitp i e)
+          (progn
+            (ed448-add! t0 r0 r1)
+            (ed448-double! t1 r1)
+            ;; Copy t0 -> r0, t1 -> r1 (no aliasing: copy slot values)
+            (setf (slot-value r0 'x) (slot-value t0 'x)
+                  (slot-value r0 'y) (slot-value t0 'y)
+                  (slot-value r0 'z) (slot-value t0 'z))
+            (setf (slot-value r1 'x) (slot-value t1 'x)
+                  (slot-value r1 'y) (slot-value t1 'y)
+                  (slot-value r1 'z) (slot-value t1 'z)))
+          (progn
+            (ed448-add! t0 r1 r0)
+            (ed448-double! t1 r0)
+            ;; Copy t0 -> r1, t1 -> r0
+            (setf (slot-value r1 'x) (slot-value t0 'x)
+                  (slot-value r1 'y) (slot-value t0 'y)
+                  (slot-value r1 'z) (slot-value t0 'z))
+            (setf (slot-value r0 'x) (slot-value t1 'x)
+                  (slot-value r0 'y) (slot-value t1 'y)
+                  (slot-value r0 'z) (slot-value t1 'z)))))))
+
 (defmethod ec-scalar-mult ((p ed448-point) e)
   ;; Point multiplication on ed448 curve using the Montgomery ladder.
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
@@ -270,7 +363,7 @@
          (a (ec-decode-point :ed448 pk))
          (h (mod (ec-decode-scalar :ed448 (ed448-hash +ed448-dom+ r pk m)) +ed448-l+))
          (res1 (ec-scalar-mult +ed448-b+ s))
-         (res2 (ec-add rp (ec-scalar-mult a h))))
+         (res2 (ec-add rp (ed448-scalar-mult-general a h))))
     (declare (type (simple-array (unsigned-byte 8) (*)) r)
              (type integer s h)
              (type ed448-point rp a res1 res2))
