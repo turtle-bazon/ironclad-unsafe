@@ -88,6 +88,49 @@
                 finally (return `(progn ,@forms)))
         regs))))
 
+(defun update-sha256-block-fast (regs block)
+  (declare (type sha256-regs regs)
+           (type (simple-array (unsigned-byte 32) (64)) block)
+            #.(burn-baby-burn))
+  (let ((a (sha256-regs-a regs)) (b (sha256-regs-b regs))
+        (c (sha256-regs-c regs)) (d (sha256-regs-d regs))
+        (e (sha256-regs-e regs)) (f (sha256-regs-f regs))
+        (g (sha256-regs-g regs)) (h (sha256-regs-h regs)))
+    (declare (type (unsigned-byte 32) a b c d e f g h))
+    (flet ((ch (x y z)
+             (logxor z (logand x (logxor y z))))
+           (maj (x y z)
+             (logxor (logand x y) (logand x z) (logand y z)))
+           (sigma0 (x)
+             (logxor (rol32 x 30) (rol32 x 19) (rol32 x 10)))
+           (sigma1 (x)
+             (logxor (rol32 x 26) (rol32 x 21) (rol32 x 7))))
+      (dotimes (i 64)
+        (let* ((w (aref block i))
+               (k (aref +sha256-round-constants+ i))
+               (t1 (logand #xffffffff
+                           (+ h (sigma1 e) (ch e f g) w k)))
+               (t2 (logand #xffffffff
+                           (+ (sigma0 a) (maj a b c)))))
+          (declare (type (unsigned-byte 32) w k t1 t2))
+          (setf h g
+                g f
+                f e
+                e (logand #xffffffff (+ d t1))
+                d c
+                c b
+                b a
+                a (logand #xffffffff (+ t1 t2)))))
+      (setf (sha256-regs-a regs) (logand #xffffffff (+ (sha256-regs-a regs) a))
+            (sha256-regs-b regs) (logand #xffffffff (+ (sha256-regs-b regs) b))
+            (sha256-regs-c regs) (logand #xffffffff (+ (sha256-regs-c regs) c))
+            (sha256-regs-d regs) (logand #xffffffff (+ (sha256-regs-d regs) d))
+            (sha256-regs-e regs) (logand #xffffffff (+ (sha256-regs-e regs) e))
+            (sha256-regs-f regs) (logand #xffffffff (+ (sha256-regs-f regs) f))
+            (sha256-regs-g regs) (logand #xffffffff (+ (sha256-regs-g regs) g))
+            (sha256-regs-h regs) (logand #xffffffff (+ (sha256-regs-h regs) h)))
+      regs)))
+
 (defun sha256-expand-block (block)
   (declare (type (simple-array (unsigned-byte 32) (64)) block)
            #.(burn-baby-burn))
@@ -158,7 +201,7 @@
            (let ((block (sha256-block state)))
              (fill-block-ub8-be block sequence offset)
              (sha256-expand-block block)
-             (update-sha256-block (sha256-regs state) block))))
+             (update-sha256-block-fast (sha256-regs state) block))))
     (declare (dynamic-extent #'compress))
     (declare (notinline mdx-updater))
     (mdx-updater state #'compress sequence start end)))

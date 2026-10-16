@@ -426,7 +426,7 @@ uint64_t r = (n << 56)
 
 #+sbcl
 (define-compiler-macro mod32+ (a b)
-  `(ldb (byte 32 0) (+ ,a ,b)))
+  `(logand #xffffffff (+ ,a ,b)))
 
 ;;; mostly needed for CAST*
 (declaim #+ironclad-fast-mod32-arithmetic (inline mod32-)
