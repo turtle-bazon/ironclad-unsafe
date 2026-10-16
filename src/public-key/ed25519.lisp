@@ -106,21 +106,71 @@
       (declare (type integer a b c d e f g h i x2 y2 z2 w2))
       (make-instance 'ed25519-point :x x2 :y y2 :z z2 :w w2))))
 
+;;; Fixed-base comb for the generator point.
+;;;
+;;; SIGN-MESSAGE and key generation always multiply G by a secret scalar.
+;;; A 4-bit window needs 64 adds and 256 doublings instead of the
+;;; ladder's ~128 adds and 255 doublings.
+
+(defvar *ed25519-base-table* nil
+  "Precomputed I * G for I in [0, 16). Built on first use.")
+
+(defun ed25519-ensure-base-table ()
+  (or *ed25519-base-table*
+      (setf *ed25519-base-table*
+            (let ((table (make-array 16)))
+              (setf (aref table 0) +ed25519-point-at-infinity+)
+              (setf (aref table 1) +ed25519-b+)
+              (loop for i from 2 below 16
+                    do (setf (aref table i)
+                             (if (evenp i)
+                                 (ec-double (aref table (ash i -1)))
+                                 (ec-add (aref table (1- i)) +ed25519-b+))))
+              table))))
+
+(declaim (inline ed25519-select-base))
+(defun ed25519-select-base (table v)
+  "Select TABLE[V].  Linear scan over the small cached table."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
+           (type (integer 0 15) v))
+  (let ((sel +ed25519-point-at-infinity+))
+    (dotimes (i 16 sel)
+      (when (= i v)
+        (setf sel (aref table i))))))
+
+(defun ed25519-base-mult (k)
+  "Fixed-base 4-bit comb for G (secret scalar, fixed schedule)."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
+           (type integer k))
+  (let ((table (ed25519-ensure-base-table))
+        (acc +ed25519-point-at-infinity+))
+    (loop for j from 63 downto 0 do          ; 256 bits / 4 = 64 nibbles
+      (dotimes (i 4)
+        (setf acc (ec-double acc)))
+      (let ((sel (ed25519-select-base table (ldb (byte 4 (* j 4)) k))))
+        (unless (eq sel +ed25519-point-at-infinity+)
+          (setf acc (ec-add acc sel)))))
+    acc))
+
 (defmethod ec-scalar-mult ((p ed25519-point) e)
-  ;; Point multiplication on ed25519 curve using the Montgomery ladder.
+  ;; Secret scalars use the fixed-schedule ladder.  The generator G uses
+  ;; the faster fixed-base comb.  Public-only callers can keep using
+  ;; %EC-WINDOW-MULT or %EC-SHAMIR-MULT directly.
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer e))
-  (do ((r0 +ed25519-point-at-infinity+)
-       (r1 p)
-       (i 254 (1- i)))
-      ((minusp i) r0)
-    (declare (type ed25519-point r0 r1)
-             (type fixnum i))
-    (if (logbitp i e)
-        (setf r0 (ec-add r0 r1)
-              r1 (ec-double r1))
-        (setf r1 (ec-add r0 r1)
-              r0 (ec-double r0)))))
+  (if (and (eq p +ed25519-b+) (not (minusp e)))
+      (ed25519-base-mult e)
+      (do ((r0 +ed25519-point-at-infinity+)
+           (r1 p)
+           (i 254 (1- i)))
+          ((minusp i) r0)
+        (declare (type ed25519-point r0 r1)
+                 (type fixnum i))
+        (if (logbitp i e)
+            (setf r0 (ec-add r0 r1)
+                  r1 (ec-double r1))
+            (setf r1 (ec-add r0 r1)
+                  r0 (ec-double r0))))))
 
 (defmethod ec-point-on-curve-p ((p ed25519-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
