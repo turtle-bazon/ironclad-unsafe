@@ -130,7 +130,7 @@
   ((simple-array (unsigned-byte 32) (*))
    (simple-array (unsigned-byte 32) (*))
    (simple-array (unsigned-byte 32) (*)))
-  (values)
+  (values simple-array)
   (any)
   :overwrite-fndb-silently t)
 
