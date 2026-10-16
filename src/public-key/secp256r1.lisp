@@ -184,15 +184,19 @@
 (declaim (inline secp256r1--adc secp256r1--sbb secp256r1--fe-ge-p))
 
 (defun secp256r1--adc (a b c)
-  "Add three small words; return (VALUES word carry)."
-  (declare (type (unsigned-byte 64) a b c)
+  "Add three small words; return (VALUES word carry).
+All arguments are at most 32-bit field limbs plus a small carry, so
+the sum stays under 2^34 and every operation remains in fixnums."
+  (declare (type (unsigned-byte 34) a b c)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((s (+ a b c)))
     (values (ldb (byte 32 0) s) (ash s -32))))
 
 (defun secp256r1--sbb (a b borrow)
-  "Subtract with borrow; return (VALUES word borrow-out)."
-  (declare (type (unsigned-byte 64) a b)
+  "Subtract with borrow; return (VALUES word borrow-out).
+A and B are 32-bit field limbs, BORROW is 0 or 1, so the difference
+stays within fixnum range."
+  (declare (type (unsigned-byte 32) a b)
            (type (unsigned-byte 32) borrow)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((d (- a b borrow)))
@@ -480,10 +484,34 @@ normalize first unless the words are already canonical."
   (secp256r1-point-from-ints 1 1 0))
 
 
+(defconstant +secp256r1-p-minus-2+ (- +secp256r1-p+ 2))
+
+(declaim (inline secp256r1-fe-inv))
+(defun secp256r1-fe-inv (a)
+  "Field element inverse via Fermat's little theorem: A^(P-2) mod P.
+Uses square-and-multiply over the field element representation,
+avoiding bignum arithmetic entirely.  Not constant-time; callers that
+need side-channel resistance should blind the input first (see
+MODULAR-INVERSE-WITH-BLINDING)."
+  (declare (type secp256r1-fe a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((result (secp256r1-fe-from-int 1))
+        (base a))
+    (declare (type secp256r1-fe result base))
+    (loop for i from (1- (integer-length +secp256r1-p-minus-2+)) downto 0
+          do (secp256r1-fe-sq result result)
+             (when (logbitp i +secp256r1-p-minus-2+)
+               (secp256r1-fe-mul result result base)))
+    result))
+
 (defmethod ec-scalar-inv ((kind (eql :secp256r1)) n)
-  ;; Binary GCD inversion is much cheaper than Fermat exponentiation here.
-  ;; Callers only invert nonzero field elements (z = 0 is rejected earlier).
-  (modular-inverse n +secp256r1-p+))
+  ;; Fermat inversion over field elements is faster than bignum binary
+  ;; GCD now that field multiply is native-compiled.  Callers only invert
+  ;; nonzero field elements (z = 0 is rejected earlier).
+  (declare (type integer n))
+  (if (zerop n)
+      0
+      (secp256r1-fe-to-int (secp256r1-fe-inv (secp256r1-fe-from-int n)))))
 
 (defmethod ec-point-equal ((p secp256r1-point) (q secp256r1-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
