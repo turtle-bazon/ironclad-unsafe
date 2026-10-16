@@ -14,7 +14,8 @@
                 #:simple-array-unsigned-byte-8
                 #:simple-array-unsigned-byte-32
                 #+x86-64 #:simple-array-unsigned-byte-64
-                #+x86-64 #:rax-offset #+x86-64 #:rcx-offset))
+                #+x86-64 #:rax-offset #+x86-64 #:rcx-offset
+       #+x86-64 #:rdx-offset))
 
 #+(and sbcl (or x86 x86-64) ironclad-assembly)
 (in-package :ironclad-vm)
@@ -1084,4 +1085,51 @@
       (inst dec idx)
       (inst jmp :nz start)
       (emit-label end))))
+
+#+x86-64
+(define-vop (secp256r1-mul-raw-asm)
+  (:translate ironclad::secp256r1-fe-mul-raw-asm)
+  (:policy :fast-safe)
+  (:args (c :scs (descriptor-reg))
+         (a :scs (descriptor-reg))
+         (b :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32)
+  (:temporary (:sc unsigned-reg) lo hi carry tmp)
+  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+  (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (flet ((a32 (i) (dword-ea (+ data-offset (* 4 i)) a))
+             (b32 (i) (dword-ea (+ data-offset (* 4 i)) b))
+             (c64 (k) (ea (+ data-offset (* 8 k)) c)))
+        ;; Comba columns: CARRY holds under 2^36 across columns.
+        ;; Each column sums at most eight 32x32-bit products plus the
+        ;; carry, under 2^67, accumulated in (HI, LO).  Words are
+        ;; extracted with SHR, never through flags, except the ADD/ADC
+        ;; pair that folds each 64-bit product into (HI, LO).
+        ;; RDX-TMP holds the product high word, always zero here
+        ;; because both inputs are zero-extended 32-bit values.
+        (inst mov carry 0)
+        (dotimes (k 16)
+          (inst mov lo carry)
+          (inst mov hi 0)
+          (dolist (i (loop for x from (max 0 (- k 7)) to (min 7 k)
+                           collect x))
+            (let ((j (- k i)))
+              (dword-inst mov rax-tmp (a32 i))
+              (dword-inst mov tmp (b32 j))
+              (inst mul tmp)
+              (inst add lo rax-tmp)
+              (inst adc hi rdx-tmp)))
+          ;; Store the canonical 32-bit word as a full 64-bit element.
+          (dword-inst mov tmp lo)
+          (inst mov (c64 k) tmp)
+          (inst mov carry hi)
+          (inst shl carry 32)
+          (inst mov tmp lo)
+          (inst shr tmp 32)
+          (inst or carry tmp))))))
 ) ; PROGN
