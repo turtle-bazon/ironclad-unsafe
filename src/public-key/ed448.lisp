@@ -208,21 +208,77 @@ No consing of intermediate points - uses 4 pre-allocated point objects."
                   (slot-value r0 'y) (slot-value t1 'y)
                   (slot-value r0 'z) (slot-value t1 'z)))))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Fixed-base comb for the generator point.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; SIGN-MESSAGE and key generation always multiply G by a secret scalar.
+;;; A 4-bit window needs 114 adds and 456 doublings instead of the
+;;; ladder's ~228 adds and 455 doublings.
+
+(defvar *ed448-base-table* nil
+  "Precomputed I * G for I in [0, 16). Built on first use.")
+
+(defun ed448-ensure-base-table ()
+  (or *ed448-base-table*
+      (setf *ed448-base-table*
+            (let ((table (make-array 16)))
+              (setf (aref table 0) +ed448-point-at-infinity+)
+              (setf (aref table 1) +ed448-b+)
+              (loop for i from 2 below 16
+                    do (setf (aref table i)
+                             (if (evenp i)
+                                 (ec-double (aref table (ash i -1)))
+                                 (ec-add (aref table (1- i)) +ed448-b+))))
+              table))))
+
+(declaim (inline ed448-select-base))
+(defun ed448-select-base (table v)
+  "Select TABLE[V].  Linear scan over the small cached table."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
+           (type (integer 0 15) v))
+  (let ((sel +ed448-point-at-infinity+))
+    (dotimes (i 16 sel)
+      (when (= i v)
+        (setf sel (aref table i))))))
+
+(defun ed448-base-mult (k)
+  "Fixed-base 4-bit comb for G (secret scalar, fixed schedule)."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
+           (type integer k))
+  (let ((table (ed448-ensure-base-table))
+        (acc +ed448-point-at-infinity+)
+        (tmp (make-instance 'ed448-point :x 0 :y 0 :z 0))
+        (out (make-instance 'ed448-point :x 0 :y 0 :z 0))
+        (sel (make-instance 'ed448-point :x 0 :y 0 :z 0)))
+    (loop for j from 113 downto 0 do          ; 456 bits / 4 = 114 nibbles
+      (dotimes (i 4)
+        (setf tmp (ec-double acc))
+        (setf acc tmp))
+      (setf sel (ed448-select-base table (ldb (byte 4 (* j 4)) k)))
+      (unless (eq sel +ed448-point-at-infinity+)
+        (ed448-add! out acc sel)
+        (setf acc out)))
+    acc))
+
 (defmethod ec-scalar-mult ((p ed448-point) e)
-  ;; Point multiplication on ed448 curve using the Montgomery ladder.
+  ;; Secret scalars use the fixed-schedule ladder.  The generator G uses
+  ;; the faster fixed-base comb.  Public-only callers can keep using
+  ;; %EC-WINDOW-MULT or %EC-SHAMIR-MULT directly.
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer e))
-  (do ((r0 +ed448-point-at-infinity+)
-       (r1 p)
-       (i 447 (1- i)))
-      ((minusp i) r0)
-    (declare (type ed448-point r0 r1)
-             (type fixnum i))
-    (if (logbitp i e)
-        (setf r0 (ec-add r0 r1)
-              r1 (ec-double r1))
-        (setf r1 (ec-add r0 r1)
-              r0 (ec-double r0)))))
+  (if (and (eq p +ed448-b+) (not (minusp e)))
+      (ed448-base-mult e)
+      (do ((r0 +ed448-point-at-infinity+)
+           (r1 p)
+           (i 447 (1- i)))
+          ((minusp i) r0)
+        (declare (type ed448-point r0 r1)
+                 (type fixnum i))
+        (if (logbitp i e)
+            (setf r0 (ec-add r0 r1)
+                  r1 (ec-double r1))
+            (setf r1 (ec-add r0 r1)
+                  r0 (ec-double r0))))))
 
 (defmethod ec-point-on-curve-p ((p ed448-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
