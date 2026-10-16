@@ -25,6 +25,13 @@
     (y 1 :type integer :read-only t)
     (z 1 :type integer :read-only t)))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmethod make-load-form ((p secp256r1-point) &optional env)
+    (declare (ignore env))
+    `(make-secp256r1-point :x ,(secp256r1-point-x p)
+                           :y ,(secp256r1-point-y p)
+                           :z ,(secp256r1-point-z p))))
+
 (declaim (inline secp256r1-point-x secp256r1-point-y secp256r1-point-z))
 
 
@@ -46,7 +53,9 @@
 
 
 (defmethod ec-scalar-inv ((kind (eql :secp256r1)) n)
-  (expt-mod n (- +secp256r1-p+ 2) +secp256r1-p+))
+  ;; Binary GCD inversion is much cheaper than Fermat exponentiation here.
+  ;; Callers only invert nonzero field elements (z = 0 is rejected earlier).
+  (modular-inverse n +secp256r1-p+))
 
 (defmethod ec-point-equal ((p secp256r1-point) (q secp256r1-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
@@ -120,12 +129,60 @@
                       (z3 (mod (* (- (* z1+z2 z1+z2) z1z1 z2z2) h) +secp256r1-p+)))
                  (make-secp256r1-point :x x3 :y y3 :z z3))))))))
 
+;;; Fixed-base comb for the generator point.
+;;;
+;;; SIGN-MESSAGE and key generation always multiply G by a secret scalar.
+;;; A 4-bit window needs 64 additions and 256 doublings instead of the
+;;; ladder's 256 of each.  The window value is secret, so table lookup
+;;; scans all 16 entries instead of indexing directly; the iteration
+;;; count is fixed either way.
+;;;
+;;; The table is built lazily on first use: building it at file load
+;;; time would call EC-ADD while this file is still being compiled,
+;;; when its methods are not available yet.
+
+(defvar *secp256r1-base-table* nil
+  "Precomputed I * G for I in [0, 16), built on first use.")
+
+(defun secp256r1-ensure-base-table ()
+  (or *secp256r1-base-table*
+      (setf *secp256r1-base-table*
+            (let ((table (make-array 16)))
+              (setf (aref table 0) +secp256r1-point-at-infinity+)
+              (dotimes (i 15 table)
+                (setf (aref table (1+ i))
+                      (ec-add (aref table i) +secp256r1-g+)))))))
+
+(declaim (inline secp256r1-select-base))
+(defun secp256r1-select-base (table v)
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
+           (type (integer 0 15) v))
+  (let ((sel +secp256r1-point-at-infinity+))
+    (dotimes (i 16 sel)
+      (when (= i v)
+        (setf sel (aref table i))))))
+
+(defun secp256r1-base-mult (k)
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
+           (type integer k))
+  (let ((table (secp256r1-ensure-base-table))
+        (r +secp256r1-point-at-infinity+))
+    (loop for j from 63 downto 0 do
+      (dotimes (i 4)
+        (setf r (ec-double r)))
+      (setf r (ec-add r (secp256r1-select-base table (ldb (byte 4 (* j 4)) k)))))
+    r))
+
 (defmethod ec-scalar-mult ((p secp256r1-point) e)
-  ;; Secret scalars use the fixed-schedule ladder.  Public-only callers
-  ;; can keep using %EC-WINDOW-MULT or %EC-SHAMIR-MULT directly.
+  ;; Secret scalars use the fixed-schedule ladder, except for the fixed
+  ;; base point G (signing nonces, key generation), which uses the
+  ;; constant-iteration comb above.  Public-only callers can keep using
+  ;; %EC-WINDOW-MULT or %EC-SHAMIR-MULT directly.
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer e))
-  (%ec-ladder-mult p e :bits +secp256r1-bits+))
+  (if (and (eq p +secp256r1-g+) (not (minusp e)))
+      (secp256r1-base-mult e)
+      (%ec-ladder-mult p e :bits +secp256r1-bits+)))
 
 (defmethod ec-point-on-curve-p ((p secp256r1-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
