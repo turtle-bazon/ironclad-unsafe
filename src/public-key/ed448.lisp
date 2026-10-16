@@ -252,8 +252,8 @@ No consing of intermediate points - uses 4 pre-allocated point objects."
         (sel (make-instance 'ed448-point :x 0 :y 0 :z 0)))
     (loop for j from 113 downto 0 do          ; 456 bits / 4 = 114 nibbles
       (dotimes (i 4)
-        (setf tmp (ec-double acc))
-        (setf acc tmp))
+        (ed448-double! tmp acc)
+        (ed448-point-copy! acc tmp))
       (setf sel (ed448-select-base table (ldb (byte 4 (* j 4)) k)))
       (unless (eq sel +ed448-point-at-infinity+)
         (ed448-add! out acc sel)
@@ -261,24 +261,50 @@ No consing of intermediate points - uses 4 pre-allocated point objects."
     acc))
 
 (defmethod ec-scalar-mult ((p ed448-point) e)
-  ;; Secret scalars use the fixed-schedule ladder.  The generator G uses
-  ;; the faster fixed-base comb.  Public-only callers can keep using
+  ;; Secret scalars use the fixed-schedule ladder, except for the fixed
+  ;; base point G (signing nonces, key generation), which uses the
+  ;; constant-iteration comb above.  Public-only callers can keep using
   ;; %EC-WINDOW-MULT or %EC-SHAMIR-MULT directly.
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer e))
   (if (and (eq p +ed448-b+) (not (minusp e)))
       (ed448-base-mult e)
-      (do ((r0 +ed448-point-at-infinity+)
-           (r1 p)
-           (i 447 (1- i)))
-          ((minusp i) r0)
-        (declare (type ed448-point r0 r1)
-                 (type fixnum i))
-        (if (logbitp i e)
-            (setf r0 (ec-add r0 r1)
-                  r1 (ec-double r1))
-            (setf r1 (ec-add r0 r1)
-                  r0 (ec-double r0))))))
+      (ed448-ladder-mult p e)))
+
+(defun ed448-ladder-mult (point e)
+  "Fixed-schedule Montgomery ladder using destination-passing ops."
+  (declare (type ed448-point point)
+           (type integer e)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (when (minusp e)
+    (error "negative scalars are not supported by ed448-ladder-mult"))
+  (if (zerop e)
+      +ed448-point-at-infinity+
+      (let ((r0 (make-instance 'ed448-point :x 0 :y 0 :z 0))
+            (r1 point)
+            (tmp (make-instance 'ed448-point :x 0 :y 0 :z 0)))
+        (declare (type ed448-point r0 r1 tmp))
+        (dotimes (i (1- +ed448-bits+) -1)
+          (if (logbitp i e)
+              (progn
+                (ed448-add! tmp r0 r1)
+                (ed448-double! tmp r1)
+                (setf (slot-value r0 'x) (slot-value tmp 'x)
+                      (slot-value r0 'y) (slot-value tmp 'y)
+                      (slot-value r0 'z) (slot-value tmp 'z))
+                (setf (slot-value r1 'x) (slot-value tmp 'x)
+                      (slot-value r1 'y) (slot-value tmp 'y)
+                      (slot-value r1 'z) (slot-value tmp 'z)))
+              (progn
+                (ed448-add! tmp r1 r0)
+                (ed448-double! tmp r0)
+                (setf (slot-value r1 'x) (slot-value tmp 'x)
+                      (slot-value r1 'y) (slot-value tmp 'y)
+                      (slot-value r1 'z) (slot-value tmp 'z))
+                (setf (slot-value r0 'x) (slot-value tmp 'x)
+                      (slot-value r0 'y) (slot-value tmp 'y)
+                      (slot-value r0 'z) (slot-value tmp 'z)))))
+        r0)))
 
 (defmethod ec-point-on-curve-p ((p ed448-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
