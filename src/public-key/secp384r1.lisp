@@ -110,12 +110,62 @@
                       (z3 (mod (* (- (* z1+z2 z1+z2) z1z1 z2z2) h) +secp384r1-p+)))
                  (make-instance 'secp384r1-point :x x3 :y y3 :z z3)))))))))
 
+
+;;; Fixed-base comb for the generator point.
+;;;
+;;; SIGN-MESSAGE and key generation always multiply G by a secret scalar.
+;;; A 4-bit window needs 96 adds and 384 doublings instead of the
+;;; ladder's ~192 adds and 383 doublings.
+
+(defvar *secp384r1-base-table* nil
+  "Precomputed I * G for I in [0, 16). Built on first use.")
+
+(defun secp384r1-ensure-base-table ()
+  (or *secp384r1-base-table*
+      (setf *secp384r1-base-table*
+            (let ((table (make-array 16)))
+              (setf (aref table 0) +secp384r1-point-at-infinity+)
+              (setf (aref table 1) +secp384r1-g+)
+              (loop for i from 2 below 16
+                    do (setf (aref table i)
+                             (if (evenp i)
+                                 (ec-double (aref table (ash i -1)))
+                                 (ec-add (aref table (1- i)) +secp384r1-g+))))
+              table))))
+
+(declaim (inline secp384r1-select-base))
+(defun secp384r1-select-base (table v)
+  "Select TABLE[V].  Linear scan over the small cached table."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
+           (type (integer 0 15) v))
+  (let ((sel +secp384r1-point-at-infinity+))
+    (dotimes (i 16 sel)
+      (when (= i v)
+        (setf sel (aref table i))))))
+
+(defun secp384r1-base-mult (k)
+  "Fixed-base 4-bit comb for G (secret scalar, fixed schedule)."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
+           (type integer k))
+  (let ((table (secp384r1-ensure-base-table))
+        (acc +secp384r1-point-at-infinity+))
+    (loop for j from 95 downto 0 do          ; 384 bits / 4 = 96 nibbles
+      (dotimes (i 4)
+        (setf acc (ec-double acc)))
+      (let ((sel (secp384r1-select-base table (ldb (byte 4 (* j 4)) k))))
+        (unless (eq sel +secp384r1-point-at-infinity+)
+          (setf acc (ec-add acc sel)))))
+    acc))
+
 (defmethod ec-scalar-mult ((p secp384r1-point) e)
-  ;; Secret scalars use the fixed-schedule ladder.  Public-only callers
-  ;; can keep using %EC-WINDOW-MULT or %EC-SHAMIR-MULT directly.
+  ;; Secret scalars use the fixed-schedule ladder.  The generator G uses
+  ;; the faster fixed-base comb.  Public-only callers can keep using
+  ;; %EC-WINDOW-MULT or %EC-SHAMIR-MULT directly.
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer e))
-  (%ec-ladder-mult p e :bits +secp384r1-bits+))
+  (if (and (eq p +secp384r1-g+) (not (minusp e)))
+      (secp384r1-base-mult e)
+      (%ec-ladder-mult p e :bits +secp384r1-bits+)))
 
 (defmethod ec-point-on-curve-p ((p secp384r1-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
