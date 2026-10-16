@@ -1325,3 +1325,75 @@
           (inst mov tmp lo)
           (inst shr tmp 32)
           (inst or carry tmp))))))
+
+#+x86-64
+(define-vop (secp256r1-sha256ni-msg1)
+  (:translate ironclad::sha256ni-msg1)
+  (:policy :fast-safe)
+  (:args (x :scs (descriptor-reg))
+         (y :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32)
+  (:temporary (:sc double-reg) xmm0 xmm1)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      ;; Load data into XMM registers
+      (inst movdqu xmm0 (ea (+ data-offset (* 4 0)) x))
+      (inst movdqu xmm1 (ea (+ data-offset (* 4 0)) y))
+      ;; Emit SHA256MSG1: 0F 38 C9 /r
+      ;; For xmm0, xmm1: ModR/M = 0xC1
+      (sb-assem:emit-byte #x0F)
+      (sb-assem:emit-byte #x38)
+      (sb-assem:emit-byte #xC9)
+      (sb-assem:emit-byte #xC1)
+      ;; Store result back
+      (inst movdqu (ea (+ data-offset (* 4 0)) x) xmm0))))
+
+#+x86-64
+(define-vop (secp256r1-sha256ni-msg2)
+  (:translate ironclad::sha256ni-msg2)
+  (:policy :fast-safe)
+  (:args (x :scs (descriptor-reg))
+         (y :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32)
+  (:temporary (:sc double-reg) xmm0 xmm1)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      ;; Load data into XMM registers
+      (inst movdqu xmm0 (ea (+ data-offset (* 4 0)) x))
+      (inst movdqu xmm1 (ea (+ data-offset (* 4 0)) y))
+      ;; Emit SHA256MSG2: 0F 38 CA /r
+      ;; For xmm0, xmm1: ModR/M = 0xC1
+      (sb-assem:emit-byte #x0F)
+      (sb-assem:emit-byte #x38)
+      (sb-assem:emit-byte #xCA)
+      (sb-assem:emit-byte #xC1)
+      ;; Store result back
+      (inst movdqu (ea (+ data-offset (* 4 0)) x) xmm0))))
+
+#+x86-64
+(define-vop (secp256r1-sha256ni-rnds2)
+  (:translate ironclad::sha256ni-rnds2)
+  (:policy :fast-safe)
+  (:args (x :scs (descriptor-reg))
+         (y :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32)
+  (:temporary (:sc double-reg) xmm0 xmm1)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      ;; Load data into XMM registers
+      (inst movdqu xmm0 (ea (+ data-offset (* 4 0)) x))
+      (inst movdqu xmm1 (ea (+ data-offset (* 4 0)) y))
+      ;; Emit SHA256RNDS2: 0F 38 CB /r
+      ;; For xmm0, xmm1: ModR/M = 0xC1
+      (sb-assem:emit-byte #x0F)
+      (sb-assem:emit-byte #x38)
+      (sb-assem:emit-byte #xCB)
+      (sb-assem:emit-byte #xC1)
+      ;; Store result back
+      (inst movdqu (ea (+ data-offset (* 4 0)) x) xmm0))))

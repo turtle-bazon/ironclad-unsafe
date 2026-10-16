@@ -219,4 +219,29 @@
   (values)
   (any)
   :overwrite-fndb-silently t)
+
+#+x86-64
+(defknown ironclad::sha256ni-msg1
+  ((simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 32) (*)))
+  (values simple-array)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
+(defknown ironclad::sha256ni-msg2
+  ((simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 32) (*)))
+  (values simple-array)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
+(defknown ironclad::sha256ni-rnds2
+  ((simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 32) (*)))
+  (values simple-array)
+  (any)
+  :overwrite-fndb-silently t)
+
 );#+sbcl
