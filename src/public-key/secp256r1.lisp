@@ -576,14 +576,109 @@ normalize first unless the words are already canonical."
 (defvar *secp256r1-base-table* nil
   "Precomputed I * G for I in [0, 16), built on first use.")
 
+
+(defun secp256r1-mixed-add! (dst p q s)
+  "DST := P + Q where Q (y coordinate finite, z == 1) is affine,
+reusing scratch pool S. DST must differ from P."
+  (declare (type secp256r1-point dst p q)
+           (type simple-vector s)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((x1 (secp256r1-point-x p))
+        (y1 (secp256r1-point-y p))
+        (z1 (secp256r1-point-z p))
+        (x2 (secp256r1-point-x q))
+        (y2 (secp256r1-point-y q))
+        (z1z1 (svref s 0))
+        (u1 (svref s 1))
+        (u2 (svref s 2))
+        (t1 (svref s 3))
+        (s1 (svref s 4))
+        (tt2 (svref s 5))
+        (s2 (svref s 6))
+        (hh (svref s 7))
+        (t3 (svref s 8))
+        (t4 (svref s 9))
+        (ii (svref s 10))
+        (jj (svref s 11))
+        (t5 (svref s 12))
+        (rr (svref s 13))
+        (vv (svref s 14))
+        (t6 (svref s 15))
+        (t7 (svref s 16))
+        (t8 (svref s 17))
+        (x3 (svref s 18))
+        (t9 (svref s 19))
+        (t10 (svref s 20))
+        (t11 (svref s 21))
+        (t12 (svref s 22))
+        (y3 (svref s 23))
+        (t14 (svref s 24))
+        (z3 (svref s 25)))
+    (declare (type secp256r1-fe x1 y1 z1 x2 y2 z1z1 u1 u2 t1 s1 tt2 s2 hh
+                               t3 t4 ii jj t5 rr vv t6 t7 t8 x3 t9 t10 t11
+                               t12 y3 t14 z3))
+    (cond ((secp256r1-fe-is-zero z1)
+           (secp256r1-point-copy! dst q))
+          ((secp256r1-fe-is-zero (secp256r1-point-z q))
+           (secp256r1-point-copy! dst p))
+          (t
+           ;; Q is affine; z2 = 1.
+           (secp256r1-fe-mul z1z1 z1 z1)
+           (secp256r1-fe-copy! u1 x1)
+           (secp256r1-fe-mul u2 x2 z1z1)
+           (secp256r1-fe-copy! s1 y1)
+           (secp256r1-fe-mul tt2 y2 z1)
+           (secp256r1-fe-mul s2 tt2 z1z1)
+           (if (secp256r1-fe-equal u1 u2)
+               (if (secp256r1-fe-equal s1 s2)
+                   (secp256r1-double! dst p s)
+                   (secp256r1-point-set-inf! dst))
+               (progn
+                 (secp256r1-fe-sub hh u2 u1)
+                 (secp256r1-fe-mul t3 hh hh)
+                 (secp256r1-fe-add t4 t3 t3)
+                 (secp256r1-fe-add ii t4 t4)
+                 (secp256r1-fe-mul jj hh ii)
+                 (secp256r1-fe-sub t5 s2 s1)
+                 (secp256r1-fe-add rr t5 t5)
+                 (secp256r1-fe-mul vv u1 ii)
+                 (secp256r1-fe-mul t6 rr rr)
+                 (secp256r1-fe-sub t7 t6 jj)
+                 (secp256r1-fe-add t8 vv vv)
+                 (secp256r1-fe-sub x3 t7 t8)
+                 (secp256r1-fe-sub t9 vv x3)
+                 (secp256r1-fe-mul t10 rr t9)
+                 (secp256r1-fe-mul t11 s1 jj)
+                 (secp256r1-fe-add t12 t11 t11)
+                 (secp256r1-fe-sub y3 t10 t12)
+                 ;; z3 = 2*Z1*H
+                 (secp256r1-fe-add t14 z1 z1)
+                 (secp256r1-fe-mul z3 t14 hh)
+                 (secp256r1-fe-copy! (secp256r1-point-x dst) x3)
+                 (secp256r1-fe-copy! (secp256r1-point-y dst) y3)
+                 (secp256r1-fe-copy! (secp256r1-point-z dst) z3)
+                 dst))))))
+
+
 (defun secp256r1-ensure-base-table ()
   (or *secp256r1-base-table*
       (setf *secp256r1-base-table*
             (let ((table (make-array 16)))
               (setf (aref table 0) +secp256r1-point-at-infinity+)
               (dotimes (i 15 table)
-                (setf (aref table (1+ i))
-                      (ec-add (aref table i) +secp256r1-g+)))))))
+                (let* ((pt (ec-add (aref table i) +secp256r1-g+))
+                       (invz (secp256r1-fe-from-int
+                              (ec-scalar-inv :secp256r1
+                                             (secp256r1-fe-to-int
+                                               (secp256r1-point-z pt)))))
+                       (invz2 (secp256r1-fesq invz))
+                       (invz3 (secp256r1-femul invz2 invz))
+                       (x (secp256r1-fe-to-int
+                           (secp256r1-femul (secp256r1-point-x pt) invz2)))
+                       (y (secp256r1-fe-to-int
+                           (secp256r1-femul (secp256r1-point-y pt) invz3))))
+                  (setf (aref table (1+ i))
+                        (secp256r1-point-from-ints x y 1))))))))
 
 (declaim (inline secp256r1-select-base))
 (defun secp256r1-select-base (table v)
@@ -1062,6 +1157,6 @@ normalize first unless the words are already canonical."
         (secp256r1-point-copy! acc tmp))
       (secp256r1-point-copy! sel (secp256r1-select-base table
                                 (ldb (byte 4 (* j 4)) k)))
-      (secp256r1-add! tmp acc sel s)
+      (secp256r1-mixed-add! tmp acc sel s)
       (secp256r1-point-copy! acc tmp))
     acc))
