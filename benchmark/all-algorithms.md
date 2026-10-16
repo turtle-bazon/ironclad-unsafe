@@ -11,357 +11,355 @@ Sorted by current C/Lisp ratio, descending. Rows without a C reference are liste
 
 | Category | Algorithm | Operation | Unit | Lisp initial | Lisp current | C reference | C/Lisp initial | C/Lisp current |
 |---|---|---|---|---:|---:|---:|---:|---:|
-| public-key | secp256r1 | sign | ops/s | 790 | 875 | 54.16k | 68.56 | 61.9 |
-| public-key | falcon-512 | keygen | ops/s | 1.75 | 2.604 | 112 | 64 | 43.01 |
-| public-key | ed448 | verify | ops/s | 113 | 117.6 | 4.934k | 43.66 | 41.96 |
-| public-key | secp224r1 | sign | ops/s | 985 | 565 | 21.82k | 22.15 | 38.62 |
-| public-key | ed25519 | sign | ops/s | 760 | 760 | 27.78k | 36.55 | 36.55 |
-| public-key | secp521r1 | sign | ops/s | 215 | 117.6 | 4.184k | 19.46 | 35.58 |
-| public-key | mceliece348864 | keygen | ops/s | 0.784 | 0.9398 | 29.43 | 37.54 | 31.32 |
-| public-key | secp256r1 | verify | ops/s | 600 | 620 | 18.69k | 31.15 | 30.15 |
-| public-key | ed25519 | verify | ops/s | 385 | 395 | 10.18k | 26.44 | 25.77 |
-| aead | ccm | encrypt 8192-byte message | bytes/s | 32.6M | 32.89M | 815.4M | 25.01 | 24.79 |
-| public-key | mceliece6688128 | encapsulate | ops/s | 98 | 570 | 13.35k | 136.2 | 23.42 |
-| public-key | mceliece8192128 | encapsulate | ops/s | 78.4 | 545 | 12.56k | 160.2 | 23.05 |
+| public-key | secp256r1 | sign | ops/s | 790 | 835 | 53.13k | 67.25 | 63.63 |
+| public-key | falcon-512 | keygen | ops/s | 1.75 | 2.66 | 114.9 | 65.66 | 43.2 |
+| public-key | ed448 | verify | ops/s | 113 | 115.4 | 4.875k | 43.14 | 42.24 |
+| public-key | secp224r1 | sign | ops/s | 985 | 555 | 21.87k | 22.2 | 39.41 |
+| public-key | ed25519 | sign | ops/s | 760 | 774.5 | 27.89k | 36.7 | 36.01 |
+| public-key | secp521r1 | sign | ops/s | 215 | 120 | 4.18k | 19.44 | 34.83 |
+| public-key | secp256r1 | verify | ops/s | 600 | 565 | 18.49k | 30.82 | 32.73 |
+| public-key | hqc-256 | decapsulate | ops/s | 3.12 | 2.778 | 73.67 | 23.61 | 26.52 |
+| public-key | mceliece6688128 | encapsulate | ops/s | 98 | 520 | 13.5k | 137.8 | 25.96 |
+| public-key | ed25519 | verify | ops/s | 385 | 395 | 10.15k | 26.36 | 25.7 |
+| public-key | hqc-128 | decapsulate | ops/s | 16.1 | 16.13 | 406.2 | 25.23 | 25.18 |
+| public-key | mceliece8192128 | encapsulate | ops/s | 78.4 | 500 | 12.48k | 159.2 | 24.96 |
+| public-key | hqc-192 | decapsulate | ops/s | 5.62 | 5.494 | 135.1 | 24.04 | 24.59 |
+| aead | ccm | encrypt 8192-byte message | bytes/s | 32.6M | 33.55M | 814.9M | 25 | 24.29 |
+| public-key | hqc-192 | encapsulate | ops/s | 8.62 | 8.475 | 204.5 | 23.72 | 24.13 |
+| public-key | hqc-256 | keygen | ops/s | 10.1 | 9.434 | 226.5 | 22.43 | 24.01 |
+| public-key | hqc-128 | encapsulate | ops/s | 25.9 | 25.86 | 617.6 | 23.85 | 23.88 |
+| public-key | hqc-256 | encapsulate | ops/s | 5 | 4.717 | 111.8 | 22.36 | 23.7 |
+| public-key | hqc-128 | keygen | ops/s | 52.9 | 52.88 | 1.236k | 23.36 | 23.37 |
+| public-key | hqc-192 | keygen | ops/s | 17.9 | 17.86 | 409 | 22.85 | 22.9 |
 | public-key | ed448 | sign | ops/s | 220 | 235 | 5.377k | 24.44 | 22.88 |
-| public-key | hqc-128 | decapsulate | ops/s | 16.1 | 18.18 | 413.6 | 25.69 | 22.75 |
-| public-key | hqc-128 | encapsulate | ops/s | 25.9 | 28.3 | 634.8 | 24.51 | 22.43 |
-| public-key | hqc-256 | encapsulate | ops/s | 5 | 4.854 | 108.6 | 21.72 | 22.37 |
-| public-key | hqc-256 | decapsulate | ops/s | 3.12 | 3.289 | 72.67 | 23.29 | 22.09 |
-| public-key | hqc-192 | decapsulate | ops/s | 5.62 | 6.098 | 134.2 | 23.88 | 22.01 |
-| public-key | hqc-128 | keygen | ops/s | 52.9 | 57.69 | 1.269k | 23.99 | 22 |
-| public-key | hqc-192 | encapsulate | ops/s | 8.62 | 9.259 | 202.2 | 23.46 | 21.84 |
-| public-key | mceliece460896 | encapsulate | ops/s | 191 | 1.04k | 22.18k | 116.1 | 21.33 |
-| public-key | hqc-256 | keygen | ops/s | 10.1 | 10.56 | 223.6 | 22.14 | 21.17 |
-| public-key | hqc-192 | keygen | ops/s | 17.9 | 19.23 | 405.9 | 22.68 | 21.11 |
-| public-key | mceliece348864 | encapsulate | ops/s | 395 | 2.225k | 41.2k | 104.3 | 18.52 |
-| public-key | dsa | verify | ops/s | 310 | 310 | 5.404k | 17.43 | 17.43 |
-| public-key | mceliece6960119 | encapsulate | ops/s | 101 | 440 | 7.57k | 74.95 | 17.2 |
-| public-key | mceliece460896 | keygen | ops/s | 0.391 | 0.4883 | 7.449 | 19.05 | 15.25 |
-| public-key | secp224r1 | verify | ops/s | 745 | 705 | 10.3k | 13.83 | 14.61 |
-| public-key | secp521r1 | verify | ops/s | 155 | 155 | 2.256k | 14.55 | 14.55 |
-| public-key | falcon-512 | verify | ops/s | 1.775k | 1.795k | 25.95k | 14.62 | 14.46 |
-| public-key | falcon-512 | sign | ops/s | 25 | 23.58 | 265.6 | 10.62 | 11.26 |
-| digest | sha256 | hash 8192-byte block | bytes/s | 174.3M | 158.8M | 1.455G | 8.348 | 9.162 |
-| digest | sha224 | hash 8192-byte block | bytes/s | 174.9M | 156.1M | 1.411G | 8.067 | 9.039 |
-| public-key | dsa | sign | ops/s | 610 | 590 | 4.735k | 7.762 | 8.025 |
-| public-key | mceliece6960119 | keygen | ops/s | 0.145 | 0.2418 | 1.94 | 13.38 | 8.023 |
-| aead | chacha-poly | encrypt 8192-byte message | bytes/s | 340.8M | 336.8M | 2.164G | 6.35 | 6.425 |
-| public-key | mceliece348864 | decapsulate | ops/s | 10 | 10.42 | 63.45 | 6.345 | 6.089 |
-| public-key | ml-dsa-65 | verify | ops/s | 1.46k | 1.455k | 8.789k | 6.02 | 6.041 |
-| public-key | ml-dsa-44 | verify | ops/s | 2.328k | 2.33k | 13.69k | 5.881 | 5.876 |
-| public-key | ml-dsa-87 | verify | ops/s | 915 | 900 | 5.177k | 5.658 | 5.752 |
-| public-key | secp384r1 | sign | ops/s | 385 | 225 | 1.26k | 3.273 | 5.6 |
-| cipher | chacha | encrypt 8192-byte buffer | bytes/s | 614.2M | 608.9M | 3.4G | 5.536 | 5.584 |
-| public-key | secp384r1 | verify | ops/s | 285 | 270 | 1.476k | 5.179 | 5.467 |
-| digest | whirlpool | hash 8192-byte block | bytes/s | 25.52M | 37.36M | 202.7M | 7.943 | 5.426 |
-| public-key | rsa | sign | ops/s | 75 | 405 | 2.021k | 26.95 | 4.99 |
-| aead | gcm | encrypt 8192-byte message | bytes/s | 329.3M | 327.8M | 1.512G | 4.592 | 4.613 |
-| public-key | ml-dsa-87 | sign | ops/s | 275 | 265 | 1.212k | 4.407 | 4.574 |
-| public-key | rsa | verify | ops/s | 70.8 | 15.08k | 68.8k | 971.8 | 4.562 |
-| public-key | ml-dsa-87 | keygen | ops/s | 980 | 995 | 4.519k | 4.611 | 4.542 |
-| public-key | ml-dsa-44 | keygen | ops/s | 2.615k | 2.62k | 11.81k | 4.516 | 4.508 |
-| public-key | ml-dsa-65 | keygen | ops/s | 1.57k | 1.55k | 6.835k | 4.354 | 4.41 |
-| public-key | xmss-sha2-10-256 | verify | ops/s | 310 | 260 | 1.145k | 3.694 | 4.404 |
-| public-key | ml-dsa-65 | sign | ops/s | 319 | 300 | 1.194k | 3.743 | 3.98 |
-| public-key | xmss-sha2-10-256 | keygen | ops/s | 0.163 | 0.151 | 0.585 | 3.589 | 3.874 |
-| public-key | xmss-sha2-10-256 | sign | ops/s | 0.164 | 0.1512 | 0.5836 | 3.559 | 3.86 |
-| public-key | mceliece460896 | decapsulate | ops/s | 7.58 | 7.812 | 29.42 | 3.881 | 3.766 |
-| public-key | mceliece6960119 | decapsulate | ops/s | 4.39 | 4.464 | 15.78 | 3.595 | 3.535 |
-| public-key | mceliece6688128 | decapsulate | ops/s | 4.24 | 4.31 | 15.21 | 3.587 | 3.529 |
-| public-key | mceliece8192128 | decapsulate | ops/s | 3.52 | 3.571 | 12.57 | 3.571 | 3.52 |
-| public-key | mceliece8192128 | keygen | ops/s | 0.04999 | 0.6579 | 2.19 | 43.81 | 3.329 |
-| digest | sha1 | hash 8192-byte block | bytes/s | 513.1M | 479.9M | 1.539G | 2.999 | 3.207 |
-| public-key | slh-dsa-shake-192f | sign | ops/s | 3.38 | 3.086 | 9.25 | 2.737 | 2.997 |
-| digest | sha512/224 | hash 8192-byte block | bytes/s | 200.5M | 209.8M | 621.8M | 3.101 | 2.964 |
-| digest | sha384 | hash 8192-byte block | bytes/s | 198.5M | 210.7M | 619.2M | 3.119 | 2.939 |
-| public-key | slh-dsa-shake-128f | keygen | ops/s | 132 | 117.6 | 343.7 | 2.604 | 2.923 |
-| digest | sha512 | hash 8192-byte block | bytes/s | 199.1M | 210.5M | 607.9M | 3.053 | 2.888 |
-| digest | sha512/256 | hash 8192-byte block | bytes/s | 198.9M | 211M | 607.8M | 3.056 | 2.881 |
-| public-key | slh-dsa-shake-256s | sign | ops/s | 0.169 | 0.1737 | 0.4833 | 2.86 | 2.782 |
-| public-key | slh-dsa-shake-192s | sign | ops/s | 0.151 | 0.1543 | 0.4169 | 2.761 | 2.702 |
-| public-key | slh-dsa-shake-256f | sign | ops/s | 1.57 | 1.678 | 4.487 | 2.858 | 2.674 |
-| public-key | slh-dsa-shake-256s | verify | ops/s | 127 | 125 | 332.3 | 2.617 | 2.658 |
-| public-key | slh-dsa-shake-256f | keygen | ops/s | 33 | 33.65 | 89.13 | 2.701 | 2.649 |
-| public-key | slh-dsa-shake-192f | keygen | ops/s | 90 | 90 | 237.7 | 2.641 | 2.641 |
-| public-key | mceliece6688128 | keygen | ops/s | 0.188 | 0.6944 | 1.823 | 9.697 | 2.625 |
-| public-key | slh-dsa-shake-256s | keygen | ops/s | 2.05 | 2.101 | 5.509 | 2.687 | 2.622 |
-| public-key | slh-dsa-shake-192f | verify | ops/s | 62.5 | 63.73 | 165.8 | 2.653 | 2.602 |
-| digest | ripemd-160 | hash 8192-byte block | bytes/s | 115.2M | 112.1M | 291.5M | 2.53 | 2.6 |
-| public-key | slh-dsa-shake-128s | sign | ops/s | 0.269 | 0.279 | 0.7232 | 2.688 | 2.592 |
-| public-key | slh-dsa-shake-128s | keygen | ops/s | 2.07 | 2.101 | 5.398 | 2.608 | 2.569 |
-| public-key | slh-dsa-shake-192s | keygen | ops/s | 1.37 | 1.429 | 3.628 | 2.648 | 2.539 |
-| public-key | slh-dsa-shake-128f | sign | ops/s | 5.62 | 5.814 | 14.74 | 2.623 | 2.535 |
-| public-key | slh-dsa-shake-192s | verify | ops/s | 180 | 185 | 467.2 | 2.596 | 2.525 |
-| public-key | slh-dsa-shake-256f | verify | ops/s | 60 | 62.5 | 156.9 | 2.615 | 2.51 |
-| digest | sm3 | hash 8192-byte block | bytes/s | 136.8M | 116.3M | 291.7M | 2.132 | 2.508 |
-| public-key | slh-dsa-shake-128s | verify | ops/s | 260 | 265 | 655.9 | 2.523 | 2.475 |
-| public-key | slh-dsa-shake-128f | verify | ops/s | 95 | 98.04 | 236.6 | 2.491 | 2.413 |
-| public-key | ml-dsa-44 | sign | ops/s | 505 | 540 | 1.148k | 2.273 | 2.126 |
-| digest | md5 | hash 8192-byte block | bytes/s | 295M | 333.4M | 677.3M | 2.296 | 2.031 |
-| cipher | camellia | encrypt 8192-byte buffer | bytes/s | 85.16M | 97.61M | 185.2M | 2.175 | 1.897 |
-| cipher | blowfish | encrypt 8192-byte buffer | bytes/s | 103.6M | 103.2M | 174.1M | 1.681 | 1.687 |
-| cipher | aria | encrypt 8192-byte buffer | bytes/s | 79.58M | 81.31M | 136.2M | 1.711 | 1.675 |
-| cipher | cast5 | encrypt 8192-byte buffer | bytes/s | 88.92M | 98.3M | 162M | 1.822 | 1.648 |
-| cipher | sm4 | encrypt 8192-byte buffer | bytes/s | 79.26M | 88.1M | 143.6M | 1.812 | 1.63 |
-| public-key | slh-dsa-sha2-192s | sign | ops/s | 0.384 | 0.3782 | 0.6145 | 1.6 | 1.625 |
-| public-key | slh-dsa-sha2-192f | sign | ops/s | 7.94 | 8.475 | 13.46 | 1.695 | 1.588 |
-| public-key | slh-dsa-sha2-192s | verify | ops/s | 460 | 445 | 690.9 | 1.502 | 1.553 |
-| digest | blake2s | hash 8192-byte block | bytes/s | 310.1M | 369.2M | 545.4M | 1.759 | 1.477 |
-| public-key | slh-dsa-sha2-192s | keygen | ops/s | 3.68 | 3.676 | 5.412 | 1.471 | 1.472 |
-| digest | sha3/384 | hash 8192-byte block | bytes/s | 204.8M | 217.5M | 318.2M | 1.554 | 1.463 |
-| public-key | slh-dsa-sha2-192f | keygen | ops/s | 235 | 230 | 335.4 | 1.427 | 1.458 |
-| public-key | slh-dsa-sha2-128s | sign | ops/s | 0.712 | 0.7003 | 1.016 | 1.427 | 1.451 |
-| public-key | slh-dsa-sha2-128s | verify | ops/s | 665 | 690 | 998.7 | 1.502 | 1.447 |
-| public-key | slh-dsa-sha2-128f | verify | ops/s | 250 | 230 | 330.9 | 1.324 | 1.439 |
-| public-key | slh-dsa-sha2-128f | sign | ops/s | 15 | 14.42 | 20.59 | 1.373 | 1.428 |
-| public-key | slh-dsa-sha2-128f | keygen | ops/s | 350 | 340 | 481.6 | 1.376 | 1.416 |
-| digest | sha3/256 | hash 8192-byte block | bytes/s | 258.9M | 277.4M | 388.5M | 1.501 | 1.401 |
-| digest | sha3 | hash 8192-byte block | bytes/s | 147.9M | 154.2M | 215.5M | 1.457 | 1.398 |
-| cipher | seed | encrypt 8192-byte buffer | bytes/s | 79.63M | 78.93M | 108.8M | 1.366 | 1.378 |
-| public-key | slh-dsa-sha2-128s | keygen | ops/s | 5.49 | 5.376 | 7.4 | 1.348 | 1.376 |
-| digest | sha3/224 | hash 8192-byte block | bytes/s | 272.7M | 279.4M | 382.3M | 1.402 | 1.368 |
-| digest | blake2/256 | hash 8192-byte block | bytes/s | 652.3M | 641.2M | 852.6M | 1.307 | 1.33 |
-| public-key | slh-dsa-sha2-192f | verify | ops/s | 165 | 165 | 218.8 | 1.326 | 1.326 |
-| digest | blake2 | hash 8192-byte block | bytes/s | 651.9M | 640.9M | 832.4M | 1.277 | 1.299 |
-| public-key | slh-dsa-sha2-256s | sign | ops/s | 0.437 | 0.4252 | 0.5331 | 1.22 | 1.254 |
-| cipher | 3des | encrypt 8192-byte buffer | bytes/s | 30.68M | 29.49M | 36.44M | 1.188 | 1.236 |
-| cipher | des | encrypt 8192-byte buffer | bytes/s | 81.84M | 77.45M | 94.41M | 1.154 | 1.219 |
-| cipher | rc2 | encrypt 8192-byte buffer | bytes/s | 50.48M | 50.5M | 60.52M | 1.199 | 1.198 |
-| cipher | aes | encrypt 8192-byte buffer | bytes/s | 1.031G | 988.3M | 1.159G | 1.124 | 1.173 |
-| public-key | slh-dsa-sha2-256f | sign | ops/s | 4.31 | 4.237 | 4.923 | 1.142 | 1.162 |
-| public-key | slh-dsa-sha2-256f | verify | ops/s | 165 | 156.9 | 178.8 | 1.084 | 1.14 |
-| public-key | slh-dsa-sha2-256s | keygen | ops/s | 5.75 | 5.155 | 5.85 | 1.017 | 1.135 |
-| public-key | slh-dsa-sha2-256s | verify | ops/s | 315 | 315 | 351.4 | 1.116 | 1.116 |
-| public-key | slh-dsa-sha2-256f | keygen | ops/s | 91.3 | 88.23 | 96.14 | 1.053 | 1.09 |
-| aead | eax | encrypt 8192-byte message | bytes/s | 237.7M | 238.2M | - | - | - |
-| aead | etm | encrypt 8192-byte message | bytes/s | 304.3M | 307.1M | - | - | - |
-| aead | gcm-siv | encrypt 8192-byte message | bytes/s | 1.165M | 1.124M | - | - | - |
-| aead | xchacha-poly | encrypt 8192-byte message | bytes/s | 329.2M | 332.9M | - | - | - |
-| cipher | arcfour | encrypt 8192-byte buffer | bytes/s | 320.4M | 328.7M | - | - | - |
-| cipher | chacha/12 | encrypt 8192-byte buffer | bytes/s | 976.5M | 978.5M | - | - | - |
-| cipher | chacha/8 | encrypt 8192-byte buffer | bytes/s | 1.405G | 1.397G | - | - | - |
+| public-key | mceliece6960119 | encapsulate | ops/s | 101 | 385 | 7.708k | 76.32 | 20.02 |
+| public-key | mceliece348864 | encapsulate | ops/s | 395 | 2.147k | 40.35k | 102.2 | 18.79 |
+| public-key | dsa | verify | ops/s | 310 | 308.8 | 5.202k | 16.78 | 16.85 |
+| public-key | mceliece460896 | keygen | ops/s | 0.391 | 0.4464 | 7.412 | 18.96 | 16.6 |
+| public-key | falcon-512 | verify | ops/s | 1.775k | 1.685k | 26.41k | 14.88 | 15.67 |
+| public-key | secp521r1 | verify | ops/s | 155 | 147.1 | 2.258k | 14.57 | 15.35 |
+| public-key | secp224r1 | verify | ops/s | 745 | 705 | 10.31k | 13.84 | 14.62 |
+| public-key | falcon-512 | sign | ops/s | 25 | 19.61 | 273.1 | 10.92 | 13.93 |
+| public-key | mceliece348864 | keygen | ops/s | 0.784 | 2.232 | 27.56 | 35.15 | 12.35 |
+| digest | sha224 | hash 8192-byte block | bytes/s | 174.9M | 159.8M | 1.527G | 8.731 | 9.556 |
+| digest | sha256 | hash 8192-byte block | bytes/s | 174.3M | 159.7M | 1.512G | 8.675 | 9.468 |
+| public-key | mceliece6960119 | keygen | ops/s | 0.145 | 0.2205 | 1.915 | 13.21 | 8.685 |
+| public-key | mceliece6688128 | keygen | ops/s | 0.188 | 0.2395 | 1.867 | 9.931 | 7.795 |
+| public-key | dsa | sign | ops/s | 610 | 605 | 4.615k | 7.566 | 7.628 |
+| public-key | mceliece348864 | decapsulate | ops/s | 10 | 9.259 | 63.25 | 6.325 | 6.831 |
+| aead | chacha-poly | encrypt 8192-byte message | bytes/s | 340.8M | 338.9M | 2.173G | 6.376 | 6.412 |
+| public-key | ml-dsa-44 | verify | ops/s | 2.328k | 2.325k | 13.77k | 5.915 | 5.923 |
+| public-key | secp384r1 | verify | ops/s | 285 | 250 | 1.46k | 5.123 | 5.84 |
+| public-key | secp384r1 | sign | ops/s | 385 | 215 | 1.244k | 3.231 | 5.786 |
+| public-key | ml-dsa-87 | verify | ops/s | 915 | 910 | 5.17k | 5.65 | 5.681 |
+| cipher | chacha | encrypt 8192-byte buffer | bytes/s | 614.2M | 611.4M | 3.45G | 5.617 | 5.643 |
+| public-key | ml-dsa-65 | verify | ops/s | 1.46k | 1.445k | 8.092k | 5.542 | 5.6 |
+| public-key | rsa | sign | ops/s | 75 | 365 | 2.038k | 27.17 | 5.584 |
+| digest | whirlpool | hash 8192-byte block | bytes/s | 25.52M | 38.54M | 200.5M | 7.857 | 5.202 |
+| public-key | ml-dsa-87 | sign | ops/s | 275 | 240 | 1.204k | 4.378 | 5.017 |
+| public-key | xmss-sha2-10-256 | verify | ops/s | 310 | 240 | 1.159k | 3.739 | 4.829 |
+| aead | gcm | encrypt 8192-byte message | bytes/s | 329.3M | 332.7M | 1.544G | 4.689 | 4.641 |
+| public-key | ml-dsa-87 | keygen | ops/s | 980 | 985 | 4.569k | 4.662 | 4.639 |
+| public-key | rsa | verify | ops/s | 70.8 | 15.11k | 69.94k | 987.9 | 4.629 |
+| public-key | ml-dsa-44 | keygen | ops/s | 2.615k | 2.565k | 11.67k | 4.463 | 4.55 |
+| public-key | ml-dsa-65 | keygen | ops/s | 1.57k | 1.585k | 6.886k | 4.386 | 4.344 |
+| public-key | mceliece6688128 | decapsulate | ops/s | 4.24 | 3.788 | 15.58 | 3.675 | 4.113 |
+| public-key | xmss-sha2-10-256 | sign | ops/s | 0.164 | 0.1456 | 0.5869 | 3.579 | 4.031 |
+| public-key | xmss-sha2-10-256 | keygen | ops/s | 0.163 | 0.1447 | 0.5816 | 3.568 | 4.019 |
+| public-key | mceliece8192128 | decapsulate | ops/s | 3.52 | 3.165 | 12.52 | 3.557 | 3.956 |
+| public-key | ml-dsa-65 | sign | ops/s | 319 | 305 | 1.205k | 3.777 | 3.951 |
+| public-key | mceliece6960119 | decapsulate | ops/s | 4.39 | 4.098 | 15.37 | 3.501 | 3.751 |
+| public-key | mceliece8192128 | keygen | ops/s | 0.04999 | 0.5896 | 2.199 | 43.99 | 3.73 |
+| public-key | slh-dsa-shake-128f | keygen | ops/s | 132 | 100 | 346.4 | 2.624 | 3.464 |
+| public-key | slh-dsa-shake-192f | sign | ops/s | 3.38 | 2.747 | 9.256 | 2.738 | 3.369 |
+| digest | sha512/224 | hash 8192-byte block | bytes/s | 200.5M | 210.9M | 685M | 3.416 | 3.248 |
+| digest | sha384 | hash 8192-byte block | bytes/s | 198.5M | 210.5M | 681.1M | 3.431 | 3.236 |
+| digest | sha512 | hash 8192-byte block | bytes/s | 199.1M | 210.8M | 672.3M | 3.377 | 3.189 |
+| digest | sha512/256 | hash 8192-byte block | bytes/s | 198.9M | 211.1M | 665.4M | 3.345 | 3.152 |
+| public-key | slh-dsa-shake-256f | sign | ops/s | 1.57 | 1.471 | 4.53 | 2.885 | 3.08 |
+| public-key | slh-dsa-shake-256f | keygen | ops/s | 33 | 29.41 | 90.32 | 2.737 | 3.071 |
+| public-key | slh-dsa-shake-256s | sign | ops/s | 0.169 | 0.1561 | 0.4787 | 2.833 | 3.067 |
+| public-key | slh-dsa-shake-192s | sign | ops/s | 0.151 | 0.1397 | 0.4261 | 2.822 | 3.05 |
+| digest | sha1 | hash 8192-byte block | bytes/s | 513.1M | 504.3M | 1.518G | 2.958 | 3.01 |
+| public-key | slh-dsa-shake-192f | verify | ops/s | 62.5 | 56.6 | 168.8 | 2.701 | 2.982 |
+| public-key | slh-dsa-shake-192s | verify | ops/s | 180 | 161.8 | 477 | 2.65 | 2.948 |
+| public-key | slh-dsa-shake-256s | keygen | ops/s | 2.05 | 1.88 | 5.496 | 2.681 | 2.923 |
+| public-key | slh-dsa-shake-256f | verify | ops/s | 60 | 55 | 160.6 | 2.677 | 2.92 |
+| public-key | slh-dsa-shake-192f | keygen | ops/s | 90 | 81.73 | 237.3 | 2.637 | 2.903 |
+| public-key | slh-dsa-shake-256s | verify | ops/s | 127 | 115.4 | 330.2 | 2.6 | 2.861 |
+| public-key | slh-dsa-shake-192s | keygen | ops/s | 1.37 | 1.289 | 3.66 | 2.672 | 2.839 |
+| public-key | slh-dsa-shake-128s | keygen | ops/s | 2.07 | 1.908 | 5.412 | 2.614 | 2.836 |
+| public-key | slh-dsa-shake-128s | sign | ops/s | 0.269 | 0.2505 | 0.7035 | 2.615 | 2.808 |
+| public-key | slh-dsa-shake-128f | verify | ops/s | 95 | 85 | 238.5 | 2.511 | 2.806 |
+| public-key | slh-dsa-shake-128f | sign | ops/s | 5.62 | 5.208 | 14.6 | 2.598 | 2.803 |
+| digest | ripemd-160 | hash 8192-byte block | bytes/s | 115.2M | 113.7M | 313.5M | 2.721 | 2.757 |
+| public-key | slh-dsa-shake-128s | verify | ops/s | 260 | 250 | 651.6 | 2.506 | 2.606 |
+| digest | sm3 | hash 8192-byte block | bytes/s | 136.8M | 120.6M | 296.1M | 2.164 | 2.455 |
+| public-key | ml-dsa-44 | sign | ops/s | 505 | 500 | 1.156k | 2.289 | 2.312 |
+| digest | md5 | hash 8192-byte block | bytes/s | 295M | 338.4M | 685.3M | 2.323 | 2.025 |
+| cipher | camellia | encrypt 8192-byte buffer | bytes/s | 85.16M | 97.57M | 187.2M | 2.198 | 1.919 |
+| digest | sha3/224 | hash 8192-byte block | bytes/s | 272.7M | 233.9M | 424.5M | 1.557 | 1.815 |
+| public-key | slh-dsa-sha2-192s | sign | ops/s | 0.384 | 0.3458 | 0.6054 | 1.577 | 1.751 |
+| public-key | slh-dsa-sha2-192f | keygen | ops/s | 235 | 200 | 346.3 | 1.474 | 1.732 |
+| cipher | blowfish | encrypt 8192-byte buffer | bytes/s | 103.6M | 102.9M | 176.5M | 1.704 | 1.715 |
+| cipher | aria | encrypt 8192-byte buffer | bytes/s | 79.58M | 81.35M | 138.9M | 1.745 | 1.707 |
+| public-key | slh-dsa-sha2-192f | sign | ops/s | 7.94 | 7.812 | 13.27 | 1.671 | 1.699 |
+| digest | sha3/384 | hash 8192-byte block | bytes/s | 204.8M | 217.5M | 356M | 1.738 | 1.637 |
+| cipher | cast5 | encrypt 8192-byte buffer | bytes/s | 88.92M | 98.67M | 161.5M | 1.816 | 1.637 |
+| public-key | slh-dsa-sha2-192s | verify | ops/s | 460 | 415 | 678.8 | 1.476 | 1.636 |
+| public-key | slh-dsa-sha2-128s | sign | ops/s | 0.712 | 0.6297 | 1.018 | 1.43 | 1.617 |
+| cipher | sm4 | encrypt 8192-byte buffer | bytes/s | 79.26M | 89.25M | 143.6M | 1.812 | 1.609 |
+| public-key | slh-dsa-sha2-192f | verify | ops/s | 165 | 145 | 233 | 1.412 | 1.607 |
+| public-key | slh-dsa-sha2-128f | verify | ops/s | 250 | 205 | 327.3 | 1.309 | 1.597 |
+| public-key | slh-dsa-sha2-192s | keygen | ops/s | 3.68 | 3.333 | 5.295 | 1.439 | 1.589 |
+| public-key | slh-dsa-sha2-128f | keygen | ops/s | 350 | 302.9 | 478.8 | 1.368 | 1.581 |
+| public-key | slh-dsa-sha2-128f | sign | ops/s | 15 | 12.93 | 20.41 | 1.361 | 1.578 |
+| digest | sha3 | hash 8192-byte block | bytes/s | 147.9M | 155.1M | 243.1M | 1.644 | 1.567 |
+| digest | sha3/256 | hash 8192-byte block | bytes/s | 258.9M | 274.7M | 426.3M | 1.647 | 1.552 |
+| public-key | slh-dsa-sha2-128s | keygen | ops/s | 5.49 | 4.902 | 7.589 | 1.382 | 1.548 |
+| public-key | slh-dsa-sha2-128s | verify | ops/s | 665 | 660 | 1.014k | 1.525 | 1.536 |
+| digest | blake2s | hash 8192-byte block | bytes/s | 310.1M | 373.9M | 549M | 1.77 | 1.468 |
+| public-key | slh-dsa-sha2-256s | sign | ops/s | 0.437 | 0.3852 | 0.5333 | 1.22 | 1.384 |
+| cipher | seed | encrypt 8192-byte buffer | bytes/s | 79.63M | 79.91M | 108.5M | 1.363 | 1.358 |
+| digest | blake2/256 | hash 8192-byte block | bytes/s | 652.3M | 650.1M | 856M | 1.312 | 1.317 |
+| public-key | slh-dsa-sha2-256s | keygen | ops/s | 5.75 | 4.464 | 5.85 | 1.017 | 1.31 |
+| digest | blake2 | hash 8192-byte block | bytes/s | 651.9M | 653.8M | 841.6M | 1.291 | 1.287 |
+| public-key | slh-dsa-sha2-256f | sign | ops/s | 4.31 | 3.788 | 4.852 | 1.126 | 1.281 |
+| cipher | des | encrypt 8192-byte buffer | bytes/s | 81.84M | 76.27M | 94.03M | 1.149 | 1.233 |
+| public-key | slh-dsa-sha2-256f | keygen | ops/s | 91.3 | 76.92 | 94.66 | 1.037 | 1.231 |
+| cipher | 3des | encrypt 8192-byte buffer | bytes/s | 30.68M | 29.31M | 35.94M | 1.171 | 1.226 |
+| cipher | aes | encrypt 8192-byte buffer | bytes/s | 1.031G | 960.1M | 1.172G | 1.137 | 1.221 |
+| cipher | rc2 | encrypt 8192-byte buffer | bytes/s | 50.48M | 49.97M | 60.81M | 1.205 | 1.217 |
+| public-key | slh-dsa-sha2-256s | verify | ops/s | 315 | 290 | 352.5 | 1.119 | 1.216 |
+| public-key | slh-dsa-sha2-256f | verify | ops/s | 165 | 147.1 | 175 | 1.061 | 1.19 |
+| aead | eax | encrypt 8192-byte message | bytes/s | 237.7M | 242.5M | - | - | - |
+| aead | etm | encrypt 8192-byte message | bytes/s | 304.3M | 312.7M | - | - | - |
+| aead | gcm-siv | encrypt 8192-byte message | bytes/s | 1.165M | 1.165M | - | - | - |
+| aead | xchacha-poly | encrypt 8192-byte message | bytes/s | 329.2M | 335.5M | - | - | - |
+| cipher | arcfour | encrypt 8192-byte buffer | bytes/s | 320.4M | 325.9M | - | - | - |
+| cipher | chacha/12 | encrypt 8192-byte buffer | bytes/s | 976.5M | 981.8M | - | - | - |
+| cipher | chacha/8 | encrypt 8192-byte buffer | bytes/s | 1.405G | 1.374G | - | - | - |
 | cipher | idea | encrypt 8192-byte buffer | bytes/s | 48.29M | 50.95M | - | - | - |
-| cipher | kalyna128 | encrypt 8192-byte buffer | bytes/s | 111.4M | 117.4M | - | - | - |
-| cipher | kalyna256 | encrypt 8192-byte buffer | bytes/s | 93.96M | 103.1M | - | - | - |
-| cipher | kalyna512 | encrypt 8192-byte buffer | bytes/s | 96.62M | 105.7M | - | - | - |
-| cipher | kuznyechik | encrypt 8192-byte buffer | bytes/s | 65M | 67.58M | - | - | - |
-| cipher | misty1 | encrypt 8192-byte buffer | bytes/s | 30.43M | 29.61M | - | - | - |
-| cipher | rc5 | encrypt 8192-byte buffer | bytes/s | 154M | 146.6M | - | - | - |
-| cipher | rc6 | encrypt 8192-byte buffer | bytes/s | 133M | 151.6M | - | - | - |
-| cipher | salsa20 | encrypt 8192-byte buffer | bytes/s | 467.5M | 463.6M | - | - | - |
-| cipher | salsa20/12 | encrypt 8192-byte buffer | bytes/s | 733M | 727.7M | - | - | - |
-| cipher | salsa20/8 | encrypt 8192-byte buffer | bytes/s | 1.031G | 1.018G | - | - | - |
-| cipher | serpent | encrypt 8192-byte buffer | bytes/s | 63.28M | 56.73M | - | - | - |
-| cipher | sosemanuk | encrypt 8192-byte buffer | bytes/s | 579.3M | 561.6M | - | - | - |
-| cipher | square | encrypt 8192-byte buffer | bytes/s | 90.6M | 87.12M | - | - | - |
-| cipher | tea | encrypt 8192-byte buffer | bytes/s | 44.36M | 46.2M | - | - | - |
-| cipher | threefish1024 | encrypt 8192-byte buffer | bytes/s | 430M | 428.5M | - | - | - |
-| cipher | threefish256 | encrypt 8192-byte buffer | bytes/s | 451.3M | 446.7M | - | - | - |
-| cipher | threefish512 | encrypt 8192-byte buffer | bytes/s | 432.6M | 431.7M | - | - | - |
+| cipher | kalyna128 | encrypt 8192-byte buffer | bytes/s | 111.4M | 116M | - | - | - |
+| cipher | kalyna256 | encrypt 8192-byte buffer | bytes/s | 93.96M | 102.6M | - | - | - |
+| cipher | kalyna512 | encrypt 8192-byte buffer | bytes/s | 96.62M | 103.9M | - | - | - |
+| cipher | kuznyechik | encrypt 8192-byte buffer | bytes/s | 65M | 69.03M | - | - | - |
+| cipher | misty1 | encrypt 8192-byte buffer | bytes/s | 30.43M | 29.49M | - | - | - |
+| cipher | rc5 | encrypt 8192-byte buffer | bytes/s | 154M | 144M | - | - | - |
+| cipher | rc6 | encrypt 8192-byte buffer | bytes/s | 133M | 150.8M | - | - | - |
+| cipher | salsa20 | encrypt 8192-byte buffer | bytes/s | 467.5M | 463.5M | - | - | - |
+| cipher | salsa20/12 | encrypt 8192-byte buffer | bytes/s | 733M | 732.6M | - | - | - |
+| cipher | salsa20/8 | encrypt 8192-byte buffer | bytes/s | 1.031G | 1.03G | - | - | - |
+| cipher | serpent | encrypt 8192-byte buffer | bytes/s | 63.28M | 58.12M | - | - | - |
+| cipher | sosemanuk | encrypt 8192-byte buffer | bytes/s | 579.3M | 574.2M | - | - | - |
+| cipher | square | encrypt 8192-byte buffer | bytes/s | 90.6M | 89.5M | - | - | - |
+| cipher | tea | encrypt 8192-byte buffer | bytes/s | 44.36M | 47.14M | - | - | - |
+| cipher | threefish1024 | encrypt 8192-byte buffer | bytes/s | 430M | 437.1M | - | - | - |
+| cipher | threefish256 | encrypt 8192-byte buffer | bytes/s | 451.3M | 458.1M | - | - | - |
+| cipher | threefish512 | encrypt 8192-byte buffer | bytes/s | 432.6M | 441.2M | - | - | - |
 | cipher | twofish | encrypt 8192-byte buffer | bytes/s | 142.7M | 154.3M | - | - | - |
-| cipher | xchacha | encrypt 8192-byte buffer | bytes/s | 609.7M | 595.8M | - | - | - |
-| cipher | xchacha/12 | encrypt 8192-byte buffer | bytes/s | 978.6M | 961M | - | - | - |
-| cipher | xchacha/8 | encrypt 8192-byte buffer | bytes/s | 1.402G | 1.369G | - | - | - |
-| cipher | xor | encrypt 8192-byte buffer | bytes/s | 231.5M | 239.5M | - | - | - |
-| cipher | xsalsa20 | encrypt 8192-byte buffer | bytes/s | 464.6M | 448.9M | - | - | - |
-| cipher | xsalsa20/12 | encrypt 8192-byte buffer | bytes/s | 733.5M | 660.6M | - | - | - |
-| cipher | xsalsa20/8 | encrypt 8192-byte buffer | bytes/s | 1.026G | 994.7M | - | - | - |
-| cipher | xtea | encrypt 8192-byte buffer | bytes/s | 50.79M | 48.87M | - | - | - |
-| cipher-mode | cbc | AES encrypt 8192-byte buffer | bytes/s | 654.9M | 725.6M | - | - | - |
-| cipher-mode | cfb | AES encrypt 8192-byte buffer | bytes/s | 666.7M | 670.1M | - | - | - |
-| cipher-mode | cfb8 | AES encrypt 8192-byte buffer | bytes/s | 33.05M | 35.51M | - | - | - |
-| cipher-mode | ctr | AES encrypt 8192-byte buffer | bytes/s | 692.5M | 693.7M | - | - | - |
-| cipher-mode | ecb | AES encrypt 8192-byte buffer | bytes/s | 750.7M | 762.6M | - | - | - |
-| cipher-mode | ofb | AES encrypt 8192-byte buffer | bytes/s | 701.2M | 712.7M | - | - | - |
-| digest | adler32 | hash 8192-byte block | bytes/s | 727.3M | 814.3M | - | - | - |
-| digest | ascon-hash256 | hash 8192-byte block | bytes/s | 4.383M | 4.383M | - | - | - |
-| digest | ascon-xof128 | hash 8192-byte block | bytes/s | 4.465M | 4.383M | - | - | - |
-| digest | blake2/160 | hash 8192-byte block | bytes/s | 652.2M | 636.4M | - | - | - |
-| digest | blake2/384 | hash 8192-byte block | bytes/s | 652.9M | 634.1M | - | - | - |
-| digest | blake2s/128 | hash 8192-byte block | bytes/s | 310.4M | 368.5M | - | - | - |
-| digest | blake2s/160 | hash 8192-byte block | bytes/s | 309.9M | 368.9M | - | - | - |
-| digest | blake2s/224 | hash 8192-byte block | bytes/s | 309.9M | 368.2M | - | - | - |
-| digest | blake3 | hash 8192-byte block | bytes/s | 153.1M | 150.9M | - | - | - |
-| digest | crc24 | hash 8192-byte block | bytes/s | 392.3M | 384.2M | - | - | - |
-| digest | crc32 | hash 8192-byte block | bytes/s | 479.5M | 423.9M | - | - | - |
-| digest | crc32c | hash 8192-byte block | bytes/s | 480M | 425.9M | - | - | - |
-| digest | cshake128 | hash 8192-byte block | bytes/s | 316.2M | 333.5M | - | - | - |
-| digest | cshake256 | hash 8192-byte block | bytes/s | 261.4M | 276M | - | - | - |
-| digest | groestl | hash 8192-byte block | bytes/s | 74.59M | 81.31M | - | - | - |
-| digest | groestl/224 | hash 8192-byte block | bytes/s | 101.7M | 112.3M | - | - | - |
-| digest | groestl/256 | hash 8192-byte block | bytes/s | 102.2M | 112.4M | - | - | - |
-| digest | groestl/384 | hash 8192-byte block | bytes/s | 74.89M | 81.26M | - | - | - |
-| digest | jh | hash 8192-byte block | bytes/s | 60.37M | 59.64M | - | - | - |
-| digest | jh/224 | hash 8192-byte block | bytes/s | 60.21M | 59.68M | - | - | - |
-| digest | jh/256 | hash 8192-byte block | bytes/s | 60.33M | 59.6M | - | - | - |
-| digest | jh/384 | hash 8192-byte block | bytes/s | 60.25M | 59.56M | - | - | - |
-| digest | keccak | hash 8192-byte block | bytes/s | 148.3M | 153.8M | - | - | - |
-| digest | keccak/224 | hash 8192-byte block | bytes/s | 274M | 290.1M | - | - | - |
-| digest | keccak/256 | hash 8192-byte block | bytes/s | 263.5M | 276.1M | - | - | - |
-| digest | keccak/384 | hash 8192-byte block | bytes/s | 207.3M | 214.4M | - | - | - |
-| digest | kupyna | hash 8192-byte block | bytes/s | 60.01M | 66.31M | - | - | - |
-| digest | kupyna/256 | hash 8192-byte block | bytes/s | 84.25M | 92.36M | - | - | - |
-| digest | md2 | hash 8192-byte block | bytes/s | 9.134M | 9.011M | - | - | - |
-| digest | md4 | hash 8192-byte block | bytes/s | 408.9M | 468.6M | - | - | - |
-| digest | ripemd-128 | hash 8192-byte block | bytes/s | 186M | 181.1M | - | - | - |
-| digest | shake128 | hash 8192-byte block | bytes/s | 315.6M | 333.5M | - | - | - |
-| digest | shake256 | hash 8192-byte block | bytes/s | 263.2M | 277M | - | - | - |
-| digest | skein1024 | hash 8192-byte block | bytes/s | 389M | 388.5M | - | - | - |
-| digest | skein1024/384 | hash 8192-byte block | bytes/s | 392.3M | 391.1M | - | - | - |
-| digest | skein1024/512 | hash 8192-byte block | bytes/s | 392.9M | 392.1M | - | - | - |
-| digest | skein256 | hash 8192-byte block | bytes/s | 390.4M | 389.9M | - | - | - |
-| digest | skein256/128 | hash 8192-byte block | bytes/s | 392.9M | 393.6M | - | - | - |
-| digest | skein256/160 | hash 8192-byte block | bytes/s | 390.8M | 394.2M | - | - | - |
-| digest | skein256/224 | hash 8192-byte block | bytes/s | 392.5M | 395.3M | - | - | - |
-| digest | skein512 | hash 8192-byte block | bytes/s | 378.3M | 382.4M | - | - | - |
-| digest | skein512/128 | hash 8192-byte block | bytes/s | 380.8M | 384.9M | - | - | - |
-| digest | skein512/160 | hash 8192-byte block | bytes/s | 382M | 385.2M | - | - | - |
-| digest | skein512/224 | hash 8192-byte block | bytes/s | 379.9M | 386.3M | - | - | - |
-| digest | skein512/256 | hash 8192-byte block | bytes/s | 380.2M | 385.2M | - | - | - |
-| digest | skein512/384 | hash 8192-byte block | bytes/s | 380.4M | 384.6M | - | - | - |
-| digest | streebog | hash 8192-byte block | bytes/s | 43.17M | 42.56M | - | - | - |
-| digest | streebog/256 | hash 8192-byte block | bytes/s | 43.09M | 42.72M | - | - | - |
-| digest | tiger | hash 8192-byte block | bytes/s | 479.3M | 475.2M | - | - | - |
-| digest | tree-hash | hash 8192-byte block | bytes/s | 352.7M | 348.5M | - | - | - |
-| hpke | dhkem-p256 | derive-keypair | ops/s | 815 | 895 | - | - | - |
-| hpke | dhkem-p256 | open | ops/s | 167.6k | 147.5k | - | - | - |
-| hpke | dhkem-p256 | seal | ops/s | 158.6k | 144.7k | - | - | - |
-| hpke | dhkem-p256 | setup-recipient | ops/s | 137 | 122.5 | - | - | - |
-| hpke | dhkem-p256 | setup-sender | ops/s | 275 | 240 | - | - | - |
-| hpke | dhkem-p384 | derive-keypair | ops/s | 390 | 210.8 | - | - | - |
-| hpke | dhkem-p384 | open | ops/s | 177.7k | 155.7k | - | - | - |
-| hpke | dhkem-p384 | seal | ops/s | 160.9k | 141.5k | - | - | - |
+| cipher | xchacha | encrypt 8192-byte buffer | bytes/s | 609.7M | 611.3M | - | - | - |
+| cipher | xchacha/12 | encrypt 8192-byte buffer | bytes/s | 978.6M | 984.5M | - | - | - |
+| cipher | xchacha/8 | encrypt 8192-byte buffer | bytes/s | 1.402G | 1.406G | - | - | - |
+| cipher | xor | encrypt 8192-byte buffer | bytes/s | 231.5M | 245M | - | - | - |
+| cipher | xsalsa20 | encrypt 8192-byte buffer | bytes/s | 464.6M | 466.8M | - | - | - |
+| cipher | xsalsa20/12 | encrypt 8192-byte buffer | bytes/s | 733.5M | 676.6M | - | - | - |
+| cipher | xsalsa20/8 | encrypt 8192-byte buffer | bytes/s | 1.026G | 1.013G | - | - | - |
+| cipher | xtea | encrypt 8192-byte buffer | bytes/s | 50.79M | 50.59M | - | - | - |
+| cipher-mode | cbc | AES encrypt 8192-byte buffer | bytes/s | 654.9M | 751.6M | - | - | - |
+| cipher-mode | cfb | AES encrypt 8192-byte buffer | bytes/s | 666.7M | 686.4M | - | - | - |
+| cipher-mode | cfb8 | AES encrypt 8192-byte buffer | bytes/s | 33.05M | 36.41M | - | - | - |
+| cipher-mode | ctr | AES encrypt 8192-byte buffer | bytes/s | 692.5M | 717.3M | - | - | - |
+| cipher-mode | ecb | AES encrypt 8192-byte buffer | bytes/s | 750.7M | 784.4M | - | - | - |
+| cipher-mode | ofb | AES encrypt 8192-byte buffer | bytes/s | 701.2M | 731M | - | - | - |
+| digest | adler32 | hash 8192-byte block | bytes/s | 727.3M | 832.4M | - | - | - |
+| digest | ascon-hash256 | hash 8192-byte block | bytes/s | 4.383M | 4.465M | - | - | - |
+| digest | ascon-xof128 | hash 8192-byte block | bytes/s | 4.465M | 4.547M | - | - | - |
+| digest | blake2/160 | hash 8192-byte block | bytes/s | 652.2M | 654.4M | - | - | - |
+| digest | blake2/384 | hash 8192-byte block | bytes/s | 652.9M | 652M | - | - | - |
+| digest | blake2s/128 | hash 8192-byte block | bytes/s | 310.4M | 375.2M | - | - | - |
+| digest | blake2s/160 | hash 8192-byte block | bytes/s | 309.9M | 376M | - | - | - |
+| digest | blake2s/224 | hash 8192-byte block | bytes/s | 309.9M | 375.6M | - | - | - |
+| digest | blake3 | hash 8192-byte block | bytes/s | 153.1M | 153.6M | - | - | - |
+| digest | crc24 | hash 8192-byte block | bytes/s | 392.3M | 393.1M | - | - | - |
+| digest | crc32 | hash 8192-byte block | bytes/s | 479.5M | 432.8M | - | - | - |
+| digest | crc32c | hash 8192-byte block | bytes/s | 480M | 434M | - | - | - |
+| digest | cshake128 | hash 8192-byte block | bytes/s | 316.2M | 340.8M | - | - | - |
+| digest | cshake256 | hash 8192-byte block | bytes/s | 261.4M | 282.5M | - | - | - |
+| digest | groestl | hash 8192-byte block | bytes/s | 74.59M | 83.97M | - | - | - |
+| digest | groestl/224 | hash 8192-byte block | bytes/s | 101.7M | 114.6M | - | - | - |
+| digest | groestl/256 | hash 8192-byte block | bytes/s | 102.2M | 114.5M | - | - | - |
+| digest | groestl/384 | hash 8192-byte block | bytes/s | 74.89M | 83.89M | - | - | - |
+| digest | jh | hash 8192-byte block | bytes/s | 60.37M | 59.8M | - | - | - |
+| digest | jh/224 | hash 8192-byte block | bytes/s | 60.21M | 57.71M | - | - | - |
+| digest | jh/256 | hash 8192-byte block | bytes/s | 60.33M | 58.03M | - | - | - |
+| digest | jh/384 | hash 8192-byte block | bytes/s | 60.25M | 59.68M | - | - | - |
+| digest | keccak | hash 8192-byte block | bytes/s | 148.3M | 154.2M | - | - | - |
+| digest | keccak/224 | hash 8192-byte block | bytes/s | 274M | 292.4M | - | - | - |
+| digest | keccak/256 | hash 8192-byte block | bytes/s | 263.5M | 277.8M | - | - | - |
+| digest | keccak/384 | hash 8192-byte block | bytes/s | 207.3M | 217.6M | - | - | - |
+| digest | kupyna | hash 8192-byte block | bytes/s | 60.01M | 66.81M | - | - | - |
+| digest | kupyna/256 | hash 8192-byte block | bytes/s | 84.25M | 92.98M | - | - | - |
+| digest | md2 | hash 8192-byte block | bytes/s | 9.134M | 9.093M | - | - | - |
+| digest | md4 | hash 8192-byte block | bytes/s | 408.9M | 475.8M | - | - | - |
+| digest | ripemd-128 | hash 8192-byte block | bytes/s | 186M | 183.8M | - | - | - |
+| digest | shake128 | hash 8192-byte block | bytes/s | 315.6M | 333.8M | - | - | - |
+| digest | shake256 | hash 8192-byte block | bytes/s | 263.2M | 277.6M | - | - | - |
+| digest | skein1024 | hash 8192-byte block | bytes/s | 389M | 389.1M | - | - | - |
+| digest | skein1024/384 | hash 8192-byte block | bytes/s | 392.3M | 392.4M | - | - | - |
+| digest | skein1024/512 | hash 8192-byte block | bytes/s | 392.9M | 391.8M | - | - | - |
+| digest | skein256 | hash 8192-byte block | bytes/s | 390.4M | 390.2M | - | - | - |
+| digest | skein256/128 | hash 8192-byte block | bytes/s | 392.9M | 394M | - | - | - |
+| digest | skein256/160 | hash 8192-byte block | bytes/s | 390.8M | 393.5M | - | - | - |
+| digest | skein256/224 | hash 8192-byte block | bytes/s | 392.5M | 393.2M | - | - | - |
+| digest | skein512 | hash 8192-byte block | bytes/s | 378.3M | 382.8M | - | - | - |
+| digest | skein512/128 | hash 8192-byte block | bytes/s | 380.8M | 385.6M | - | - | - |
+| digest | skein512/160 | hash 8192-byte block | bytes/s | 382M | 385.9M | - | - | - |
+| digest | skein512/224 | hash 8192-byte block | bytes/s | 379.9M | 386M | - | - | - |
+| digest | skein512/256 | hash 8192-byte block | bytes/s | 380.2M | 384.8M | - | - | - |
+| digest | skein512/384 | hash 8192-byte block | bytes/s | 380.4M | 385.2M | - | - | - |
+| digest | streebog | hash 8192-byte block | bytes/s | 43.17M | 43.09M | - | - | - |
+| digest | streebog/256 | hash 8192-byte block | bytes/s | 43.09M | 43.01M | - | - | - |
+| digest | tiger | hash 8192-byte block | bytes/s | 479.3M | 455.3M | - | - | - |
+| digest | tree-hash | hash 8192-byte block | bytes/s | 352.7M | 348.1M | - | - | - |
+| hpke | dhkem-p256 | derive-keypair | ops/s | 815 | 910 | - | - | - |
+| hpke | dhkem-p256 | open | ops/s | 167.6k | 151.1k | - | - | - |
+| hpke | dhkem-p256 | seal | ops/s | 158.6k | 146.1k | - | - | - |
+| hpke | dhkem-p256 | setup-recipient | ops/s | 137 | 117.6 | - | - | - |
+| hpke | dhkem-p256 | setup-sender | ops/s | 275 | 225 | - | - | - |
+| hpke | dhkem-p384 | derive-keypair | ops/s | 390 | 225 | - | - | - |
+| hpke | dhkem-p384 | open | ops/s | 177.7k | 154.3k | - | - | - |
+| hpke | dhkem-p384 | seal | ops/s | 160.9k | 146.5k | - | - | - |
 | hpke | dhkem-p384 | setup-recipient | ops/s | 66 | 37.04 | - | - | - |
-| hpke | dhkem-p384 | setup-sender | ops/s | 130 | 75 | - | - | - |
-| hpke | dhkem-p521 | derive-keypair | ops/s | 220 | 125 | - | - | - |
-| hpke | dhkem-p521 | open | ops/s | 179.2k | 148k | - | - | - |
-| hpke | dhkem-p521 | seal | ops/s | 165.2k | 146.7k | - | - | - |
-| hpke | dhkem-p521 | setup-recipient | ops/s | 32.4 | 20.83 | - | - | - |
-| hpke | dhkem-p521 | setup-sender | ops/s | 73.5 | 40.91 | - | - | - |
+| hpke | dhkem-p384 | setup-sender | ops/s | 130 | 72.12 | - | - | - |
+| hpke | dhkem-p521 | derive-keypair | ops/s | 220 | 122.5 | - | - | - |
+| hpke | dhkem-p521 | open | ops/s | 179.2k | 154.5k | - | - | - |
+| hpke | dhkem-p521 | seal | ops/s | 165.2k | 139k | - | - | - |
+| hpke | dhkem-p521 | setup-recipient | ops/s | 32.4 | 20.16 | - | - | - |
+| hpke | dhkem-p521 | setup-sender | ops/s | 73.5 | 40.18 | - | - | - |
 | hpke | dhkem-x25519 | derive-keypair | ops/s | 1.195k | 1.105k | - | - | - |
-| hpke | dhkem-x25519 | open | ops/s | 177.5k | 155.7k | - | - | - |
-| hpke | dhkem-x25519 | seal | ops/s | 167.7k | 149.9k | - | - | - |
+| hpke | dhkem-x25519 | open | ops/s | 177.5k | 152.1k | - | - | - |
+| hpke | dhkem-x25519 | seal | ops/s | 167.7k | 146.4k | - | - | - |
 | hpke | dhkem-x25519 | setup-recipient | ops/s | 215 | 195 | - | - | - |
-| hpke | dhkem-x25519 | setup-sender | ops/s | 430 | 400 | - | - | - |
+| hpke | dhkem-x25519 | setup-sender | ops/s | 430 | 385 | - | - | - |
 | hpke | dhkem-x448 | derive-keypair | ops/s | 415 | 390 | - | - | - |
-| hpke | dhkem-x448 | open | ops/s | 168.1k | 156.4k | - | - | - |
-| hpke | dhkem-x448 | seal | ops/s | 157.9k | 147.7k | - | - | - |
-| hpke | dhkem-x448 | setup-recipient | ops/s | 67.3 | 65 | - | - | - |
-| hpke | dhkem-x448 | setup-sender | ops/s | 137 | 135 | - | - | - |
-| kdf | argon2d | derive-key | ops/s | 8.225k | 8.025k | - | - | - |
-| kdf | argon2i | derive-key | ops/s | 6.85k | 6.68k | - | - | - |
-| kdf | bcrypt | derive-key | ops/s | 765 | 785 | - | - | - |
-| kdf | bcrypt-pbkdf | derive-key | ops/s | 12.1 | 12.29 | - | - | - |
-| kdf | hkdf | derive-key | ops/s | 185.7k | 179.1k | - | - | - |
-| kdf | hmac-kdf | derive-key | ops/s | 193.9k | 184.3k | - | - | - |
-| kdf | pbkdf1 | derive-key | ops/s | 3.01k | 3.05k | - | - | - |
-| kdf | pbkdf2 | derive-key | ops/s | 445 | 420 | - | - | - |
+| hpke | dhkem-x448 | open | ops/s | 168.1k | 153k | - | - | - |
+| hpke | dhkem-x448 | seal | ops/s | 157.9k | 143.7k | - | - | - |
+| hpke | dhkem-x448 | setup-recipient | ops/s | 67.3 | 62.5 | - | - | - |
+| hpke | dhkem-x448 | setup-sender | ops/s | 137 | 130 | - | - | - |
+| kdf | argon2d | derive-key | ops/s | 8.225k | 8.43k | - | - | - |
+| kdf | argon2i | derive-key | ops/s | 6.85k | 7.1k | - | - | - |
+| kdf | bcrypt | derive-key | ops/s | 765 | 805 | - | - | - |
+| kdf | bcrypt-pbkdf | derive-key | ops/s | 12.1 | 12.71 | - | - | - |
+| kdf | hkdf | derive-key | ops/s | 185.7k | 184.9k | - | - | - |
+| kdf | hmac-kdf | derive-key | ops/s | 193.9k | 187.7k | - | - | - |
+| kdf | pbkdf1 | derive-key | ops/s | 3.01k | 3.135k | - | - | - |
+| kdf | pbkdf2 | derive-key | ops/s | 445 | 425 | - | - | - |
 | kdf | scrypt-kdf | derive-key | ops/s | 315 | 290 | - | - | - |
-| mac | blake2-mac | MAC 8192-byte block | bytes/s | 643.2M | 631.6M | - | - | - |
-| mac | blake2s-mac | MAC 8192-byte block | bytes/s | 308.6M | 365.4M | - | - | - |
-| mac | cmac | MAC 8192-byte block | bytes/s | 654.7M | 663.3M | - | - | - |
-| mac | gmac | MAC 8192-byte block | bytes/s | 975.6M | 963.1M | - | - | - |
-| mac | hmac | MAC 8192-byte block | bytes/s | 173.1M | 158.1M | - | - | - |
-| mac | kmac128 | MAC 8192-byte block | bytes/s | 313.9M | 331.8M | - | - | - |
-| mac | kmac256 | MAC 8192-byte block | bytes/s | 260.2M | 276.2M | - | - | - |
-| mac | poly1305 | MAC 8192-byte block | bytes/s | 1.249G | 1.22G | - | - | - |
-| mac | siphash | MAC 8192-byte block | bytes/s | 1.603G | 1.585G | - | - | - |
-| mac | skein-mac | MAC 8192-byte block | bytes/s | 379.1M | 381.9M | - | - | - |
-| prng | fortuna | generate 4096 bytes | bytes/s | 72.42M | 71.64M | - | - | - |
+| mac | blake2-mac | MAC 8192-byte block | bytes/s | 643.2M | 639.5M | - | - | - |
+| mac | blake2s-mac | MAC 8192-byte block | bytes/s | 308.6M | 371.5M | - | - | - |
+| mac | cmac | MAC 8192-byte block | bytes/s | 654.7M | 684M | - | - | - |
+| mac | gmac | MAC 8192-byte block | bytes/s | 975.6M | 980.9M | - | - | - |
+| mac | hmac | MAC 8192-byte block | bytes/s | 173.1M | 161M | - | - | - |
+| mac | kmac128 | MAC 8192-byte block | bytes/s | 313.9M | 338.5M | - | - | - |
+| mac | kmac256 | MAC 8192-byte block | bytes/s | 260.2M | 281.1M | - | - | - |
+| mac | poly1305 | MAC 8192-byte block | bytes/s | 1.249G | 1.238G | - | - | - |
+| mac | siphash | MAC 8192-byte block | bytes/s | 1.603G | 1.593G | - | - | - |
+| mac | skein-mac | MAC 8192-byte block | bytes/s | 379.1M | 386.3M | - | - | - |
+| prng | fortuna | generate 4096 bytes | bytes/s | 72.42M | 72.29M | - | - | - |
 | prng | fortuna-generator | benchmark-error | status | - | - | - | - | - |
-| prng | os | generate 4096 bytes | bytes/s | 750.1M | 751.7M | - | - | - |
-| public-key | bike-l1 | decapsulate | ops/s | 2.66 | 3.086 | - | - | - |
-| public-key | bike-l1 | encapsulate | ops/s | 58.8 | 73.53 | - | - | - |
-| public-key | bike-l1 | keygen | ops/s | 2.08 | 2.632 | - | - | - |
-| public-key | bike-l3 | decapsulate | ops/s | 0.822 | 0.9506 | - | - | - |
-| public-key | bike-l3 | encapsulate | ops/s | 18.9 | 23.58 | - | - | - |
-| public-key | bike-l3 | keygen | ops/s | 0.654 | 0.8361 | - | - | - |
-| public-key | bike-l5 | decapsulate | ops/s | 0.338 | 0.4 | - | - | - |
-| public-key | bike-l5 | encapsulate | ops/s | 7.58 | 9.615 | - | - | - |
-| public-key | bike-l5 | keygen | ops/s | 0.258 | 0.3281 | - | - | - |
-| public-key | curve25519 | diffie-hellman | ops/s | 1.245k | 1.315k | - | - | - |
-| public-key | curve25519 | keygen | ops/s | 1.3k | 1.345k | - | - | - |
-| public-key | curve448 | diffie-hellman | ops/s | 387 | 420 | - | - | - |
-| public-key | curve448 | keygen | ops/s | 370 | 445 | - | - | - |
-| public-key | dsa | keygen | ops/s | 0.313 | 1.562 | - | - | - |
-| public-key | ecdsa | decrypt | ops/s | 815 | 505 | - | - | - |
-| public-key | ecdsa | diffie-hellman | ops/s | 825 | 520 | - | - | - |
-| public-key | ecdsa | encrypt | ops/s | 412 | 315 | - | - | - |
-| public-key | ecdsa | keygen | ops/s | 820 | 935 | - | - | - |
-| public-key | ecdsa | sign | ops/s | 790 | 875 | - | - | - |
-| public-key | ecdsa | verify | ops/s | 600 | 620 | - | - | - |
-| public-key | ed25519 | keygen | ops/s | 760 | 785 | - | - | - |
+| prng | os | generate 4096 bytes | bytes/s | 750.1M | 760.2M | - | - | - |
+| public-key | bike-l1 | decapsulate | ops/s | 2.66 | 3.165 | - | - | - |
+| public-key | bike-l1 | encapsulate | ops/s | 58.8 | 76.92 | - | - | - |
+| public-key | bike-l1 | keygen | ops/s | 2.08 | 2.717 | - | - | - |
+| public-key | bike-l3 | decapsulate | ops/s | 0.822 | 0.9652 | - | - | - |
+| public-key | bike-l3 | encapsulate | ops/s | 18.9 | 22.73 | - | - | - |
+| public-key | bike-l3 | keygen | ops/s | 0.654 | 0.8591 | - | - | - |
+| public-key | bike-l5 | decapsulate | ops/s | 0.338 | 0.3731 | - | - | - |
+| public-key | bike-l5 | encapsulate | ops/s | 7.58 | 8.772 | - | - | - |
+| public-key | bike-l5 | keygen | ops/s | 0.258 | 0.3294 | - | - | - |
+| public-key | curve25519 | diffie-hellman | ops/s | 1.245k | 1.275k | - | - | - |
+| public-key | curve25519 | keygen | ops/s | 1.3k | 1.33k | - | - | - |
+| public-key | curve448 | diffie-hellman | ops/s | 387 | 415 | - | - | - |
+| public-key | curve448 | keygen | ops/s | 370 | 395 | - | - | - |
+| public-key | dsa | keygen | ops/s | 0.313 | 0.6173 | - | - | - |
+| public-key | ecdsa | decrypt | ops/s | 815 | 475 | - | - | - |
+| public-key | ecdsa | diffie-hellman | ops/s | 825 | 470 | - | - | - |
+| public-key | ecdsa | encrypt | ops/s | 412 | 294.1 | - | - | - |
+| public-key | ecdsa | keygen | ops/s | 820 | 880 | - | - | - |
+| public-key | ecdsa | sign | ops/s | 790 | 835 | - | - | - |
+| public-key | ecdsa | verify | ops/s | 600 | 565 | - | - | - |
+| public-key | ed25519 | keygen | ops/s | 760 | 775 | - | - | - |
 | public-key | ed448 | keygen | ops/s | 225 | 235 | - | - | - |
-| public-key | elgamal | decrypt | ops/s | 73.5 | 73.53 | - | - | - |
-| public-key | elgamal | encrypt | ops/s | 36.4 | 37.74 | - | - | - |
-| public-key | elgamal | keygen | ops/s | 0.896 | 0.5981 | - | - | - |
-| public-key | elgamal | sign | ops/s | 75 | 70.75 | - | - | - |
+| public-key | elgamal | decrypt | ops/s | 73.5 | 67.31 | - | - | - |
+| public-key | elgamal | encrypt | ops/s | 36.4 | 35 | - | - | - |
+| public-key | elgamal | keygen | ops/s | 0.896 | 0.9921 | - | - | - |
+| public-key | elgamal | sign | ops/s | 75 | 73.53 | - | - | - |
 | public-key | elgamal | verify | ops/s | 36.4 | 33.65 | - | - | - |
-| public-key | falcon-1024 | keygen | ops/s | 0.378 | 0.5133 | - | - | - |
-| public-key | falcon-1024 | sign | ops/s | 11.4 | 10.27 | - | - | - |
-| public-key | falcon-1024 | verify | ops/s | 655 | 715 | - | - | - |
-| public-key | ml-kem-1024 | decapsulate | ops/s | 2.09k | 2.05k | - | - | - |
-| public-key | ml-kem-1024 | encapsulate | ops/s | 2.59k | 2.55k | - | - | - |
-| public-key | ml-kem-1024 | keygen | ops/s | 2.895k | 2.84k | - | - | - |
-| public-key | ml-kem-512 | decapsulate | ops/s | 4.565k | 4.54k | - | - | - |
-| public-key | ml-kem-512 | encapsulate | ops/s | 6.045k | 5.855k | - | - | - |
-| public-key | ml-kem-512 | keygen | ops/s | 7.345k | 7.3k | - | - | - |
-| public-key | ml-kem-768 | decapsulate | ops/s | 2.945k | 2.94k | - | - | - |
-| public-key | ml-kem-768 | encapsulate | ops/s | 3.785k | 3.765k | - | - | - |
-| public-key | ml-kem-768 | keygen | ops/s | 4.38k | 4.355k | - | - | - |
-| public-key | p-224 | diffie-hellman | ops/s | 1.025k | 590 | - | - | - |
-| public-key | p-224 | keygen | ops/s | 1.02k | 600 | - | - | - |
-| public-key | p-224 | sign | ops/s | 985 | 565 | - | - | - |
+| public-key | falcon-1024 | keygen | ops/s | 0.378 | 0.4318 | - | - | - |
+| public-key | falcon-1024 | sign | ops/s | 11.4 | 10.42 | - | - | - |
+| public-key | falcon-1024 | verify | ops/s | 655 | 645 | - | - | - |
+| public-key | ml-kem-1024 | decapsulate | ops/s | 2.09k | 2.14k | - | - | - |
+| public-key | ml-kem-1024 | encapsulate | ops/s | 2.59k | 2.665k | - | - | - |
+| public-key | ml-kem-1024 | keygen | ops/s | 2.895k | 2.935k | - | - | - |
+| public-key | ml-kem-512 | decapsulate | ops/s | 4.565k | 4.685k | - | - | - |
+| public-key | ml-kem-512 | encapsulate | ops/s | 6.045k | 6.195k | - | - | - |
+| public-key | ml-kem-512 | keygen | ops/s | 7.345k | 7.425k | - | - | - |
+| public-key | ml-kem-768 | decapsulate | ops/s | 2.945k | 3.02k | - | - | - |
+| public-key | ml-kem-768 | encapsulate | ops/s | 3.785k | 3.905k | - | - | - |
+| public-key | ml-kem-768 | keygen | ops/s | 4.38k | 4.525k | - | - | - |
+| public-key | p-224 | diffie-hellman | ops/s | 1.025k | 595 | - | - | - |
+| public-key | p-224 | keygen | ops/s | 1.02k | 570 | - | - | - |
+| public-key | p-224 | sign | ops/s | 985 | 555 | - | - | - |
 | public-key | p-224 | verify | ops/s | 745 | 705 | - | - | - |
-| public-key | p-256 | decrypt | ops/s | 815 | 505 | - | - | - |
-| public-key | p-256 | diffie-hellman | ops/s | 825 | 520 | - | - | - |
-| public-key | p-256 | encrypt | ops/s | 412 | 315 | - | - | - |
-| public-key | p-256 | keygen | ops/s | 820 | 935 | - | - | - |
-| public-key | p-256 | sign | ops/s | 790 | 875 | - | - | - |
-| public-key | p-256 | verify | ops/s | 600 | 620 | - | - | - |
-| public-key | p-384 | decrypt | ops/s | 390 | 230 | - | - | - |
-| public-key | p-384 | diffie-hellman | ops/s | 360 | 230 | - | - | - |
-| public-key | p-384 | encrypt | ops/s | 191 | 112.7 | - | - | - |
-| public-key | p-384 | keygen | ops/s | 395 | 225 | - | - | - |
-| public-key | p-384 | sign | ops/s | 385 | 225 | - | - | - |
-| public-key | p-384 | verify | ops/s | 285 | 270 | - | - | - |
+| public-key | p-256 | decrypt | ops/s | 815 | 475 | - | - | - |
+| public-key | p-256 | diffie-hellman | ops/s | 825 | 470 | - | - | - |
+| public-key | p-256 | encrypt | ops/s | 412 | 294.1 | - | - | - |
+| public-key | p-256 | keygen | ops/s | 820 | 880 | - | - | - |
+| public-key | p-256 | sign | ops/s | 790 | 835 | - | - | - |
+| public-key | p-256 | verify | ops/s | 600 | 565 | - | - | - |
+| public-key | p-384 | decrypt | ops/s | 390 | 220 | - | - | - |
+| public-key | p-384 | diffie-hellman | ops/s | 360 | 215.7 | - | - | - |
+| public-key | p-384 | encrypt | ops/s | 191 | 93.14 | - | - | - |
+| public-key | p-384 | keygen | ops/s | 395 | 220 | - | - | - |
+| public-key | p-384 | sign | ops/s | 385 | 215 | - | - | - |
+| public-key | p-384 | verify | ops/s | 285 | 250 | - | - | - |
 | public-key | p-521 | decrypt | ops/s | 216 | 120 | - | - | - |
-| public-key | p-521 | diffie-hellman | ops/s | 215 | 125 | - | - | - |
+| public-key | p-521 | diffie-hellman | ops/s | 215 | 122.5 | - | - | - |
 | public-key | p-521 | encrypt | ops/s | 108 | 61.32 | - | - | - |
-| public-key | p-521 | keygen | ops/s | 220 | 107.8 | - | - | - |
-| public-key | p-521 | sign | ops/s | 215 | 117.6 | - | - | - |
-| public-key | p-521 | verify | ops/s | 155 | 155 | - | - | - |
-| public-key | prime256v1 | decrypt | ops/s | 815 | 505 | - | - | - |
-| public-key | prime256v1 | diffie-hellman | ops/s | 825 | 520 | - | - | - |
-| public-key | prime256v1 | encrypt | ops/s | 412 | 315 | - | - | - |
-| public-key | prime256v1 | keygen | ops/s | 820 | 935 | - | - | - |
-| public-key | prime256v1 | sign | ops/s | 790 | 875 | - | - | - |
-| public-key | prime256v1 | verify | ops/s | 600 | 620 | - | - | - |
-| public-key | rsa | keygen | ops/s | 3.21 | 2.294 | - | - | - |
-| public-key | secp224r1 | diffie-hellman | ops/s | 1.025k | 590 | - | - | - |
-| public-key | secp224r1 | keygen | ops/s | 1.02k | 600 | - | - | - |
-| public-key | secp256k1 | decrypt | ops/s | 915 | 485 | - | - | - |
-| public-key | secp256k1 | diffie-hellman | ops/s | 935 | 510 | - | - | - |
-| public-key | secp256k1 | encrypt | ops/s | 460 | 250 | - | - | - |
-| public-key | secp256k1 | keygen | ops/s | 840 | 510 | - | - | - |
-| public-key | secp256k1 | sign | ops/s | 885 | 495 | - | - | - |
-| public-key | secp256k1 | verify | ops/s | 640 | 615 | - | - | - |
-| public-key | secp256r1 | decrypt | ops/s | 815 | 505 | - | - | - |
-| public-key | secp256r1 | diffie-hellman | ops/s | 825 | 520 | - | - | - |
-| public-key | secp256r1 | encrypt | ops/s | 412 | 315 | - | - | - |
-| public-key | secp256r1 | keygen | ops/s | 820 | 935 | - | - | - |
-| public-key | secp384r1 | decrypt | ops/s | 390 | 230 | - | - | - |
-| public-key | secp384r1 | diffie-hellman | ops/s | 360 | 230 | - | - | - |
-| public-key | secp384r1 | encrypt | ops/s | 191 | 112.7 | - | - | - |
-| public-key | secp384r1 | keygen | ops/s | 395 | 225 | - | - | - |
+| public-key | p-521 | keygen | ops/s | 220 | 115.4 | - | - | - |
+| public-key | p-521 | sign | ops/s | 215 | 120 | - | - | - |
+| public-key | p-521 | verify | ops/s | 155 | 147.1 | - | - | - |
+| public-key | prime256v1 | decrypt | ops/s | 815 | 475 | - | - | - |
+| public-key | prime256v1 | diffie-hellman | ops/s | 825 | 470 | - | - | - |
+| public-key | prime256v1 | encrypt | ops/s | 412 | 294.1 | - | - | - |
+| public-key | prime256v1 | keygen | ops/s | 820 | 880 | - | - | - |
+| public-key | prime256v1 | sign | ops/s | 790 | 835 | - | - | - |
+| public-key | prime256v1 | verify | ops/s | 600 | 565 | - | - | - |
+| public-key | rsa | keygen | ops/s | 3.21 | 3.906 | - | - | - |
+| public-key | secp224r1 | diffie-hellman | ops/s | 1.025k | 595 | - | - | - |
+| public-key | secp224r1 | keygen | ops/s | 1.02k | 570 | - | - | - |
+| public-key | secp256k1 | decrypt | ops/s | 915 | 495 | - | - | - |
+| public-key | secp256k1 | diffie-hellman | ops/s | 935 | 505 | - | - | - |
+| public-key | secp256k1 | encrypt | ops/s | 460 | 254.9 | - | - | - |
+| public-key | secp256k1 | keygen | ops/s | 840 | 500 | - | - | - |
+| public-key | secp256k1 | sign | ops/s | 885 | 490 | - | - | - |
+| public-key | secp256k1 | verify | ops/s | 640 | 630 | - | - | - |
+| public-key | secp256r1 | decrypt | ops/s | 815 | 475 | - | - | - |
+| public-key | secp256r1 | diffie-hellman | ops/s | 825 | 470 | - | - | - |
+| public-key | secp256r1 | encrypt | ops/s | 412 | 294.1 | - | - | - |
+| public-key | secp256r1 | keygen | ops/s | 820 | 880 | - | - | - |
+| public-key | secp384r1 | decrypt | ops/s | 390 | 220 | - | - | - |
+| public-key | secp384r1 | diffie-hellman | ops/s | 360 | 215.7 | - | - | - |
+| public-key | secp384r1 | encrypt | ops/s | 191 | 93.14 | - | - | - |
+| public-key | secp384r1 | keygen | ops/s | 395 | 220 | - | - | - |
 | public-key | secp521r1 | decrypt | ops/s | 216 | 120 | - | - | - |
-| public-key | secp521r1 | diffie-hellman | ops/s | 215 | 125 | - | - | - |
+| public-key | secp521r1 | diffie-hellman | ops/s | 215 | 122.5 | - | - | - |
 | public-key | secp521r1 | encrypt | ops/s | 108 | 61.32 | - | - | - |
-| public-key | secp521r1 | keygen | ops/s | 220 | 107.8 | - | - | - |
-| public-key | x-wing | decapsulate | ops/s | 345 | 325 | - | - | - |
-| public-key | x-wing | encapsulate | ops/s | 385 | 350 | - | - | - |
-| public-key | x-wing | keygen | ops/s | 1k | 930 | - | - | - |
-| public-key | xmss-sha256-h10 | keygen | ops/s | 0.163 | 0.151 | - | - | - |
-| public-key | xmss-sha256-h10 | sign | ops/s | 0.164 | 0.1512 | - | - | - |
-| public-key | xmss-sha256-h10 | verify | ops/s | 310 | 260 | - | - | - |
+| public-key | secp521r1 | keygen | ops/s | 220 | 115.4 | - | - | - |
+| public-key | x-wing | decapsulate | ops/s | 345 | 315 | - | - | - |
+| public-key | x-wing | encapsulate | ops/s | 385 | 355 | - | - | - |
+| public-key | x-wing | keygen | ops/s | 1k | 915 | - | - | - |
+| public-key | xmss-sha256-h10 | keygen | ops/s | 0.163 | 0.1447 | - | - | - |
+| public-key | xmss-sha256-h10 | sign | ops/s | 0.164 | 0.1456 | - | - | - |
+| public-key | xmss-sha256-h10 | verify | ops/s | 310 | 240 | - | - | - |
