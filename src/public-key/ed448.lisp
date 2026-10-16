@@ -163,6 +163,16 @@
               (slot-value dst 'z) z3)
         dst))))
 
+(declaim (inline ed448-point-copy!))
+(defun ed448-point-copy! (dst src)
+  "Copy point SRC into DST."
+  (declare (type ed448-point dst src)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (setf (slot-value dst 'x) (slot-value src 'x)
+        (slot-value dst 'y) (slot-value src 'y)
+        (slot-value dst 'z) (slot-value src 'z))
+  dst)
+
 ;;; Scalar multiplication for arbitrary points (not the generator).
 ;;; Uses destination-based Montgomery ladder to avoid consing intermediate
 ;;; points.  This is used by ed448-verify for the public-key multiplication.

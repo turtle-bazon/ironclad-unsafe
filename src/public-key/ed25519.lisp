@@ -44,8 +44,258 @@
   (make-instance 'ed25519-point :x 0 :y 1 :z 1 :w 0))
 
 
+;;;; ed25519 field arithmetic on 32-bit limbs.
+;;;
+;;; A field element is (SIMPLE-ARRAY (UNSIGNED-BYTE 32) (8)), little
+;;; endian.  All intermediate values stay in fixnums on 64-bit Lisps
+;;; because every product is a 64-bit value and every accumulated sum
+;;; stays under 2^34.  Reduction uses the Solinas form of the ed25519
+;;; prime q = 2^255 - 19 (so 2^256 == 38 mod q).
+
+(deftype ed25519-fe () '(simple-array (unsigned-byte 32) (8)))
+
+(declaim (inline ed25519-fe-zero ed25519-fe-copy ed25519-fe-from-int ed25519-fe-to-int))
+
+(defun ed25519-fe-zero ()
+  (make-array 8 :element-type '(unsigned-byte 32) :initial-element 0))
+
+(defun ed25519-fe-copy (a)
+  (declare (type ed25519-fe a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((r (ed25519-fe-zero)))
+    (dotimes (i 8 r)
+      (setf (aref r i) (aref a i)))))
+
+(defun ed25519-fe-from-int (n)
+  (declare (type integer n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((r (ed25519-fe-zero)))
+    (dotimes (i 8 r)
+      (setf (aref r i) (ldb (byte 32 (* i 32)) n)))))
+
+(defun ed25519-fe-to-int (a)
+  (declare (type ed25519-fe a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((n 0))
+    (declare (type integer n))
+    (dotimes (i 8 n)
+      (setf n (dpb (aref a i) (byte 32 (* i 32)) n)))))
+
+(defun ed25519-fe-add (r a b)
+  "R := (A + B) mod Q, all reduced residues."
+  (declare (type ed25519-fe r a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((carry 0))
+    (declare (type (unsigned-byte 32) carry))
+    (dotimes (i 8)
+      (let ((s (+ (aref a i) (aref b i) carry)))
+        (setf (aref r i) (ldb (byte 32 0) s)
+              carry (ash s -32))))
+    (when (or (plusp carry)
+              (loop for i from 7 downto 0
+                    for limb = (aref r i)
+                    for qlimb = (ldb (byte 32 (* i 32)) +ed25519-q+)
+                    when (/= limb qlimb) return (> limb qlimb)
+                    finally (return t)))
+      (let ((borrow 0))
+        (declare (type (unsigned-byte 32) borrow))
+        (dotimes (i 8)
+          (let ((d (- (aref r i)
+                      (ldb (byte 32 (* i 32)) +ed25519-q+)
+                      borrow)))
+            (setf (aref r i) (ldb (byte 32 0) d)
+                  borrow (if (minusp d) 1 0)))))))
+  r)
+
+(defun ed25519-fe-sub (r a b)
+  "R := (A - B) mod Q, all reduced residues."
+  (declare (type ed25519-fe r a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((borrow 0))
+    (declare (type (unsigned-byte 32) borrow))
+    (dotimes (i 8)
+      (let ((d (- (aref a i) (aref b i) borrow)))
+        (setf (aref r i) (ldb (byte 32 0) d)
+              borrow (if (minusp d) 1 0))))
+    (when (plusp borrow)
+      (let ((carry 0))
+        (declare (type (unsigned-byte 32) carry))
+        (dotimes (i 8)
+          (let ((s (+ (aref r i)
+                      (ldb (byte 32 (* i 32)) +ed25519-q+)
+                      carry)))
+            (setf (aref r i) (ldb (byte 32 0) s)
+                  carry (ash s -32)))))))
+  r)
+
+(declaim (inline ed25519--adc ed25519--sbb))
+
+(defun ed25519--adc (a b c)
+  "Add three small words; return (VALUES word carry).
+All arguments are at most 32-bit limbs plus a small carry, so the sum
+stays under 2^34 and every operation remains in fixnums."
+  (declare (type (unsigned-byte 34) a b c)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((s (+ a b c)))
+    (values (ldb (byte 32 0) s) (ash s -32))))
+
+(defun ed25519--sbb (a b borrow)
+  "Subtract with borrow; return (VALUES word borrow-out).
+A and B are 32-bit field limbs, BORROW is 0 or 1."
+  (declare (type (unsigned-byte 32) a b)
+           (type (unsigned-byte 32) borrow)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((d (- a b borrow)))
+    (values (ldb (byte 32 0) d) (if (minusp d) 1 0))))
+
+(defun ed25519-fe-mul-raw (r a b)
+  "R := A * B as 16 limbs, no reduction.  R holds 32-bit limbs."
+  (declare (type ed25519-fe a b)
+           (type (simple-array (unsigned-byte 32) (16)) r)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (dotimes (k 16)
+    (setf (aref r k) 0))
+  (dotimes (i 8)
+    (let ((carry 0))
+      (declare (type (unsigned-byte 32) carry))
+      (dotimes (j 8)
+        (let* ((prod (* (aref a i) (aref b j)))
+               (plo (ldb (byte 32 0) prod))
+               (phi (ash prod -32))
+               (s (+ (aref r (+ i j)) plo carry)))
+          (setf (aref r (+ i j)) (ldb (byte 32 0) s)
+                carry (+ (ash s -32) phi))))
+      (setf (aref r (+ i 8)) carry)))
+  r)
+
+(defun ed25519-fe-normalize16 (c)
+  "Propagate carries so C holds 16 canonical 32-bit words."
+  (declare (type (simple-array (unsigned-byte 32) (16)) c)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (dotimes (k 15)
+    (let ((carry (ash (aref c k) -32)))
+      (declare (type (unsigned-byte 32) carry))
+      (setf (aref c k) (ldb (byte 32 0) (aref c k))
+            (aref c (1+ k)) (+ (aref c (1+ k)) carry))))
+  (setf (aref c 15) (ldb (byte 32 0) (aref c 15)))
+  c)
+
+(defun ed25519-fe-reduce16 (c)
+  "Reduce 16-limb product C modulo Q = 2^255 - 19.
+C holds 16 canonical 32-bit limbs (little endian).  Result is stored
+in the low 8 limbs of C.  HIGH limbs are clobbered.
+
+Reduction: X = LOW + HIGH * 2^256 where 2^256 == 38 (mod Q).
+So X == LOW + HIGH * 38 (mod Q).  The result is under 2*Q, so one
+conditional subtract of Q suffices."
+  (declare (type (simple-array (unsigned-byte 32) (16)) c)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  ;; Add HIGH * 38 to LOW (c[0..7]), propagating carries.
+  ;; HIGH = c[8..15].  HIGH * 38 < 38 * 2^256, so carry out of limb 7
+  ;; is at most 37 (fits in a fixnum).
+  (let ((carry 0))
+    (declare (type (unsigned-byte 32) carry))
+    (dotimes (i 8)
+      (let* ((prod (* (aref c (+ i 8)) 38))
+             (plo (ldb (byte 32 0) prod))
+             (phi (ash prod -32)))
+        (multiple-value-bind (lo c1) (ed25519--adc (aref c i) plo carry)
+          (setf (aref c i) lo
+                carry (+ c1 phi)))))
+    ;; Handle any carry out of the low 8 limbs: this is X'_HIGH (<= 37).
+    ;; X' == X'_LOW + X'_HIGH * 38 (mod Q), where X'_LOW = c[0..7].
+    (when (plusp carry)
+      (let ((prod (* carry 38))
+            (i 0))
+        (declare (type (unsigned-byte 32) i))
+        ;; Add carry * 38 to c[0], propagating.
+        (multiple-value-bind (plo phi) (values (ldb (byte 32 0) prod)
+                                               (ash prod -32))
+          (multiple-value-bind (lo c1) (ed25519--adc (aref c 0) plo 0)
+            (setf (aref c 0) lo
+                  carry (+ c1 phi)))
+          (when (plusp carry)
+            (loop while (plusp carry) do
+              (incf i)
+              (multiple-value-bind (lo c1) (ed25519--adc (aref c i) carry 0)
+                (setf (aref c i) lo
+                      carry c1))))))
+
+  ;; Conditional subtract Q if result >= Q.  Result is in c[0..7] and
+  ;; is under 2*Q (since X' < 2^256 + 38*37 < 2^256 + 1406 < 2*Q).
+  (loop for i from 7 downto 0
+        for limb = (aref c i)
+        for qlimb = (ldb (byte 32 (* i 32)) +ed25519-q+)
+        when (/= limb qlimb) do
+        (if (> limb qlimb)
+            (let ((borrow 0))
+              (declare (type (unsigned-byte 32) borrow))
+              (dotimes (j 8)
+                (let ((d (- (aref c j)
+                            (ldb (byte 32 (* j 32)) +ed25519-q+)
+                            borrow)))
+                  (setf (aref c j) (ldb (byte 32 0) d)
+                        borrow (if (minusp d) 1 0))))))
+          (return)))
+
+  c))
+
+(defun ed25519-fe-mul (r a b)
+  "R := (A * B) mod Q for reduced residues in limb form."
+  (declare (type ed25519-fe r a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((c (make-array 16 :element-type '(unsigned-byte 32)
+                       :initial-element 0)))
+    (declare (dynamic-extent c))
+    (ed25519-fe-mul-raw c a b)
+    (ed25519-fe-normalize16 c)
+    (ed25519-fe-reduce16 c)
+    ;; Copy low 8 limbs to R.
+    (dotimes (i 8 r)
+      (setf (aref r i) (aref c i)))))
+
+(defun ed25519-fe-sq (r a)
+  "R := A^2 mod Q."
+  (declare (type ed25519-fe r a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (ed25519-fe-mul r a a))
+
+(defun ed25519-fe-equal (a b)
+  (declare (type ed25519-fe a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (dotimes (i 8 t)
+    (unless (= (aref a i) (aref b i))
+      (return nil))))
+
+(defun ed25519-fe-is-zero (a)
+  (declare (type ed25519-fe a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (dotimes (i 8 t)
+    (unless (zerop (aref a i))
+      (return nil))))
+
+(defconstant +ed25519-q-minus-2+ (- +ed25519-q+ 2))
+
+(declaim (inline ed25519-fe-inv))
+(defun ed25519-fe-inv (a)
+  "Field element inverse via Fermat's little theorem: A^(Q-2) mod Q."
+  (declare (type ed25519-fe a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((result (ed25519-fe-from-int 1))
+        (base a))
+    (declare (type ed25519-fe result base))
+    (loop for i from (1- (integer-length +ed25519-q-minus-2+)) downto 0
+          do (ed25519-fe-sq result result)
+             (when (logbitp i +ed25519-q-minus-2+)
+               (ed25519-fe-mul result result base)))
+    result))
+
 (defmethod ec-scalar-inv ((kind (eql :ed25519)) n)
-  (expt-mod n (- +ed25519-q+ 2) +ed25519-q+))
+  ;; Field-element Fermat inversion is faster than bignum expt-mod.
+  (declare (type integer n))
+  (if (zerop n)
+      0
+      (ed25519-fe-to-int (ed25519-fe-inv (ed25519-fe-from-int n)))))
 
 (defun ed25519-recover-x (y)
   "Recover the X coordinate of a point on ed25519 curve from the Y coordinate."
@@ -158,6 +408,17 @@
               (slot-value dst 'w) w3)
         dst))))
 
+(declaim (inline ed25519-point-copy!))
+(defun ed25519-point-copy! (dst src)
+  "Copy point SRC into DST."
+  (declare (type ed25519-point dst src)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (setf (slot-value dst 'x) (slot-value src 'x)
+        (slot-value dst 'y) (slot-value src 'y)
+        (slot-value dst 'z) (slot-value src 'z)
+        (slot-value dst 'w) (slot-value src 'w))
+  dst)
+
 ;;; Scalar multiplication for arbitrary points (not the generator).
 ;;; Uses destination-based Montgomery ladder to avoid consing intermediate
 ;;; points.  This is used by ed25519-verify for the public-key multiplication.
@@ -241,17 +502,24 @@ No consing of intermediate points - uses 4 pre-allocated point objects."
         (setf sel (aref table i))))))
 
 (defun ed25519-base-mult (k)
-  "Fixed-base 4-bit comb for G (secret scalar, fixed schedule)."
+  "Fixed-base 4-bit comb for G (secret scalar, fixed schedule).
+Destination-based: reuses pre-allocated point buffers instead of
+consing a new point per ec-double/ec-add."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer k))
   (let ((table (ed25519-ensure-base-table))
-        (acc +ed25519-point-at-infinity+))
+        (acc +ed25519-point-at-infinity+)
+        (tmp (make-instance 'ed25519-point :x 0 :y 0 :z 0 :w 0))
+        (out (make-instance 'ed25519-point :x 0 :y 0 :z 0 :w 0))
+        (sel (make-instance 'ed25519-point :x 0 :y 0 :z 0 :w 0)))
     (loop for j from 63 downto 0 do          ; 256 bits / 4 = 64 nibbles
       (dotimes (i 4)
-        (setf acc (ec-double acc)))
-      (let ((sel (ed25519-select-base table (ldb (byte 4 (* j 4)) k))))
-        (unless (eq sel +ed25519-point-at-infinity+)
-          (setf acc (ec-add acc sel)))))
+        (ed25519-double! tmp acc)
+        (ed25519-point-copy! acc tmp))
+      (setf sel (ed25519-select-base table (ldb (byte 4 (* j 4)) k)))
+      (unless (eq sel +ed25519-point-at-infinity+)
+        (ed25519-add! out acc sel)
+        (setf acc out)))
     acc))
 
 (defmethod ec-scalar-mult ((p ed25519-point) e)
