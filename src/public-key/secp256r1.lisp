@@ -211,15 +211,32 @@
   (declare (type secp256r1-fe r a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((c (make-array 16 :element-type '(unsigned-byte 64)
-                       :initial-element 0))
-        (p (secp256r1-fe-zero))
+                       :initial-element 0)))
+    (declare (dynamic-extent c))
+    (secp256r1-fe-mul-raw c a b)
+    #+(and sbcl x86-64 ironclad-assembly)
+    (let ((q (secp256r1-fe-zero)))
+      (declare (dynamic-extent q))
+      (secp256r1-fe-reduce-asm r q c))
+    #-(and sbcl x86-64 ironclad-assembly)
+    (progn
+      (secp256r1-fe-normalize16 c)
+      (secp256r1-fe-solinas r c)))
+  r)
+
+(defun secp256r1-fe-solinas (r c)
+  "R := C mod P via the P-256 Solinas reduction.
+C holds 16 possibly non-canonical (UNSIGNED-BYTE 64) limbs; callers
+normalize first unless the words are already canonical."
+  (declare (type secp256r1-fe r)
+           (type (simple-array (unsigned-byte 64) (16)) c)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((p (secp256r1-fe-zero))
         (n (secp256r1-fe-zero))
         (hp 0)
         (hn 0))
     (declare (type (unsigned-byte 64) hp hn)
-             (dynamic-extent c p n))
-    (secp256r1-fe-mul-raw c a b)
-    (secp256r1-fe-normalize16 c)
+             (dynamic-extent p n))
     ;; P := S1 + 2*S2 + 2*S3 + S4 + S5, N := S6 + S7 + S8 + S9.
     ;; Each SI is under 2^256, so P < 7*2^256 and N < 4*2^256.
     ;; Words below are (C15 .. C0), high word to low word.
@@ -339,7 +356,7 @@
                                     borrow)
                   (setf (aref r i) word
                         borrow b1)))))))))
-  r)
+    r)
 
 (defun secp256r1-fe-equal (a b)
   "T when limb vectors A and B hold the same value."
