@@ -109,16 +109,28 @@ to be complete."
     output))
 
 (defun ccm-cbc-feed (mode data start end)
-  "Absorb DATA[START,END) into the CBC-MAC chain, buffering partials."
+  "Absorb DATA[START,END) into the CBC-MAC chain, buffering partials.
+When PENDING is empty and at least 16 bytes remain, XOR a full block
+directly into the chain and encrypt, avoiding per-byte PENDING pushes."
   (declare (type (vector (unsigned-byte 8)) data))
-  (let ((pending (ccm-pending mode)))
+  (let ((pending (ccm-pending mode))
+        (chain (ccm-chain mode)))
     (loop with pos = start
-          do (loop while (and (< (fill-pointer pending) 16) (< pos end))
-                   do (vector-push-extend (aref data pos) pending)
-                      (incf pos))
-             (when (< (fill-pointer pending) 16)
-               (return))
-             (ccm-process-pending-block mode)
+          do (cond
+               ((and (zerop (fill-pointer pending))
+                     (<= 16 (- end pos)))
+                (dotimes (i 16)
+                  (setf (aref chain i)
+                        (logxor (aref chain i)
+                                (aref data (+ pos i)))))
+                (replace chain (ccm-ecb-block mode chain))
+                (incf pos 16))
+               (t
+                (loop while (and (< (fill-pointer pending) 16) (< pos end))
+                      do (vector-push-extend (aref data pos) pending)
+                         (incf pos))
+                (when (= (fill-pointer pending) 16)
+                  (ccm-process-pending-block mode))))
           while (< pos end))
     (values)))
 
