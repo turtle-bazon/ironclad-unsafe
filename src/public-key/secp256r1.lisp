@@ -665,7 +665,36 @@ reusing scratch pool S. DST must differ from P."
            (type integer e))
   (if (and (eq p +secp256r1-g+) (not (minusp e)))
       (secp256r1-base-mult e)
-      (%ec-ladder-mult p e :bits +secp256r1-bits+)))
+      (secp256r1-ladder-mult p e)))
+
+(defun secp256r1-ladder-mult (point e)
+  "Fixed-schedule Montgomery ladder using destination-passing ops."
+  (declare (type secp256r1-point point)
+           (type integer e)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (when (minusp e)
+    (error "negative scalars are not supported by secp256r1-ladder-mult"))
+  (if (zerop e)
+      +secp256r1-point-at-infinity+
+      (let ((r0 (secp256r1-point-from-ints 1 1 0))
+            (r1 point)
+            (tmp (secp256r1-point-from-ints 1 1 0))
+            (s (secp256r1-make-scratch)))
+        (declare (type secp256r1-point r0 r1 tmp)
+                 (type simple-vector s))
+        (dotimes (i (1- +secp256r1-bits+) -1)
+          (if (logbitp i e)
+              (progn
+                (secp256r1-mixed-add! tmp r0 r1 s)
+                (secp256r1-double! tmp r1 s)
+                (secp256r1-point-copy! r0 tmp)
+                (secp256r1-point-copy! r1 tmp))
+              (progn
+                (secp256r1-mixed-add! tmp r1 r0 s)
+                (secp256r1-double! tmp r0 s)
+                (secp256r1-point-copy! r1 tmp)
+                (secp256r1-point-copy! r0 tmp))))
+        r0)))
 
 (defmethod ec-point-on-curve-p ((p secp256r1-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
