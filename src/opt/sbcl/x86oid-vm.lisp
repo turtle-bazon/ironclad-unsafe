@@ -1341,9 +1341,9 @@
       ;; Load data into XMM registers
       (inst movdqu xmm0 (ea (+ data-offset (* 4 0)) x))
       (inst movdqu xmm1 (ea (+ data-offset (* 4 0)) y))
-      ;; Emit SHA256MSG1: 0F 38 C9 /r
+      ;; Emit SHA256MSG1: 0F 38 CC /r
       ;; For xmm0, xmm1: ModR/M = 0xC1
-      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0F #x38 #xC9 #xC1))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0F #x38 #xCC #xC1))
       ;; Store result back
       (inst movdqu (ea (+ data-offset (* 4 0)) x) xmm0))))
 
@@ -1362,9 +1362,9 @@
       ;; Load data into XMM registers
       (inst movdqu xmm0 (ea (+ data-offset (* 4 0)) x))
       (inst movdqu xmm1 (ea (+ data-offset (* 4 0)) y))
-      ;; Emit SHA256MSG2: 0F 38 CA /r
+      ;; Emit SHA256MSG2: 0F 38 CD /r
       ;; For xmm0, xmm1: ModR/M = 0xC1
-      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0F #x38 #xCA #xC1))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0F #x38 #xCD #xC1))
       ;; Store result back
       (inst movdqu (ea (+ data-offset (* 4 0)) x) xmm0))))
 
@@ -1388,3 +1388,88 @@
       (sb-assem:emit sb-assem::*current-destination* '(.byte #x0F #x38 #xCB #xC1))
       ;; Store result back
       (inst movdqu (ea (+ data-offset (* 4 0)) x) xmm1))))
+
+#+x86-64
+(define-vop (secp256r1-sha256ni-rnds2-3)
+  (:translate ironclad::sha256ni-rnds2-3)
+  (:policy :fast-safe)
+  (:args (kw :scs (descriptor-reg))
+         (dst :scs (descriptor-reg))
+         (src :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32)
+  (:temporary (:sc double-reg) xmm0 xmm1 xmm2)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (inst movdqu xmm0 (ea (+ data-offset (* 4 0)) kw))
+      (inst movdqu xmm1 (ea (+ data-offset (* 4 0)) dst))
+      (inst movdqu xmm2 (ea (+ data-offset (* 4 0)) src))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0F #x38 #xCB #xCA))
+      (inst movdqu (ea (+ data-offset (* 4 0)) dst) xmm1))))
+
+#+x86-64
+(define-vop (secp256r1-sha256ni-paddd)
+  (:translate ironclad::sha256ni-paddd)
+  (:policy :fast-safe)
+  (:args (dst :scs (descriptor-reg))
+         (src :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32)
+  (:temporary (:sc double-reg) xmm0 xmm1)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (inst movdqu xmm0 (ea (+ data-offset (* 4 0)) dst))
+      (inst movdqu xmm1 (ea (+ data-offset (* 4 0)) src))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x66 #x0F #xFE #xC1)) ; paddd xmm0, xmm1? ModR/M #xC1 = xmm0,xmm1
+      (inst movdqu (ea (+ data-offset (* 4 0)) dst) xmm0))))
+
+#+x86-64
+(define-vop (secp256r1-sha256ni-pshufd-0e)
+  (:translate ironclad::sha256ni-pshufd-0e)
+  (:policy :fast-safe)
+  (:args (dst :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-32)
+  (:temporary (:sc double-reg) xmm0)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (inst movdqu xmm0 (ea (+ data-offset (* 4 0)) dst))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x66 #x0F #x70 #xC0 #x0E))
+      (inst movdqu (ea (+ data-offset (* 4 0)) dst) xmm0))))
+
+#+x86-64
+(define-vop (secp256r1-sha256ni-pshufb)
+  (:translate ironclad::sha256ni-pshufb)
+  (:policy :fast-safe)
+  (:args (dst :scs (descriptor-reg))
+         (mask :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-8)
+  (:temporary (:sc double-reg) xmm0 xmm1)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (inst movdqu xmm0 (ea (+ data-offset (* 4 0)) dst))
+      (inst movdqu xmm1 (ea (+ data-offset (* 4 0)) mask))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x66 #x0F #x38 #x00 #xC1))
+      (inst movdqu (ea (+ data-offset (* 4 0)) dst) xmm0))))
+
+#+x86-64
+(define-vop (secp256r1-sha256ni-palignr-4)
+  (:translate ironclad::sha256ni-palignr-4)
+  (:policy :fast-safe)
+  (:args (dst :scs (descriptor-reg))
+         (src :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32)
+  (:temporary (:sc double-reg) xmm0 xmm1)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (inst movdqu xmm0 (ea (+ data-offset (* 4 0)) dst))
+      (inst movdqu xmm1 (ea (+ data-offset (* 4 0)) src))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x66 #x0F #x3A #x0F #xC1 #x04))
+      (inst movdqu (ea (+ data-offset (* 4 0)) dst) xmm0))))

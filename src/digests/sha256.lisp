@@ -171,26 +171,8 @@
 ;;; These operate on XMM registers (128-bit SSE registers) and provide
 ;;; hardware acceleration for SHA-256 compression.
 
-#+x86-64
-(defun sha256ni-msg1 (x y)
-  "SHA256MSG1: Prepare message schedule words (scalar fallback)."
-  (declare (type (simple-array (unsigned-byte 32) (16)) x y))
-  (declare (ignore y))
-  x)
-
-#+x86-64
-(defun sha256ni-msg2 (x y)
-  "SHA256MSG2: Prepare message schedule words (scalar fallback)."
-  (declare (type (simple-array (unsigned-byte 32) (16)) x y))
-  (declare (ignore y))
-  x)
-
-#+x86-64
-(defun sha256ni-rnds2 (x y)
-  "SHA256RNDS2: Perform 2 rounds of SHA-256 compression (scalar fallback)."
-  (declare (type (simple-array (unsigned-byte 32) (16)) x y))
-  (declare (ignore y))
-  x)
+;;; The primitives below are SBCL VOPs; see the note below the digest
+;;; definitions.  Only the portable reference scheduler lives here.
 
 #+x86-64
 (defun sha256ni-process-block (state-vec msg-vec)
@@ -332,3 +314,14 @@
 
 (defdigest sha256 :digest-length 32 :block-length 64)
 (defdigest sha224 :digest-length 28 :block-length 64)
+
+;;; NOTE: SHA256NI-MSG1, -MSG2, -RNDS2, -RNDS2-3, -PADDD, -PSHUFD-0E,
+;;; -PSHUFB and -PALIGNR-4 are SBCL VOPs defined in
+;;; src/opt/sbcl/x86oid-vm.lisp.  They deliberately have no Lisp
+;;; definition here: defining one would shadow the VOP translation and
+;;; silently fall back to the portable path.  Their signatures are
+;;; declared with DEFKNOWN in src/opt/sbcl/fndb.lisp, e.g.
+;;;
+;;;   (sha256ni-msg1 x y)            ; X := SHA256MSG1(X, Y)
+;;;   (sha256ni-rnds2-3 kw dst src)  ; DST := SHA256RNDS2(KW, DST, SRC)
+;;;   (sha256ni-paddd dst src)       ; DST := DST + SRC (mod 2^32)

@@ -245,3 +245,43 @@
   :overwrite-fndb-silently t)
 
 );#+sbcl
+
+#+x86-64
+(defknown ironclad::sha256ni-rnds2-3
+  ((simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 32) (*)))
+  (values simple-array)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
+(defknown ironclad::sha256ni-paddd
+  ((simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 32) (*)))
+  (values simple-array)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
+(defknown ironclad::sha256ni-pshufd-0e
+  ((simple-array (unsigned-byte 32) (*)))
+  (values simple-array)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
+(defknown ironclad::sha256ni-pshufb
+  ((simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 8) (*)))
+  (values simple-array)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
+(defknown ironclad::sha256ni-palignr-4
+  ((simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 32) (*)))
+  (values simple-array)
+  (any)
+  :overwrite-fndb-silently t)
