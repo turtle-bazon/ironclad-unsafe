@@ -73,6 +73,7 @@
 (defconstant +ml-kem-invntt-f+ 1441)
 
 (deftype ml-kem-poly () '(simple-array fixnum (256)))
+(declaim (inline ml-kem-poly-reduce ml-kem-poly-add ml-kem-poly-sub ml-kem-poly-shiftl))
 (declaim (inline ml-kem-montgomery-reduce ml-kem-barrett-reduce ml-kem-fqmul ml-kem-freeze))
 
 (defun ml-kem-new-poly ()

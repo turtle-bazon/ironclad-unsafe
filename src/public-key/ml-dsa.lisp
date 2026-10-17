@@ -98,6 +98,7 @@
                     -554416 3919660 -48306 -1362209 3937738 1400424 -846154 1976782)))
 
 (deftype ml-dsa-poly () '(simple-array fixnum (256)))
+(declaim (inline ml-dsa-poly-reduce ml-dsa-poly-caddq ml-dsa-poly-add ml-dsa-poly-sub ml-dsa-poly-shiftl ml-dsa-pointwise-montgomery))
 (declaim (inline ml-dsa-montgomery-reduce ml-dsa-reduce32 ml-dsa-caddq ml-dsa-freeze ml-dsa-fqmul))
 (declaim (optimize (speed 3) (safety 0) (space 0) (debug 0)))
 
