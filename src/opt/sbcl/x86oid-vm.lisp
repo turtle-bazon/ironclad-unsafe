@@ -1387,4 +1387,4 @@
       ;; For xmm0, xmm1: ModR/M = 0xC1
       (sb-assem:emit sb-assem::*current-destination* '(.byte #x0F #x38 #xCB #xC1))
       ;; Store result back
-      (inst movdqu (ea (+ data-offset (* 4 0)) x) xmm0))))
+      (inst movdqu (ea (+ data-offset (* 4 0)) x) xmm1))))
