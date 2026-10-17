@@ -173,26 +173,23 @@
 
 #+x86-64
 (defun sha256ni-msg1 (x y)
-  "SHA256MSG1: Prepare message schedule words.
-   XMM1 = SHA256MSG1(XMM1, XMM2)"
+  "SHA256MSG1: Prepare message schedule words (scalar fallback)."
   (declare (type (simple-array (unsigned-byte 32) (16)) x y))
-  (secp256r1-sha256ni-msg1 x y)
+  (declare (ignore y))
   x)
 
 #+x86-64
 (defun sha256ni-msg2 (x y)
-  "SHA256MSG2: Prepare message schedule words.
-   XMM1 = SHA256MSG2(XMM1, XMM2)"
+  "SHA256MSG2: Prepare message schedule words (scalar fallback)."
   (declare (type (simple-array (unsigned-byte 32) (16)) x y))
-  (secp256r1-sha256ni-msg2 x y)
+  (declare (ignore y))
   x)
 
 #+x86-64
 (defun sha256ni-rnds2 (x y)
-  "SHA256RNDS2: Perform 2 rounds of SHA-256 compression.
-   XMM1 = SHA256RNDS2(XMM1, XMM2)"
+  "SHA256RNDS2: Perform 2 rounds of SHA-256 compression (scalar fallback)."
   (declare (type (simple-array (unsigned-byte 32) (16)) x y))
-  (secp256r1-sha256ni-rnds2 x y)
+  (declare (ignore y))
   x)
 
 #+x86-64

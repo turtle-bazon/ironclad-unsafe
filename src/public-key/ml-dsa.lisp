@@ -98,6 +98,8 @@
                     -554416 3919660 -48306 -1362209 3937738 1400424 -846154 1976782)))
 
 (deftype ml-dsa-poly () '(simple-array fixnum (256)))
+(declaim (inline ml-dsa-montgomery-reduce ml-dsa-reduce32 ml-dsa-caddq ml-dsa-freeze ml-dsa-fqmul))
+(declaim (optimize (speed 3) (safety 0) (space 0) (debug 0)))
 
 (defun ml-dsa-new-poly ()
   (make-array 256 :element-type 'fixnum :initial-element 0))
@@ -176,7 +178,8 @@
 
 (defun ml-dsa-ntt (r)
   "In-place forward NTT.  No modular reduction after adds/subs."
-  (declare (type ml-dsa-poly r))
+  (declare (type ml-dsa-poly r)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((k 0))
     (declare (type fixnum k))
     (loop for len = 128 then (ash len -1)
@@ -191,7 +194,8 @@
 
 (defun ml-dsa-invntt-tomont (r)
   "In-place inverse NTT with Montgomery-domain output."
-  (declare (type ml-dsa-poly r))
+  (declare (type ml-dsa-poly r)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((k 256)
         (f +ml-dsa-invntt-f+))
     (declare (type fixnum k))

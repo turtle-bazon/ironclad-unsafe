@@ -1343,10 +1343,10 @@
       (inst movdqu xmm1 (ea (+ data-offset (* 4 0)) y))
       ;; Emit SHA256MSG1: 0F 38 C9 /r
       ;; For xmm0, xmm1: ModR/M = 0xC1
-      (sb-assem:emit-byte #x0F)
-      (sb-assem:emit-byte #x38)
-      (sb-assem:emit-byte #xC9)
-      (sb-assem:emit-byte #xC1)
+      (sb-assem:emit-byte segment #x0F)
+      (sb-assem:emit-byte segment #x38)
+      (sb-assem:emit-byte segment #xC9)
+      (sb-assem:emit-byte segment #xC1)
       ;; Store result back
       (inst movdqu (ea (+ data-offset (* 4 0)) x) xmm0))))
 
@@ -1367,10 +1367,10 @@
       (inst movdqu xmm1 (ea (+ data-offset (* 4 0)) y))
       ;; Emit SHA256MSG2: 0F 38 CA /r
       ;; For xmm0, xmm1: ModR/M = 0xC1
-      (sb-assem:emit-byte #x0F)
-      (sb-assem:emit-byte #x38)
-      (sb-assem:emit-byte #xCA)
-      (sb-assem:emit-byte #xC1)
+      (sb-assem:emit-byte segment #x0F)
+      (sb-assem:emit-byte segment #x38)
+      (sb-assem:emit-byte segment #xCA)
+      (sb-assem:emit-byte segment #xC1)
       ;; Store result back
       (inst movdqu (ea (+ data-offset (* 4 0)) x) xmm0))))
 
@@ -1391,9 +1391,9 @@
       (inst movdqu xmm1 (ea (+ data-offset (* 4 0)) y))
       ;; Emit SHA256RNDS2: 0F 38 CB /r
       ;; For xmm0, xmm1: ModR/M = 0xC1
-      (sb-assem:emit-byte #x0F)
-      (sb-assem:emit-byte #x38)
-      (sb-assem:emit-byte #xCB)
-      (sb-assem:emit-byte #xC1)
+      (sb-assem:emit-byte segment #x0F)
+      (sb-assem:emit-byte segment #x38)
+      (sb-assem:emit-byte segment #xCB)
+      (sb-assem:emit-byte segment #xC1)
       ;; Store result back
       (inst movdqu (ea (+ data-offset (* 4 0)) x) xmm0))))
