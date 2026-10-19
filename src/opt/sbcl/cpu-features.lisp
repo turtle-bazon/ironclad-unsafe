@@ -37,24 +37,6 @@
                                   when (search "vendor_id" line)
                                   return (not (null (search "AuthenticAMD" line)))))))))
 
-;;; SHA-NI runtime probe: actually execute a SHA-NI instruction and catch
-;;; SIGILL.  Used to detect environments where CPUID advertises SHA-NI but
-;;; the instructions are not executable.
-#+(and sbcl x86-64 ironclad-assembly)
-(defun sha-ni-probe ()
-  (catch 'sha-ni-sigill
-    (sb-sys:enable-interrupt sb-unix:sigill
-      (lambda (signal code frame)
-        (declare (ignore signal code frame))
-        (throw 'sha-ni-sigill nil)))
-    (let ((compress (find-symbol "SHA256NI-COMPRESS" :crypto)))
-      (when compress
-        (let ((regs (make-array 8 :element-type '(unsigned-byte 32) :initial-element 0))
-              (block (make-array 64 :element-type '(unsigned-byte 32) :initial-element 0)))
-          (funcall compress regs block))))
-    (sb-sys:enable-interrupt sb-unix:sigill :default)
-    t))
-
 ;;; SHA-NI support probe.
 ;;;;
 ;;; Deliberately NOT inlined.  Inlining this drags the CPUID VOP into every
@@ -71,22 +53,48 @@
 #+(and sbcl x86-64)
 (declaim (notinline sha-ni-supported-p))
 #+(and sbcl x86-64)
+(defun sha-ni-probe-via-subprocess ()
+  "Probe SHA-NI by running a tiny test program in a subprocess.
+Returns T if SHA-NI works, NIL if it SIGILLs or is unavailable."
+  (let ((test-file "/tmp/sha_ni_probe_test.s")
+        (obj-file "/tmp/sha_ni_probe_test.o")
+        (bin-file "/tmp/sha_ni_probe_test"))
+    (handler-case
+        (progn
+          (with-open-file (s test-file :direction :output :if-exists :supersede)
+            (format s ".globl _start~%_start:~%")
+            (if (amd-cpu-p)
+                (format s "    .byte 0x0F, 0x38, 0xCB, 0xD1~%")
+                (format s "    .byte 0x66, 0x0F, 0x38, 0xCB, 0xD1, 0x00~%"))
+            (write-string "    movq $60, %rax
+    xorq %rdi, %rdi
+    syscall
+" s))
+          (let ((as-result (sb-ext:run-program "as" (list test-file "-o" obj-file)
+                                               :search t :wait t)))
+            (unless (and as-result (zerop (sb-ext:process-exit-code as-result)))
+              (return-from sha-ni-probe-via-subprocess nil)))
+          (let ((ld-result (sb-ext:run-program "ld" (list obj-file "-o" bin-file)
+                                               :search t :wait t)))
+            (unless (and ld-result (zerop (sb-ext:process-exit-code ld-result)))
+              (return-from sha-ni-probe-via-subprocess nil)))
+          (let ((run-result (sb-ext:run-program bin-file nil :search nil :wait t)))
+            (and run-result (zerop (sb-ext:process-exit-code run-result)))))
+      (error (c)
+        (declare (ignore c))
+        nil))))
+
+#+(and sbcl x86-64)
 (defun sha-ni-supported-p ()
   (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
-  ;; SHA-NI can be disabled at runtime.  In virtualised or containerised
-  ;; environments the CPUID leaf that advertises SHA-NI is sometimes passed
-  ;; through from a host that has it, while the SHA-NI instructions
-  ;; themselves are not executable there (observed as SIGILL).  CPUID alone
-  ;; cannot detect this, so we probe by actually executing a SHA-NI
-  ;; instruction behind a SIGILL handler.
-  (cond (#-ironclad-assembly nil
-         #+ironclad-assembly
-         (if sha-ni-support-known-p
-             sha-ni-supported-p
-             (setf sha-ni-support-known-p t
-                   sha-ni-supported-p
-                   (and (sha-ni-support-p)
-                        (sha-ni-probe)))))))
+  #+ironclad-assembly
+  (if sha-ni-support-known-p
+      sha-ni-supported-p
+      (setf sha-ni-support-known-p t
+            sha-ni-supported-p
+            (and (sha-ni-support-p)
+                 (sha-ni-probe-via-subprocess))))
+  #-ironclad-assembly nil)
 
 #+(and sbcl x86-64)
 (sb-ext:defglobal pclmulqdq-support-known-p nil)
