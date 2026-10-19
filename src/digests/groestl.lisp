@@ -1491,10 +1491,14 @@
                                                  (aref temp i))))))
 
     ;; Truncate the final hash value to generate the message digest
-    (let ((output (make-array block-size :element-type '(unsigned-byte 8))))
-      (dotimes (i (length groestl-state))
-        (setf (ub64ref/be output (* i 8)) (aref groestl-state i)))
-      (replace digest output :start1 digest-start :start2 (- block-size digest-length))
+    (let ((start-byte (- block-size digest-length)))
+      (dotimes (j digest-length)
+        (let* ((p (+ start-byte j))
+               (wi (truncate p 8))
+               (bi (mod p 8))
+               (word (aref groestl-state wi)))
+          (setf (aref digest (+ digest-start j))
+                (ldb (byte 8 (* (- 7 bi) 8)) word))))
       digest)))
 
 (define-digest-updater groestl
