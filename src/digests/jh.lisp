@@ -499,10 +499,14 @@
           (jh-f8 state)))
 
     ;; Truncate the final hash value to generate the message digest
-    (let ((output (make-array +jh-block-size+ :element-type '(unsigned-byte 8))))
-      (dotimes (i 8)
-        (setf (ub64ref/le output (* i 8)) (aref jh-state (+ i 8))))
-      (replace digest output :start1 digest-start :start2 (- +jh-block-size+ digest-length))
+    (let ((start-byte (- +jh-block-size+ digest-length)))
+      (dotimes (j digest-length)
+        (let* ((p (+ start-byte j))
+               (wi (truncate p 8))
+               (bi (mod p 8))
+               (word (aref jh-state (+ 8 wi))))
+          (setf (aref digest (+ digest-start j))
+                (ldb (byte 8 (* bi 8)) word))))
       digest)))
 
 (define-digest-updater jh
