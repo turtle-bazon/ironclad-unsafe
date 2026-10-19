@@ -636,7 +636,10 @@ arithmetic on the (possibly negative) coefficients."
 ;;; lookup, and -- worse -- PRODUCE-DIGEST copies the entire sponge state
 ;;; first so that the caller's digest object survives.  Here the object is
 ;;; fresh and discarded, so that copy is pure waste.  For a 504-byte
-;;; SHAKE128 squeeze (one ML-KEM matrix entry) it is ~20% of the call.
+;;; SHAKE128 squeeze it is roughly 10%, and about 3% of an ML-KEM-768
+;;; keygen end to end.  (Those figures are best-of-9 samples measured in a
+;;; single process; an earlier note here said ~20%, which came from a
+;;; single timing sample and was optimistic.)
 
 (defun ml-kem-shake128 (input output-length)
   "SHAKE128 XOF squeeze of INPUT to OUTPUT-LENGTH octets."

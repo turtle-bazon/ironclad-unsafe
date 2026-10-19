@@ -43,11 +43,20 @@
                   (>= count *max-count*))
           (return (values count elapsed)))))))
 
+(defparameter *trials* 5
+  "Number of independent timing samples per operation.  A single sample is
+not enough: on a shared or otherwise noisy machine the spread between
+repeats of the same unmodified operation is routinely 2x, which is larger
+than most of the wins being measured.  Report the best sample, i.e. the
+one least polluted by interference from other work.")
+
 (defun items-per-second (thunk)
-  (multiple-value-bind (count elapsed) (time-op thunk)
-    (if (zerop elapsed)
-        0.0d0
-        (/ (coerce count 'double-float) elapsed))))
+  (let ((best 0.0d0))
+    (dotimes (_ (max 1 *trials*))
+      (multiple-value-bind (count elapsed) (time-op thunk)
+        (when (plusp elapsed)
+          (setf best (max best (/ (coerce count 'double-float) elapsed))))))
+    best))
 
 (defun bytes-per-second (thunk)
   (multiple-value-bind (count elapsed) (time-op thunk)
