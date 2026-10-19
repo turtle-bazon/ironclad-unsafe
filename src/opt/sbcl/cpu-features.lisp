@@ -59,14 +59,14 @@
 Linux:   check /proc/cpuinfo for the 'sha_ni' flag (most reliable).
 macOS:   sysctl hw.optional.sha256 (or hw.optional.sha).
 FreeBSD: sysctl hw.instruction_sse or cpu features.
-Other:   fall back to CPUID leaf 7, subleaf 0, EBX bit 29."
+Other:   disabled (no reliable cross-platform detection available)."
   #+linux
   (with-open-file (stream "/proc/cpuinfo" :if-does-not-exist nil)
     (when stream
       (loop for line = (read-line stream nil nil)
             while line
-            when (search "flags" line)
-            return (not (null (search "sha_ni" line))))))
+            thereis (and (search "flags" line)
+                         (search "sha_ni" line)))))
   #+darwin
   (handler-case
       (let ((output (uiop:run-program '("sysctl" "-n" "hw.optional.sha256")
