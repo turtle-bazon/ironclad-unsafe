@@ -53,16 +53,35 @@
 #+(and sbcl x86-64)
 (declaim (notinline sha-ni-supported-p))
 #+(and sbcl x86-64)
-(defun sha-ni-cpuinfo-has-sha-ni-p ()
-  "Check /proc/cpuinfo for the sha_ni flag.  CPUID bit 29 is unreliable
-on pre-Zen AMD CPUs (e.g. AMD A10-7700K reports it but the instructions
-SIGILL), so we trust the kernel's feature list instead."
+(defun sha-ni-os-supported-p ()
+  "Cross-platform SHA-NI detection.
+
+Linux:   check /proc/cpuinfo for the 'sha_ni' flag (most reliable).
+macOS:   sysctl hw.optional.sha256 (or hw.optional.sha).
+FreeBSD: sysctl hw.instruction_sse or cpu features.
+Other:   fall back to CPUID leaf 7, subleaf 0, EBX bit 29."
+  #+linux
   (with-open-file (stream "/proc/cpuinfo" :if-does-not-exist nil)
     (when stream
       (loop for line = (read-line stream nil nil)
             while line
             when (search "flags" line)
-            return (not (null (search "sha_ni" line)))))))
+            return (not (null (search "sha_ni" line))))))
+  #+darwin
+  (handler-case
+      (let ((output (uiop:run-program '("sysctl" "-n" "hw.optional.sha256")
+                                      :ignore-error-status t :output :string)))
+        (and output (string/= (string-trim '(#\Space #\Newline) output) "")
+             (not (string= (string-trim '(#\Space #\Newline) output) "0"))))
+    (error () nil))
+  #+freebsd
+  (handler-case
+      (let ((output (uiop:run-program '("sysctl" "-n" "hw.instruction_sse")
+                                      :ignore-error-status t :output :string)))
+        (and output (search "SHA" output :test #'char-equal)))
+    (error () nil))
+  #-(or linux darwin freebsd)
+  nil)
 
 #+(and sbcl x86-64)
 (defun sha-ni-supported-p ()
@@ -71,7 +90,7 @@ SIGILL), so we trust the kernel's feature list instead."
   (if sha-ni-support-known-p
       sha-ni-supported-p
       (setf sha-ni-support-known-p t
-            sha-ni-supported-p (sha-ni-cpuinfo-has-sha-ni-p)))
+            sha-ni-supported-p (sha-ni-os-supported-p)))
   #-ironclad-assembly nil)
 
 #+(and sbcl x86-64)
