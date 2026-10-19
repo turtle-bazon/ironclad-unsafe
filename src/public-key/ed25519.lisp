@@ -219,24 +219,17 @@ conditional subtract of Q suffices."
               (incf i)
               (multiple-value-bind (lo c1) (ed25519--adc (aref c i) carry 0)
                 (setf (aref c i) lo
-                      carry c1))))))
+                      carry c1)))))))
 
   ;; Conditional subtract Q if result >= Q.  Result is in c[0..7] and
   ;; is under 2*Q (since X' < 2^256 + 38*37 < 2^256 + 1406 < 2*Q).
-  (loop for i from 7 downto 0
-        for limb = (aref c i)
-        for qlimb = (ldb (byte 32 (* i 32)) +ed25519-q+)
-        when (/= limb qlimb) do
-        (if (> limb qlimb)
-            (let ((borrow 0))
-              (declare (type (unsigned-byte 32) borrow))
-              (dotimes (j 8)
-                (let ((d (- (aref c j)
-                            (ldb (byte 32 (* j 32)) +ed25519-q+)
-                            borrow)))
-                  (setf (aref c j) (ldb (byte 32 0) d)
-                        borrow (if (minusp d) 1 0))))))
-          (return)))
+  ;; Reduce c[0..7] mod Q (bignum, simple, correct).
+  (let ((x 0))
+    (dotimes (i 8)
+      (setf x (dpb (aref c i) (byte 32 (* i 32)) x)))
+    (setf x (mod x +ed25519-q+))
+    (dotimes (i 8)
+      (setf (aref c i) (ldb (byte 32 (* i 32)) x))))
 
   c))
 
