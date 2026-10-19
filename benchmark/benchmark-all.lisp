@@ -1,6 +1,25 @@
 ;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;; benchmark-all.lisp -- benchmark all Ironclad algorithms.
 ;;;
+;;; Usage (from the repository root):
+;;;
+;;;   sbcl --load ~/quicklisp/setup.lisp --script benchmark/benchmark-all.lisp
+;;;
+;;; Two details are easy to get wrong.  Quicklisp must be loaded first,
+;;; because Ironclad depends on bordeaux-threads and a bare `--script` run
+;;; cannot take `--eval` arguments ahead of the script.  And the script must
+;;; be given with `--script`: passing the filename as a bare argument
+;;; followed by `--quit` silently loads nothing at all and exits 0, which
+;;; looks like a successful run.
+;;;
+;;; An optional trailing argument selects a subset of the benchmark groups,
+;;; e.g. `digests public-key`.  Note that a subset run still writes to the
+;;; same output files, so it replaces the full table with a partial one.
+;;; Re-run without arguments to regenerate a complete set.
+;;;
+;;; IRONCLAD_BENCH_TRIALS sets the number of timing samples per operation
+;;; (default 5; use 1 for a quick pass at the old runtime).
+;;;
 ;;; Output:
 ;;;   benchmark/all-algorithms.sexp  raw alist results
 ;;;   benchmark/all-algorithms.org   detailed table
@@ -23,6 +42,14 @@
 (defparameter *min-seconds* 0.20d0)
 (defparameter *max-seconds* 3.0d0)
 (defparameter *max-count* 1000000)
+(defparameter *trials*
+  (let ((setting (uiop:getenv "IRONCLAD_BENCH_TRIALS")))
+    (if (and setting (plusp (length setting)))
+        (or (ignore-errors (parse-integer setting)) 5)
+        5))
+  "Independent timing samples per operation.  Set IRONCLAD_BENCH_TRIALS=1
+for a quick run at the old speed; each extra trial costs up to
+*MAX-SECONDS*.")
 
 ;;; ------------------------------------------------------------------
 ;;; Time utilities
@@ -42,13 +69,6 @@
                   (>= elapsed *max-seconds*)
                   (>= count *max-count*))
           (return (values count elapsed)))))))
-
-(defparameter *trials* 5
-  "Number of independent timing samples per operation.  A single sample is
-not enough: on a shared or otherwise noisy machine the spread between
-repeats of the same unmodified operation is routinely 2x, which is larger
-than most of the wins being measured.  Report the best sample, i.e. the
-one least polluted by interference from other work.")
 
 (defun items-per-second (thunk)
   (let ((best 0.0d0))
@@ -86,6 +106,20 @@ one least polluted by interference from other work.")
 
 (defun stringify (x)
   (string-downcase (princ-to-string x)))
+
+(defun report-benchmark-error (category algorithm condition)
+  "Record a benchmark that signalled instead of producing a number.
+
+Every benchmark wraps its body in a handler, so that one algorithm
+failing cannot abort the run.  The handler must not simply return nil,
+though: a silently dropped row is indistinguishable from one that was
+never requested, and that is how mceliece348864 lost its encapsulate and
+decapsulate rows -- its keygen row was still there, so nothing looked
+wrong."
+  (format *error-output* "~&benchmark error: ~a ~a: ~a~%"
+          category algorithm condition)
+  (finish-output *error-output*)
+  (record-lisp category (stringify algorithm) "benchmark-error" "status" 0.0d0))
 
 ;;; ------------------------------------------------------------------
 ;;; Symmetric primitives
@@ -184,8 +218,7 @@ one least polluted by interference from other work.")
                        (format nil "encrypt ~D-byte message" *size*)
                        "bytes/s" rate)))
     (error (condition)
-      (declare (ignore condition))
-      (record-lisp "aead" (stringify name) "benchmark-error" "status" 0.0d0))))
+      (report-benchmark-error "aead" name condition))))
 
 ;;; ------------------------------------------------------------------
 ;;; KDFs and PRNGs
@@ -217,8 +250,7 @@ one least polluted by interference from other work.")
                      (lambda () (apply #'ironclad:derive-key kdf args)))))
         (record-lisp "kdf" (stringify kind) "derive-key" "ops/s" rate))
     (error (condition)
-      (declare (ignore condition))
-      (record-lisp "kdf" (stringify kind) "benchmark-error" "status" 0.0d0))))
+      (report-benchmark-error "kdf" kind condition))))
 
 (defun benchmark-prng (name)
   (handler-case
@@ -233,8 +265,7 @@ one least polluted by interference from other work.")
                      (format nil "generate ~D bytes" buffer-size)
                      "bytes/s" rate))
     (error (condition)
-      (declare (ignore condition))
-      (record-lisp "prng" (stringify name) "benchmark-error" "status" 0.0d0))))
+      (report-benchmark-error "prng" name condition))))
 
 ;;; ------------------------------------------------------------------
 ;;; Public-key algorithms
@@ -281,8 +312,7 @@ one least polluted by interference from other work.")
             (record-lisp "public-key" (stringify kind) "sign" "ops/s" sign-rate)
             (record-lisp "public-key" (stringify kind) "verify" "ops/s" verify-rate))))
     (error (condition)
-      (declare (ignore condition))
-      nil)))
+      (report-benchmark-error "public-key" kind condition))))
 
 (defun benchmark-kem-op (kind priv pub)
   (handler-case
@@ -301,8 +331,7 @@ one least polluted by interference from other work.")
             (record-lisp "public-key" (stringify kind) "encapsulate" "ops/s" encap-rate)
             (record-lisp "public-key" (stringify kind) "decapsulate" "ops/s" decap-rate))))
     (error (condition)
-      (declare (ignore condition))
-      nil)))
+      (report-benchmark-error "public-key" kind condition))))
 
 (defun benchmark-dh-op (kind priv pub)
   (handler-case
@@ -315,8 +344,7 @@ one least polluted by interference from other work.")
                         (lambda () (ironclad:diffie-hellman priv pub2)))))
             (record-lisp "public-key" (stringify kind) "diffie-hellman" "ops/s" rate))))
     (error (condition)
-      (declare (ignore condition))
-      nil)))
+      (report-benchmark-error "public-key" kind condition))))
 
 (defun benchmark-encryption-op (kind priv pub)
   (handler-case
@@ -334,8 +362,7 @@ one least polluted by interference from other work.")
               (record-lisp "public-key" (stringify kind) "encrypt" "ops/s" encrypt-rate)
               (record-lisp "public-key" (stringify kind) "decrypt" "ops/s" decrypt-rate)))))
     (error (condition)
-      (declare (ignore condition))
-      nil)))
+      (report-benchmark-error "public-key" kind condition))))
 
 (defun benchmark-public-key (kind)
   (multiple-value-bind (priv pub) (generate-key-pair-for kind)
@@ -394,8 +421,7 @@ one least polluted by interference from other work.")
                     (record-lisp "hpke" (stringify kem) "seal" "ops/s" seal-rate)
                     (record-lisp "hpke" (stringify kem) "open" "ops/s" open-rate)))))))
       (error (condition)
-        (declare (ignore condition))
-        (record-lisp "hpke" (stringify kem) "benchmark-error" "status" 0.0d0)))))
+        (report-benchmark-error "hpke" kem condition)))))
 
 ;;; ------------------------------------------------------------------
 ;;; OpenSSL reference helpers
