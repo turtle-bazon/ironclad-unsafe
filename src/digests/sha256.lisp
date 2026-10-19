@@ -177,10 +177,16 @@
    the type (SIMPLE-ARRAY (UNSIGNED-BYTE 32) (8)) and lays the slots out as
    a,b,c,d,e,f,g,h, which is exactly the layout the VOP reads and writes,
    so it can be handed over without any shuffling or copying.  BLOCK holds
-   the 64 message words as (unsigned-byte 32) values in big-endian order."
+   the 64 message words as (unsigned-byte 32) values in big-endian order.
+
+   Runtime vendor dispatch: SHA256RNDS2 has different encodings on Intel
+   and AMD.  Both VOPs are compiled in; the runtime vendor selects the
+   right one.  This makes the .fasl portable across vendors."
   (declare (type sha256-regs regs)
            (type (simple-array (unsigned-byte 32) (64)) block))
-  (sha256ni-compress-block regs block +sha256-round-constants+)
+  (if (amd-cpu-p)
+      (sha256ni-compress-block-amd regs block +sha256-round-constants+)
+      (sha256ni-compress-block regs block +sha256-round-constants+))
   regs)
 
 ;;; mid-level

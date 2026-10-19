@@ -19,6 +19,24 @@
                                 aes-ni-supported-p (aes-ni-support-p)))
   #-ironclad-assembly nil)
 
+;;; CPU vendor detection (also defined in x86oid-vm.lisp for compile-time use).
+
+#+(and sbcl x86-64)
+(sb-ext:defglobal *amd-cpu-p* nil)
+#+(and sbcl x86-64)
+(sb-ext:defglobal *amd-cpu-p-known-p* nil)
+#+(and sbcl x86-64)
+(defun amd-cpu-p ()
+  (if *amd-cpu-p-known-p*
+      *amd-cpu-p*
+      (setf *amd-cpu-p-known-p* t
+            *amd-cpu-p* (with-open-file (stream "/proc/cpuinfo" :if-does-not-exist nil)
+                          (when stream
+                            (loop for line = (read-line stream nil nil)
+                                  while line
+                                  when (search "vendor_id" line)
+                                  return (not (null (search "AuthenticAMD" line)))))))))
+
 ;;; SHA-NI support probe.
 ;;;;
 ;;; Deliberately NOT inlined.  Inlining this drags the CPUID VOP into every
