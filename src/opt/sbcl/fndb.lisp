@@ -169,6 +169,15 @@
   :overwrite-fndb-silently t)
 
 #+x86-64
+(defknown ironclad::ed25519-fe-mul-raw-asm
+  ((simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 32) (*)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
 (defknown ironclad::secp256r1-fe-sqr-raw-asm
   ((simple-array (unsigned-byte 64) (*))
    (simple-array (unsigned-byte 32) (*)))
