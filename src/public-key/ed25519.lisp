@@ -223,13 +223,24 @@ conditional subtract of Q suffices."
 
   ;; Conditional subtract Q if result >= Q.  Result is in c[0..7] and
   ;; is under 2*Q (since X' < 2^256 + 38*37 < 2^256 + 1406 < 2*Q).
-  ;; Reduce c[0..7] mod Q (bignum, simple, correct).
-  (let ((x 0))
-    (dotimes (i 8)
-      (setf x (dpb (aref c i) (byte 32 (* i 32)) x)))
-    (setf x (mod x +ed25519-q+))
-    (dotimes (i 8)
-      (setf (aref c i) (ldb (byte 32 (* i 32)) x))))
+  ;; Reduce c[0..7] mod Q.  Result is < 2*Q so one conditional
+  ;; subtract suffices.  Compare from the top limb down.
+  (let ((geq nil))
+    (dotimes (k 8)
+      (let ((i (- 7 k)))
+        (let ((cl (aref c i))
+              (ql (ldb (byte 32 (* i 32)) +ed25519-q+)))
+          (cond ((> cl ql) (setf geq t) (return))
+                ((< cl ql) (setf geq nil) (return))))))
+    (when geq
+      (let ((borrow 0))
+        (declare (type (unsigned-byte 32) borrow))
+        (dotimes (j 8)
+          (let ((d (- (aref c j)
+                      (ldb (byte 32 (* j 32)) +ed25519-q+)
+                      borrow)))
+            (setf (aref c j) (ldb (byte 32 0) d)
+                  borrow (if (minusp d) 1 0)))))))
 
   c))
 
