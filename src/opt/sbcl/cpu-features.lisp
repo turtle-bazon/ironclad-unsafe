@@ -53,36 +53,16 @@
 #+(and sbcl x86-64)
 (declaim (notinline sha-ni-supported-p))
 #+(and sbcl x86-64)
-(defun sha-ni-probe-via-subprocess ()
-  "Probe SHA-NI by running a tiny test program in a subprocess.
-Returns T if SHA-NI works, NIL if it SIGILLs or is unavailable."
-  (let ((test-file "/tmp/sha_ni_probe_test.s")
-        (obj-file "/tmp/sha_ni_probe_test.o")
-        (bin-file "/tmp/sha_ni_probe_test"))
-    (handler-case
-        (progn
-          (with-open-file (s test-file :direction :output :if-exists :supersede)
-            (format s ".globl _start~%_start:~%")
-            (if (amd-cpu-p)
-                (format s "    .byte 0x0F, 0x38, 0xCB, 0xD1~%")
-                (format s "    .byte 0x66, 0x0F, 0x38, 0xCB, 0xD1, 0x00~%"))
-            (write-string "    movq $60, %rax
-    xorq %rdi, %rdi
-    syscall
-" s))
-          (let ((as-result (sb-ext:run-program "as" (list test-file "-o" obj-file)
-                                               :search t :wait t)))
-            (unless (and as-result (zerop (sb-ext:process-exit-code as-result)))
-              (return-from sha-ni-probe-via-subprocess nil)))
-          (let ((ld-result (sb-ext:run-program "ld" (list obj-file "-o" bin-file)
-                                               :search t :wait t)))
-            (unless (and ld-result (zerop (sb-ext:process-exit-code ld-result)))
-              (return-from sha-ni-probe-via-subprocess nil)))
-          (let ((run-result (sb-ext:run-program bin-file nil :search nil :wait t)))
-            (and run-result (zerop (sb-ext:process-exit-code run-result)))))
-      (error (c)
-        (declare (ignore c))
-        nil))))
+(defun sha-ni-cpuinfo-has-sha-ni-p ()
+  "Check /proc/cpuinfo for the sha_ni flag.  CPUID bit 29 is unreliable
+on pre-Zen AMD CPUs (e.g. AMD A10-7700K reports it but the instructions
+SIGILL), so we trust the kernel's feature list instead."
+  (with-open-file (stream "/proc/cpuinfo" :if-does-not-exist nil)
+    (when stream
+      (loop for line = (read-line stream nil nil)
+            while line
+            when (search "flags" line)
+            return (not (null (search "sha_ni" line)))))))
 
 #+(and sbcl x86-64)
 (defun sha-ni-supported-p ()
@@ -92,8 +72,8 @@ Returns T if SHA-NI works, NIL if it SIGILLs or is unavailable."
       sha-ni-supported-p
       (setf sha-ni-support-known-p t
             sha-ni-supported-p
-            (and (sha-ni-support-p)
-                 (sha-ni-probe-via-subprocess))))
+            (and (sha-ni-cpuinfo-has-sha-ni-p)
+                 (sha-ni-support-p))))
   #-ironclad-assembly nil)
 
 #+(and sbcl x86-64)
