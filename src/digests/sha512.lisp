@@ -284,8 +284,7 @@
   ;; 28 octets is not a multiple of the 8-octet register size, so the
   ;; stock finalizer (which unpacks whole registers) cannot be used.
   ;; Finalize exactly like SHA-512 into a scratch buffer, then take 28.
-  (let ((state-copy (copy-digest state))
-        (full (make-array 64 :element-type '(unsigned-byte 8))))
+  (let ((state-copy (copy-digest state)))
     (let ((regs (sha512-regs state-copy))
           (block (sha512-block state-copy))
           (buffer (sha512-buffer state-copy))
@@ -314,17 +313,23 @@
       (setf (aref block 15) total-length)
       (sha512-expand-block block)
       (update-sha512-block regs block)
-      (sha512-regs-digest regs full 0))
-    (etypecase digest
-      (simple-octet-vector
-       (if (<= 28 (- (length digest) digest-start))
-           (progn (replace digest full :start1 digest-start :end2 28) digest)
-           (error 'insufficient-buffer-space
-                  :buffer digest
-                  :start digest-start
-                  :length 28)))
-      (null
-       (subseq full 0 28)))))
+      (let ((target (or digest (make-array 28 :element-type '(unsigned-byte 8))))
+            (ds (if digest digest-start 0)))
+        (when digest
+          (unless (<= 28 (- (length digest) digest-start))
+            (error 'insufficient-buffer-space
+                   :buffer digest
+                   :start digest-start
+                   :length 28)))
+        (setf (ub64ref/be target (+ ds 0)) (sha512-regs-a regs))
+        (setf (ub64ref/be target (+ ds 8)) (sha512-regs-b regs))
+        (setf (ub64ref/be target (+ ds 16)) (sha512-regs-c regs))
+        (let ((w (sha512-regs-d regs)))
+          (setf (aref target (+ ds 24)) (ldb (byte 8 56) w)
+                (aref target (+ ds 25)) (ldb (byte 8 48) w)
+                (aref target (+ ds 26)) (ldb (byte 8 40) w)
+                (aref target (+ ds 27)) (ldb (byte 8 32) w)))
+        target))))
 
 (defdigest sha512 :digest-length 64 :block-length 128)
 (defdigest sha384 :digest-length 48 :block-length 128)
