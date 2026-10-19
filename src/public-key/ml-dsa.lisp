@@ -285,15 +285,36 @@
 ;;; Sampling
 ;;;
 
+;;; One-shot: build the sponge, absorb, squeeze, discard.  Skipping
+;;; MAKE-DIGEST / UPDATE-DIGEST / PRODUCE-DIGEST avoids three generic
+;;; dispatches and, more importantly, the full sponge-state copy that
+;;; PRODUCE-DIGEST makes so the caller's digest object survives.  These
+;;; objects are fresh and thrown away, so the copy is pure waste -- and
+;;; matrix expansion makes one of these calls per coefficient vector.
+
 (defun ml-dsa-shake128 (input output-length)
-  (let ((d (make-digest :shake128 :output-length output-length)))
-    (update-digest d input)
-    (produce-digest d)))
+  (declare (type (simple-array (unsigned-byte 8) (*)) input)
+           (type fixnum output-length)
+           (optimize (speed 3) (space 0) (safety 0) (debug 0)))
+  (let* ((state (%make-shake128 1344 output-length))
+         (out (make-array output-length :element-type '(unsigned-byte 8))))
+    (declare (type shake128 state)
+             (type (simple-array (unsigned-byte 8) (*)) out))
+    (sha3-update state input 0 (length input))
+    (sha3-finalize state out 0)
+    out))
 
 (defun ml-dsa-shake256 (input output-length)
-  (let ((d (make-digest :shake256 :output-length output-length)))
-    (update-digest d input)
-    (produce-digest d)))
+  (declare (type (simple-array (unsigned-byte 8) (*)) input)
+           (type fixnum output-length)
+           (optimize (speed 3) (space 0) (safety 0) (debug 0)))
+  (let* ((state (%make-shake256 1088 output-length))
+         (out (make-array output-length :element-type '(unsigned-byte 8))))
+    (declare (type shake256 state)
+             (type (simple-array (unsigned-byte 8) (*)) out))
+    (sha3-update state input 0 (length input))
+    (sha3-finalize state out 0)
+    out))
 
 (defun ml-dsa-stream-init-input (seed nonce-bytes seed-length)
   "Absorb-input equivalent of stream init: SEED || NONCE-LE16."

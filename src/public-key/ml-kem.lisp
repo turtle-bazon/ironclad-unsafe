@@ -630,20 +630,38 @@ arithmetic on the (possibly negative) coefficients."
 ;;; Symmetric primitives (SHAKE128 XOF, SHAKE256 PRF, SHA3-256/512)
 ;;;
 
+;;; These are one-shot: build the sponge, absorb, squeeze, throw it away.
+;;; They deliberately do not go through MAKE-DIGEST / UPDATE-DIGEST /
+;;; PRODUCE-DIGEST.  That path costs three generic dispatches plus a property
+;;; lookup, and -- worse -- PRODUCE-DIGEST copies the entire sponge state
+;;; first so that the caller's digest object survives.  Here the object is
+;;; fresh and discarded, so that copy is pure waste.  For a 504-byte
+;;; SHAKE128 squeeze (one ML-KEM matrix entry) it is ~20% of the call.
+
 (defun ml-kem-shake128 (input output-length)
   "SHAKE128 XOF squeeze of INPUT to OUTPUT-LENGTH octets."
   (declare (type (simple-array (unsigned-byte 8) (*)) input)
-           (type fixnum output-length))
-  (let ((d (make-digest :shake128 :output-length output-length)))
-    (update-digest d input)
-    (produce-digest d)))
+           (type fixnum output-length)
+           (optimize (speed 3) (space 0) (safety 0) (debug 0)))
+  (let* ((state (%make-shake128 1344 output-length))
+         (out (make-array output-length :element-type '(unsigned-byte 8))))
+    (declare (type shake128 state)
+             (type (simple-array (unsigned-byte 8) (*)) out))
+    (sha3-update state input 0 (length input))
+    (sha3-finalize state out 0)
+    out))
 
 (defun ml-kem-shake256 (input output-length)
   (declare (type (simple-array (unsigned-byte 8) (*)) input)
-           (type fixnum output-length))
-  (let ((d (make-digest :shake256 :output-length output-length)))
-    (update-digest d input)
-    (produce-digest d)))
+           (type fixnum output-length)
+           (optimize (speed 3) (space 0) (safety 0) (debug 0)))
+  (let* ((state (%make-shake256 1088 output-length))
+         (out (make-array output-length :element-type '(unsigned-byte 8))))
+    (declare (type shake256 state)
+             (type (simple-array (unsigned-byte 8) (*)) out))
+    (sha3-update state input 0 (length input))
+    (sha3-finalize state out 0)
+    out))
 
 (defun ml-kem-sha3-256 (input)
   (digest-sequence :sha3/256 input))
