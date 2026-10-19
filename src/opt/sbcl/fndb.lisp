@@ -62,6 +62,22 @@
   :overwrite-fndb-silently t)
 
 #+x86-64
+(defknown ironclad::sha-ni-support-p
+  ()
+  (boolean)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
+(defknown ironclad::sha256ni-compress-block
+  ((simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 32) (*)))
+  (values (simple-array (unsigned-byte 32) (8)))
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
 (defknown ironclad::aes-ni-support-p
   ()
   (boolean)

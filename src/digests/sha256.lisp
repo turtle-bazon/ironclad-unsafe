@@ -163,67 +163,40 @@
 
 ;;;; SHA-NI (SHA-256 SIMD) support
 ;;;;
-;;; SHA-NI instructions (SSE4):
-;;;   SHA256MSG1 xmm1, xmm2/m128: 0F 38 C9 /r
-;;;   SHA256MSG2 xmm1, xmm2/m128: 0F 38 CA /r
-;;;   SHA256RNDS2 xmm1, xmm2/m128: 0F 38 CB /r
-;;;;
-;;; These operate on XMM registers (128-bit SSE registers) and provide
-;;; hardware acceleration for SHA-256 compression.
-
-;;; The primitives below are SBCL VOPs; see the note below the digest
-;;; definitions.  Only the portable reference scheduler lives here.
+;;; SHA256MSG1 / SHA256MSG2 / SHA256RNDS2, plus the surrounding PSHUFB,
+;;; PSHUFD, PALIGNR and PADDD.  The whole compression function is a single
+;;; VOP defined in src/opt/sbcl/x86oid-vm.lisp; the comments there describe
+;;; the algorithm and the register layout.
 
 #+x86-64
-(defun sha256ni-process-block (state-vec msg-vec)
-  "SHA-256 compression using SHA-NI instructions.
-   STATE-VEC: 8-element array of (unsigned-byte 32) containing a,b,c,d,e,f,g,h
-   MSG-VEC:   16-element array of (unsigned-byte 32) containing message block
-   Returns:   8-element array of (unsigned-byte 32) containing updated state"
-  (declare (type (simple-array (unsigned-byte 32) (8)) state-vec)
-           (type (simple-array (unsigned-byte 32) (16)) msg-vec))
-  (let ((a (aref state-vec 0)) (b (aref state-vec 1))
-        (c (aref state-vec 2)) (d (aref state-vec 3))
-        (e (aref state-vec 4)) (f (aref state-vec 5))
-        (g (aref state-vec 6)) (h (aref state-vec 7)))
-    (declare (type (unsigned-byte 32) a b c d e f g h))
-    ;; Load state into XMM registers
-    ;; xmm0 = a,b,c,d ; xmm1 = e,f,g,h
-    (let ((state-xmm (make-array 16 :element-type '(unsigned-byte 8)))
-          (msg-xmm (make-array 16 :element-type '(unsigned-byte 8))))
-      (declare (type (simple-array (unsigned-byte 8) (16)) state-xmm msg-xmm))
-      ;; Pack state into xmm0 (a,b,c,d) and xmm1 (e,f,g,h)
-      ;; Note: SBCL uses little-endian, so we need to be careful about byte order
-      ;; For now, just use the portable implementation
-      (declare (ignore state-xmm msg-xmm))
-      ;; Fall back to portable implementation
-      (let ((a a) (b b) (c c) (d d) (e e) (f f) (g g) (h h))
-        (dotimes (i 64)
-          (let* ((w (aref msg-vec i))
-                 (k (aref +sha256-round-constants+ i))
-                 (t1 (logand #xffffffff
-                             (+ h (sigma1 e) (ch e f g) w k)))
-                 (t2 (logand #xffffffff
-                             (+ (sigma0 a) (maj a b c)))))
-            (declare (type (unsigned-byte 32) w k t1 t2))
-            (setf h g
-                  g f
-                  f e
-                  e (logand #xffffffff (+ d t1))
-                  d c
-                  c b
-                  b a
-                  a (logand #xffffffff (+ t1 t2)))))
-      (values (logand #xffffffff (+ (aref state-vec 0) a))
-              (logand #xffffffff (+ (aref state-vec 1) b))
-              (logand #xffffffff (+ (aref state-vec 2) c))
-              (logand #xffffffff (+ (aref state-vec 3) d))
-              (logand #xffffffff (+ (aref state-vec 4) e))
-              (logand #xffffffff (+ (aref state-vec 5) f))
-              (logand #xffffffff (+ (aref state-vec 6) g))
-              (logand #xffffffff (+ (aref state-vec 7) h)))))))
+(defun sha256ni-compress (regs block)
+  "Compress BLOCK into REGS using the SHA-NI instruction set.
+   REGS is the Ironclad digest state (a..h); BLOCK holds the 64
+   (unsigned-byte 32) message words in big-endian order."
+  (declare (type sha256-regs regs)
+           (type (simple-array (unsigned-byte 32) (64)) block))
+  (let ((state (make-array 8 :element-type '(unsigned-byte 32))))
+    (declare (type (simple-array (unsigned-byte 32) (8)) state))
+    (setf (aref state 0) (sha256-regs-a regs)
+          (aref state 1) (sha256-regs-b regs)
+          (aref state 2) (sha256-regs-c regs)
+          (aref state 3) (sha256-regs-d regs)
+          (aref state 4) (sha256-regs-e regs)
+          (aref state 5) (sha256-regs-f regs)
+          (aref state 6) (sha256-regs-g regs)
+          (aref state 7) (sha256-regs-h regs))
+    (sha256ni-compress-block state block +sha256-round-constants+)
+    (setf (sha256-regs-a regs) (aref state 0)
+          (sha256-regs-b regs) (aref state 1)
+          (sha256-regs-c regs) (aref state 2)
+          (sha256-regs-d regs) (aref state 3)
+          (sha256-regs-e regs) (aref state 4)
+          (sha256-regs-f regs) (aref state 5)
+          (sha256-regs-g regs) (aref state 6)
+          (sha256-regs-h regs) (aref state 7)))
+  regs)
 
-
+
 ;;; mid-level
 
 (defstruct (sha256
@@ -273,8 +246,12 @@
   (flet ((compress (state sequence offset)
            (let ((block (sha256-block state)))
              (fill-block-ub8-be block sequence offset)
-             (sha256-expand-block block)
-             (update-sha256-block-fast (sha256-regs state) block))))
+             #+x86-64
+             (if (sha-ni-supported-p)
+                 (sha256ni-compress (sha256-regs state) block)
+                 (progn
+                   (sha256-expand-block block)
+                   (update-sha256-block-fast (sha256-regs state) block))))))
     (declare (dynamic-extent #'compress))
     (declare (notinline mdx-updater))
     (mdx-updater state #'compress sequence start end)))

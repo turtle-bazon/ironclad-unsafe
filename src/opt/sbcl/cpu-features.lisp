@@ -19,6 +19,30 @@
                                 aes-ni-supported-p (aes-ni-support-p)))
   #-ironclad-assembly nil)
 
+;;; SHA-NI support probe.
+;;;;
+;;; Deliberately NOT inlined.  Inlining this drags the CPUID VOP into every
+;;; caller; when that happens inside the SHA-256 block compressor the
+;;; surrounding register state is corrupted and the process takes a memory
+;;; fault (observed as a fault at a fixed static-space address, reproducible
+;;; with the ETM test vectors).  Keeping the probe behind a real call keeps
+;;; CPUID confined to its own tiny function.
+
+#+(and sbcl x86-64)
+(sb-ext:defglobal sha-ni-support-known-p nil)
+#+(and sbcl x86-64)
+(sb-ext:defglobal sha-ni-supported-p nil)
+#+(and sbcl x86-64)
+(declaim (notinline sha-ni-supported-p))
+#+(and sbcl x86-64)
+(defun sha-ni-supported-p ()
+  (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
+  #+ironclad-assembly (if sha-ni-support-known-p
+                          sha-ni-supported-p
+                          (setf sha-ni-support-known-p t
+                                sha-ni-supported-p (sha-ni-support-p)))
+  #-ironclad-assembly nil)
+
 #+(and sbcl x86-64)
 (sb-ext:defglobal pclmulqdq-support-known-p nil)
 #+(and sbcl x86-64)
