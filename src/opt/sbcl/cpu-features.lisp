@@ -37,11 +37,23 @@
 #+(and sbcl x86-64)
 (defun sha-ni-supported-p ()
   (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
-  #+ironclad-assembly (if sha-ni-support-known-p
-                          sha-ni-supported-p
-                          (setf sha-ni-support-known-p t
-                                sha-ni-supported-p (sha-ni-support-p)))
-  #-ironclad-assembly nil)
+  ;; SHA-NI can be disabled at runtime.  In virtualised or containerised
+  ;; environments the CPUID leaf that advertises SHA-NI is sometimes passed
+  ;; through from a host that has it, while the SHA-NI instructions
+  ;; themselves are not executable there (observed as SIGILL).  Ironclad
+  ;; cannot recover from SIGILL, so an opt-out is the safe escape hatch.
+  ;; IRONCLAD_DISABLE_SHA_NI or IRONCLAD_NO_SHA_NI (any non-empty value)
+  ;; forces the portable path.
+  (cond ((let ((v (or (sb-ext:posix-getenv "IRONCLAD_DISABLE_SHA_NI")
+                       (sb-ext:posix-getenv "IRONCLAD_NO_SHA_NI"))))
+           (and v (plusp (length v))))
+         nil)
+        (#-ironclad-assembly nil
+         #+ironclad-assembly
+         (if sha-ni-support-known-p
+             sha-ni-supported-p
+             (setf sha-ni-support-known-p t
+                   sha-ni-supported-p (sha-ni-support-p))))))
 
 #+(and sbcl x86-64)
 (sb-ext:defglobal pclmulqdq-support-known-p nil)
