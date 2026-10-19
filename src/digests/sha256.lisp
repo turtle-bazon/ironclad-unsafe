@@ -171,31 +171,17 @@
 #+x86-64
 (defun sha256ni-compress (regs block)
   "Compress BLOCK into REGS using the SHA-NI instruction set.
-   REGS is the Ironclad digest state (a..h); BLOCK holds the 64
-   (unsigned-byte 32) message words in big-endian order."
+   Both arguments are updated in place.
+
+   REGS is the SHA-256 chaining value.  DEFINE-DIGEST-REGISTERS gives it
+   the type (SIMPLE-ARRAY (UNSIGNED-BYTE 32) (8)) and lays the slots out as
+   a,b,c,d,e,f,g,h, which is exactly the layout the VOP reads and writes,
+   so it can be handed over without any shuffling or copying.  BLOCK holds
+   the 64 message words as (unsigned-byte 32) values in big-endian order."
   (declare (type sha256-regs regs)
            (type (simple-array (unsigned-byte 32) (64)) block))
-  (let ((state (make-array 8 :element-type '(unsigned-byte 32))))
-    (declare (type (simple-array (unsigned-byte 32) (8)) state))
-    (setf (aref state 0) (sha256-regs-a regs)
-          (aref state 1) (sha256-regs-b regs)
-          (aref state 2) (sha256-regs-c regs)
-          (aref state 3) (sha256-regs-d regs)
-          (aref state 4) (sha256-regs-e regs)
-          (aref state 5) (sha256-regs-f regs)
-          (aref state 6) (sha256-regs-g regs)
-          (aref state 7) (sha256-regs-h regs))
-    (sha256ni-compress-block state block +sha256-round-constants+)
-    (setf (sha256-regs-a regs) (aref state 0)
-          (sha256-regs-b regs) (aref state 1)
-          (sha256-regs-c regs) (aref state 2)
-          (sha256-regs-d regs) (aref state 3)
-          (sha256-regs-e regs) (aref state 4)
-          (sha256-regs-f regs) (aref state 5)
-          (sha256-regs-g regs) (aref state 6)
-          (sha256-regs-h regs) (aref state 7)))
+  (sha256ni-compress-block regs block +sha256-round-constants+)
   regs)
-
 
 ;;; mid-level
 
