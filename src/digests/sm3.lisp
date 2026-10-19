@@ -311,10 +311,8 @@
     (fill buffer 0 :start buffer-index :end 56)
     (setf (ub64ref/be buffer 56) bit-count)
     (sm3-hash s buffer 0)
-    (let ((output (make-array 32 :element-type '(unsigned-byte 8))))
-      (dotimes (i 8)
-        (setf (ub32ref/be output (* i 4)) (aref s i)))
-      (replace digest output :start1 digest-start)
-      digest)))
+    (dotimes (i 8)
+      (setf (ub32ref/be digest (+ digest-start (* i 4))) (aref s i)))
+    digest))
 
 (defdigest sm3 :digest-length 32 :block-length 64)
