@@ -246,9 +246,8 @@ the content on normal form exit."
 ;;; Message Padding for last block
 ;;;
 
-(defun pad-message-to-width (message bit-width padding-type)
-  (let* ((message-byte-length (length message))
-         (width-bytes (truncate bit-width 8))
+(defun pad-message-to-width (message bit-width padding-type &optional (message-byte-length (length message)))
+  (let* ((width-bytes (truncate bit-width 8))
          (padding-bytes (- width-bytes (mod message-byte-length width-bytes)))
          (padded-message-byte-length (+ message-byte-length padding-bytes))
          (padded-message (make-array padded-message-byte-length :element-type '(unsigned-byte 8))))
@@ -464,9 +463,7 @@ the content on normal form exit."
     ;; Process remaining data after padding it
     (keccak-state-merge-input keccak-state
                               bit-rate
-                              (pad-message-to-width (subseq buffer 0 buffer-index)
-                                                    bit-rate
-                                                    padding-type)
+                              (pad-message-to-width buffer bit-rate padding-type buffer-index)
                               0)
     (keccak-rounds keccak-state)
     (setf (sha3-buffer-index state) 0)
