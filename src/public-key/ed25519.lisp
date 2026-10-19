@@ -504,15 +504,15 @@ No consing of intermediate points - uses 4 pre-allocated point objects."
 ;;; ladder's ~128 adds and 255 doublings.
 
 (defvar *ed25519-base-table* nil
-  "Precomputed I * G for I in [0, 16). Built on first use.")
+  "Precomputed I * G for I in [0, 256). Built on first use.")
 
 (defun ed25519-ensure-base-table ()
   (or *ed25519-base-table*
       (setf *ed25519-base-table*
-            (let ((table (make-array 16)))
+            (let ((table (make-array 256)))
               (setf (aref table 0) ed25519-point-at-infinity)
               (setf (aref table 1) ed25519-base-point)
-              (loop for i from 2 below 16
+              (loop for i from 2 below 256
                     do (setf (aref table i)
                              (if (evenp i)
                                  (ec-double (aref table (ash i -1)))
@@ -523,7 +523,7 @@ No consing of intermediate points - uses 4 pre-allocated point objects."
 (defun ed25519-select-base (table v)
   "Select TABLE[V]."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
-           (type (integer 0 15) v))
+           (type (integer 0 255) v))
   (aref table v))
 
 (defun ed25519-base-mult (k)
@@ -537,16 +537,11 @@ consing a new point per ec-double/ec-add."
         (tmp (make-instance 'ed25519-point :x (ed25519-fe-zero) :y (ed25519-fe-zero) :z (ed25519-fe-zero) :w (ed25519-fe-zero)))
         (out (make-instance 'ed25519-point :x (ed25519-fe-zero) :y (ed25519-fe-zero) :z (ed25519-fe-zero) :w (ed25519-fe-zero)))
         (sel (make-instance 'ed25519-point :x (ed25519-fe-zero) :y (ed25519-fe-zero) :z (ed25519-fe-zero) :w (ed25519-fe-zero))))
-    (loop for j from 63 downto 0 do          ; 256 bits / 4 = 64 nibbles
-      (ed25519-double! tmp acc)
-      (rotatef acc tmp)
-      (ed25519-double! tmp acc)
-      (rotatef acc tmp)
-      (ed25519-double! tmp acc)
-      (rotatef acc tmp)
-      (ed25519-double! tmp acc)
-      (rotatef acc tmp)
-      (setf sel (ed25519-select-base table (ldb (byte 4 (* j 4)) k)))
+    (loop for j from 31 downto 0 do          ; 256 bits / 8 = 32 bytes
+      (dotimes (i 8)
+        (ed25519-double! tmp acc)
+        (rotatef acc tmp))
+      (setf sel (ed25519-select-base table (ldb (byte 8 (* j 8)) k)))
       (unless (eq sel ed25519-point-at-infinity)
         (ed25519-add! out acc sel)
         (setf acc out)))
