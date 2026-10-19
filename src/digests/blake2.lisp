@@ -258,11 +258,16 @@
     (blake2-update state padding 0 padding-length t)
 
     ;; Get output
-    (let ((output (make-array +blake2-block-size+ :element-type '(unsigned-byte 8) :initial-element 0)))
-      (dotimes (i 8)
-        (setf (ub64ref/le output (* i 8)) (aref blake2-state i)))
-      (replace digest output :start1 digest-start :end2 digest-length)
-      digest)))
+    (let ((full-words (truncate digest-length 8))
+          (remainder (mod digest-length 8)))
+      (dotimes (i full-words)
+        (setf (ub64ref/le digest (+ digest-start (* i 8))) (aref blake2-state i)))
+      (when (plusp remainder)
+        (let ((value (aref blake2-state full-words)))
+          (dotimes (j remainder)
+            (setf (aref digest (+ digest-start (* full-words 8) j))
+                  (ldb (byte 8 (* j 8)) value)))))
+    digest)))
 
 (define-digest-updater blake2
   (blake2-update state sequence start end nil))
