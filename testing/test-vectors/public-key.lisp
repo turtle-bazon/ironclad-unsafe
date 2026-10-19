@@ -13,6 +13,39 @@
 (rtest:deftest :x-wing-encapsulation (run-test-vector-file :x-wing *public-key-encryption-tests*) t)
 (rtest:deftest :xmss (run-test-vector-file :xmss-h10 *public-key-encryption-tests*) t)
 
+(defun kem-roundtrip-test (kind keys trials)
+  "Encapsulate and decapsulate TRIALS times per key; every secret must agree.
+
+The test-vector files above exercise a single fixed key and ciphertext
+per algorithm, which cannot detect a failure that only shows up for a
+small fraction of randomly chosen errors.  McEliece in particular has a
+known defect of exactly that shape: MCE-DECRYPT rejects roughly one
+percent of the ciphertexts that MCE-ENCAPS-FROM-ERROR produced, so
+MCE-DECAPSULATE derives a different shared secret and the two sides
+silently disagree.
+
+The randomness is in encapsulation, not key generation, so this draws
+KEYS keys and reuses each for TRIALS encapsulations.  That keeps the
+test cheap -- McEliece key generation is the slow part -- while still
+covering the rate at which the defect actually occurs."
+  (let ((failures 0))
+    (dotimes (k keys)
+      (multiple-value-bind (priv pub) (ironclad:generate-key-pair kind)
+        (dotimes (i trials)
+          (multiple-value-bind (ciphertext secret) (ironclad:encapsulate-key pub)
+            (unless (equalp secret (ironclad:decapsulate-key priv ciphertext))
+              (incf failures))))))
+    (when (plusp failures)
+      (error "~d/~d ~a encaps/decaps roundtrips returned the wrong shared secret"
+             failures (* keys trials) kind))
+    t))
+
+(rtest:deftest :mceliece-encapsulation-roundtrip
+  (kem-roundtrip-test :mceliece348864 2 250))
+
+(rtest:deftest :mceliece460896-encapsulation-roundtrip
+  (kem-roundtrip-test :mceliece460896 2 250))
+
 (defun lms-hss-state-exhaustion-test ()
   (let ((msg (make-array 32 :element-type '(unsigned-byte 8)
                         :initial-element 7)))
