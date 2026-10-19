@@ -115,11 +115,19 @@ failing cannot abort the run.  The handler must not simply return nil,
 though: a silently dropped row is indistinguishable from one that was
 never requested, and that is how mceliece348864 lost its encapsulate and
 decapsulate rows -- its keygen row was still there, so nothing looked
-wrong."
-  (format *error-output* "~&benchmark error: ~a ~a: ~a~%"
-          category algorithm condition)
-  (finish-output *error-output*)
-  (record-lisp category (stringify algorithm) "benchmark-error" "status" 0.0d0))
+wrong.
+
+BENCHMARK-PUBLIC-KEY deliberately tries the KEM, signature, DH and
+encryption operations on every kind, since key kinds do not advertise
+which of the four they support.  On a KEM the signing operations simply
+have no applicable method, which is expected and not a result; those are
+dropped.  Anything else is a genuine failure and is reported."
+  (unless (string= (symbol-name (class-name (class-of condition)))
+                   "NO-APPLICABLE-METHOD-ERROR")
+    (format *error-output* "~&benchmark error: ~a ~a: ~a~%"
+            category algorithm condition)
+    (finish-output *error-output*)
+    (record-lisp category (stringify algorithm) "benchmark-error" "status" 0.0d0)))
 
 ;;; ------------------------------------------------------------------
 ;;; Symmetric primitives

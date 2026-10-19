@@ -20,7 +20,7 @@ The test-vector files above exercise a single fixed key and ciphertext
 per algorithm, which cannot detect a failure that only shows up for a
 small fraction of randomly chosen errors.  McEliece in particular has a
 known defect of exactly that shape: MCE-DECRYPT rejects roughly one
-percent of the ciphertexts that MCE-ENCAPS-FROM-ERROR produced, so
+percent of the ciphertexts that MCE-ENCAPSULATE produced, so
 MCE-DECAPSULATE derives a different shared secret and the two sides
 silently disagree.
 
