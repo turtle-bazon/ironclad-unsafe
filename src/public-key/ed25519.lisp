@@ -244,12 +244,13 @@ conditional subtract of Q suffices."
   "R := (A * B) mod Q for reduced residues in limb form."
   (declare (type ed25519-fe r a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let* ((ai (ed25519-fe-to-int a))
-         (bi (ed25519-fe-to-int b))
-         (prod (mod (* ai bi) +ed25519-q+))
-         (pr (ed25519-fe-from-int prod)))
+  (let ((prod (make-array 16 :element-type '(unsigned-byte 32) :initial-element 0)))
+    (declare (type (simple-array (unsigned-byte 32) (16)) prod))
+    (ed25519-fe-mul-raw prod a b)
+    (ed25519-fe-normalize16 prod)
+    (ed25519-fe-reduce16 prod)
     (dotimes (i 8 r)
-      (setf (aref r i) (aref pr i)))))
+      (setf (aref r i) (aref prod i)))))
 
 (defun ed25519-fe-sq (r a)
   "R := A^2 mod Q."
