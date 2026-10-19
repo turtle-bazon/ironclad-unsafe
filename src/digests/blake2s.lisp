@@ -271,10 +271,15 @@
     (blake2s-update state padding 0 padding-length t)
 
     ;; Get output
-    (let ((output (make-array +blake2s-block-size+ :element-type '(unsigned-byte 8) :initial-element 0)))
-      (dotimes (i 8)
-        (setf (ub32ref/le output (* i 4)) (aref blake2s-state i)))
-      (replace digest output :start1 digest-start :end2 digest-length)
+    (let ((full-words (truncate digest-length 4))
+          (remainder (mod digest-length 4)))
+      (dotimes (i full-words)
+        (setf (ub32ref/le digest (+ digest-start (* i 4))) (aref blake2s-state i)))
+      (when (plusp remainder)
+        (let ((value (aref blake2s-state full-words)))
+          (dotimes (j remainder)
+            (setf (aref digest (+ digest-start (* full-words 4) j))
+                  (ldb (byte 8 (* j 8)) value)))))
       digest)))
 
 (define-digest-updater blake2s
