@@ -136,13 +136,20 @@ followed by Barrett reduction, like poly_ntt."
   (let ((k 1))
     (declare (type fixnum k))
     (dolist (len '(128 64 32 16 8 4 2))
-      (loop for start from 0 below 256 by (* 2 len)
-            do (let ((zeta (aref +ml-kem-zetas+ k)))
-                 (incf k)
-                 (loop for j from start below (+ start len)
-                       do (let ((tt (ml-kem-fqmul zeta (aref r (+ j len)))))
-                            (setf (aref r (+ j len)) (- (aref r j) tt)
-                                  (aref r j) (+ (aref r j) tt)))))))
+      (declare (type fixnum len))
+      (let ((stop (+ len len)))
+        (declare (type fixnum stop))
+        (loop for start from 0 below 256 by stop
+              do (let ((zeta (aref +ml-kem-zetas+ k)))
+                   (incf k)
+                   (loop for j from start below (+ start len)
+                         do (let* ((u (aref r j))
+                                   (v (ml-kem-fqmul zeta (aref r (+ j len)))))
+                              ;; U is read into a temporary first: R[J] cannot
+                              ;; be reloaded after the store to R[J+LEN], which
+                              ;; the compiler cannot prove is a different cell.
+                              (setf (aref r (+ j len)) (- u v)
+                                    (aref r j) (+ u v))))))))
     (ml-kem-poly-reduce r))
   (values))
 
