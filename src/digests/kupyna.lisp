@@ -362,13 +362,11 @@
        (kupyna-transform512 h buffer 0)
        (kupyna-output-transform512 h)))
 
-    (let ((output (make-array 128 :element-type '(unsigned-byte 8))))
-      (dotimes (i 16)
-        (setf (ub64ref/le output (* 8 i)) (aref h i)))
-      (replace digest output
-               :start1 digest-start
-               :start2 (- block-length digest-length)
-               :end2 block-length)
+    (let ((start-word (truncate (- block-length digest-length) 8))
+          (end-word (truncate block-length 8)))
+      (dotimes (i (- end-word start-word))
+        (setf (ub64ref/le digest (+ digest-start (* i 8)))
+              (aref h (+ start-word i))))
       digest)))
 
 (defdigest kupyna :digest-length 64 :block-length 128)
