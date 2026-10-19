@@ -108,8 +108,10 @@
                          collect `(the keccak-lane (ash (aref input (+ index ,byte-index))
                                                         ,(* byte-index 8)))))))))))
 
-(defun keccak-state-extract-output (state output-bytes)
-  (let ((digest (make-array (list output-bytes) :element-type '(unsigned-byte 8))))
+(defun keccak-state-extract-output (state output-bytes &optional (digest nil) (start 0))
+  (let ((digest (or digest
+                    (make-array (list output-bytes) :element-type '(unsigned-byte 8)))))
+    (declare (type (simple-array (unsigned-byte 8) (*)) digest))
     (dotimes (x +keccak-state-columns+)
       (dotimes (y +keccak-state-rows+)
         (let* ((element (+ (* y +keccak-state-columns+) x))
@@ -117,7 +119,7 @@
           (unless (>= offset output-bytes)
             (loop with value = (aref state element)
                   for index from offset below (min (+ offset +keccak-lane-byte-width+) output-bytes)
-                  do (setf (aref digest index) (ldb (byte 8 0) value)
+                  do (setf (aref digest (+ start index)) (ldb (byte 8 0) value)
                            value (ash value -8)))))))
     digest))
 
@@ -472,9 +474,8 @@ the content on normal form exit."
     (let ((output-size 0)
           (chunk-size (truncate bit-rate 8)))
       (loop until (= output-size output-byte-length) do
-        (let* ((n (min (- output-byte-length output-size) chunk-size))
-               (output (keccak-state-extract-output keccak-state n)))
-          (replace digest output :start1 (+ digest-start output-size) :end2 n)
+        (let ((n (min (- output-byte-length output-size) chunk-size)))
+          (keccak-state-extract-output keccak-state n digest (+ digest-start output-size))
           (incf output-size n)
           (keccak-rounds keccak-state))))
     digest))
