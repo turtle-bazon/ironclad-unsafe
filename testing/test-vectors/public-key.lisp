@@ -41,10 +41,12 @@ covering the rate at which the defect actually occurs."
     t))
 
 (rtest:deftest :mceliece-encapsulation-roundtrip
-  (kem-roundtrip-test :mceliece348864 2 250))
+  (kem-roundtrip-test :mceliece348864 2 250)
+  t)
 
 (rtest:deftest :mceliece460896-encapsulation-roundtrip
-  (kem-roundtrip-test :mceliece460896 2 250))
+  (kem-roundtrip-test :mceliece460896 2 250)
+  t)
 
 (defun lms-hss-state-exhaustion-test ()
   (let ((msg (make-array 32 :element-type '(unsigned-byte 8)
