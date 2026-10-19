@@ -37,6 +37,24 @@
                                   when (search "vendor_id" line)
                                   return (not (null (search "AuthenticAMD" line)))))))))
 
+;;; SHA-NI runtime probe: actually execute a SHA-NI instruction and catch
+;;; SIGILL.  Used to detect environments where CPUID advertises SHA-NI but
+;;; the instructions are not executable.
+#+(and sbcl x86-64 ironclad-assembly)
+(defun sha-ni-probe ()
+  (catch 'sha-ni-sigill
+    (sb-sys:enable-interrupt sb-unix:sigill
+      (lambda (signal code frame)
+        (declare (ignore signal code frame))
+        (throw 'sha-ni-sigill nil)))
+    (let ((compress (find-symbol "SHA256NI-COMPRESS" :crypto)))
+      (when compress
+        (let ((regs (make-array 8 :element-type '(unsigned-byte 32) :initial-element 0))
+              (block (make-array 64 :element-type '(unsigned-byte 32) :initial-element 0)))
+          (funcall compress regs block))))
+    (sb-sys:enable-interrupt sb-unix:sigill :default)
+    t))
+
 ;;; SHA-NI support probe.
 ;;;;
 ;;; Deliberately NOT inlined.  Inlining this drags the CPUID VOP into every
@@ -58,20 +76,17 @@
   ;; SHA-NI can be disabled at runtime.  In virtualised or containerised
   ;; environments the CPUID leaf that advertises SHA-NI is sometimes passed
   ;; through from a host that has it, while the SHA-NI instructions
-  ;; themselves are not executable there (observed as SIGILL).  Ironclad
-  ;; cannot recover from SIGILL, so an opt-out is the safe escape hatch.
-  ;; IRONCLAD_DISABLE_SHA_NI or IRONCLAD_NO_SHA_NI (any non-empty value)
-  ;; forces the portable path.
-  (cond ((let ((v (or (sb-ext:posix-getenv "IRONCLAD_DISABLE_SHA_NI")
-                       (sb-ext:posix-getenv "IRONCLAD_NO_SHA_NI"))))
-           (and v (plusp (length v))))
-         nil)
-        (#-ironclad-assembly nil
+  ;; themselves are not executable there (observed as SIGILL).  CPUID alone
+  ;; cannot detect this, so we probe by actually executing a SHA-NI
+  ;; instruction behind a SIGILL handler.
+  (cond (#-ironclad-assembly nil
          #+ironclad-assembly
          (if sha-ni-support-known-p
              sha-ni-supported-p
              (setf sha-ni-support-known-p t
-                   sha-ni-supported-p (sha-ni-support-p))))))
+                   sha-ni-supported-p
+                   (and (sha-ni-support-p)
+                        (sha-ni-probe)))))))
 
 #+(and sbcl x86-64)
 (sb-ext:defglobal pclmulqdq-support-known-p nil)
