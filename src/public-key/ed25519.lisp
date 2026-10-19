@@ -362,6 +362,7 @@ conditional subtract of Q suffices."
     (ed25519-double! dst p)
     dst))
 
+(declaim (inline ed25519-double!))
 (defun ed25519-double! (dst p)
   "DST := 2*P. DST must differ from P."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
@@ -397,6 +398,7 @@ conditional subtract of Q suffices."
                 (aref dw k) (aref w2 k))))
       dst)))
 
+(declaim (inline ed25519-add!))
 (defun ed25519-add! (dst p q)
   "DST := P + Q. DST must differ from P and Q."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
