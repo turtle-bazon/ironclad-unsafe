@@ -71,9 +71,7 @@ SIGILL), so we trust the kernel's feature list instead."
   (if sha-ni-support-known-p
       sha-ni-supported-p
       (setf sha-ni-support-known-p t
-            sha-ni-supported-p
-            (and (sha-ni-cpuinfo-has-sha-ni-p)
-                 (sha-ni-support-p))))
+            sha-ni-supported-p (sha-ni-cpuinfo-has-sha-ni-p)))
   #-ironclad-assembly nil)
 
 #+(and sbcl x86-64)
