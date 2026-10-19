@@ -261,11 +261,32 @@ conditional subtract of Q suffices."
     (dotimes (i 8 r)
       (setf (aref r i) (aref prod i)))))
 
+(defun ed25519-fe-sqr-raw (r a)
+  "R := A * A as 16 limbs, no reduction.  R holds 32-bit limbs."
+  (declare (type ed25519-fe a)
+           (type (simple-array (unsigned-byte 32) (16)) r)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-assembly)
+  (ed25519-fe-sqr-raw-asm r a)
+  #-(and sbcl x86-64 ironclad-assembly)
+  (progn
+    (dotimes (k 16)
+      (setf (aref r k) 0))
+    (ed25519-fe-mul-raw r a a)
+    r))
+
 (defun ed25519-fe-sq (r a)
   "R := A^2 mod Q."
   (declare (type ed25519-fe r a)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (ed25519-fe-mul r a a))
+  (let ((prod (make-array 16 :element-type '(unsigned-byte 32) :initial-element 0)))
+    (declare (type (simple-array (unsigned-byte 32) (16)) prod)
+             (dynamic-extent prod))
+    (ed25519-fe-sqr-raw prod a)
+    (ed25519-fe-normalize16 prod)
+    (ed25519-fe-reduce16 prod)
+    (dotimes (i 8 r)
+      (setf (aref r i) (aref prod i)))))
 
 (defun ed25519-fe-equal (a b)
   (declare (type ed25519-fe a b)

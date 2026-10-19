@@ -1508,6 +1508,48 @@
 
 
 #+x86-64
+(define-vop (ed25519-sqr-raw-asm)
+  (:translate ironclad::ed25519-fe-sqr-raw-asm)
+  (:policy :fast-safe)
+  (:args (c :scs (descriptor-reg))
+         (a :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32)
+  (:temporary (:sc unsigned-reg) lo hi carry tmp)
+  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+  (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (flet ((a32 (i) (dword-ea (+ data-offset (* 4 i)) a))
+             (c32 (k) (dword-ea (+ data-offset (* 4 k)) c)))
+        (inst mov carry 0)
+        (dotimes (k 16)
+          (inst mov lo carry)
+          (inst mov hi 0)
+          (dolist (i (loop for x from (max 0 (- k 7))
+                           to (min 7 k)
+                           collect x))
+            (let* ((j (- k i)))
+              (when (<= i j)
+                (dword-inst mov rax-tmp (a32 i))
+                (dword-inst mov tmp (a32 j))
+                (inst mul tmp)
+                (when (/= i j)
+                  (inst add rax-tmp rax-tmp)
+                  (inst adc rdx-tmp rdx-tmp))
+                (inst add lo rax-tmp)
+                (inst adc hi rdx-tmp))))
+          (dword-inst mov tmp lo)
+          (dword-inst mov (c32 k) tmp)
+          (inst mov carry hi)
+          (inst shl carry 32)
+          (inst mov tmp lo)
+          (inst shr tmp 32)
+          (inst or carry tmp))))))
+
+
+#+x86-64
 (define-vop (secp256r1-reduce-asm)
   (:translate ironclad::secp256r1-fe-reduce-asm)
   (:translate ironclad::secp256r1-fe-reduce-asm)
