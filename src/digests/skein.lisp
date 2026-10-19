@@ -347,21 +347,20 @@
     ;; Generate output
     (do* ((value (copy-seq (skein-value state)))
           (noutputs (ceiling digest-length block-length))
-          (output (make-array (* noutputs block-length)
-                              :element-type '(unsigned-byte 8)))
           (i 0 (1+ i))
           (msg (make-array block-length
                            :element-type '(unsigned-byte 8)
                            :initial-element 0)))
-         ((= i noutputs)
-          (progn
-            (replace digest output :start1 digest-start :end2 digest-length)
-            digest))
+         ((= i noutputs) digest)
       (replace msg (integer-to-octets i :n-bits 64 :big-endian nil) :end2 8)
       (replace (skein-value state) value)
       (skein-update-tweak tweak :first t :final t :type +skein-out+ :position 8)
       (skein-ubi state msg 0 block-length t)
-      (replace output (skein-value state) :start1 (* i block-length) :end2 block-length))))
+      (let ((off (* i block-length))
+            (take (min block-length (max 0 (- digest-length (* i block-length))))))
+        (when (plusp take)
+          (replace digest (skein-value state)
+                   :start1 (+ digest-start off) :end2 take))))))
 
 (defun skein-copy-cipher (cipher &optional copy)
   (let* ((tmp-key (make-array (block-length cipher)
