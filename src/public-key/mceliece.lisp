@@ -340,7 +340,7 @@ Returns T on success, NIL when the matrix is not systematic."
           (setf (aref temp-b i) (aref C i))
           (when (= mne 1)
             (setf (aref C i) (logxor (aref C i) (mce-gf-mul f (aref B i))))))
-        (when (< (* 2 lf) (+ N 1))
+        (when (and (not (zerop d)) (< (* 2 lf) (+ N 1)))
           (dotimes (i (1+ (mce-sys-t)))
             (setf (aref B i) (aref temp-b i)))
           (setf lf (1+ (- N lf))
