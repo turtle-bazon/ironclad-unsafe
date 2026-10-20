@@ -108,23 +108,44 @@ to be complete."
     (encrypt (ccm-ecb mode) input output)
     output))
 
+(defun ccm-cbc-absorb-block (mode data offset)
+  "XOR the 16 octets of DATA at OFFSET into the CBC-MAC chain, then
+encrypt the chain in place.
+
+DATA may be any vector of octets; the assembly path needs a simple
+array, and falls back to a byte-at-a-time XOR for anything else."
+  (declare (type (vector (unsigned-byte 8)) data))
+  (let ((chain (ccm-chain mode)))
+    (declare (type (simple-array (unsigned-byte 8) (16)) chain))
+    ;; Encrypt the chain in place; the assembly encryptor reads the
+    ;; whole block before it writes it back.
+    #+(and sbcl x86-64 ironclad-assembly)
+    (progn
+      (if (typep data '(simple-array (unsigned-byte 8) (*)))
+          (xor128 chain 0 data offset chain 0)
+          (dotimes (i 16)
+            (setf (aref chain i)
+                  (logxor (aref chain i) (aref data (+ offset i))))))
+      (aes-encrypt-block (ccm-ecb mode) chain 0 chain 0))
+    #-(and sbcl x86-64 ironclad-assembly)
+    (progn
+      (dotimes (i 16)
+        (setf (aref chain i)
+              (logxor (aref chain i) (aref data (+ offset i)))))
+      (aes-encrypt-block (ccm-ecb mode) chain 0 chain 0))))
+
 (defun ccm-cbc-feed (mode data start end)
   "Absorb DATA[START,END) into the CBC-MAC chain, buffering partials.
 When PENDING is empty and at least 16 bytes remain, XOR a full block
 directly into the chain and encrypt, avoiding per-byte PENDING pushes."
   (declare (type (vector (unsigned-byte 8)) data))
-  (let ((pending (ccm-pending mode))
-        (chain (ccm-chain mode)))
+  (let ((pending (ccm-pending mode)))
     (loop with pos = start
           do (cond
                ((and (zerop (fill-pointer pending))
                      (<= 16 (- end pos)))
-                (dotimes (i 16)
-                  (setf (aref chain i)
-                        (logxor (aref chain i)
-                                (aref data (+ pos i)))))
-                (replace chain (ccm-ecb-block mode chain))
-                (incf pos 16))
+                 (ccm-cbc-absorb-block mode data pos)
+                 (incf pos 16))
                (t
                 (loop while (and (< (fill-pointer pending) 16) (< pos end))
                       do (vector-push-extend (aref data pos) pending)
@@ -137,11 +158,8 @@ directly into the chain and encrypt, avoiding per-byte PENDING pushes."
 (defun ccm-process-pending-block (mode)
   "XOR the full 16-octet PENDING buffer into the chain and encrypt.
 Caller ensures PENDING holds exactly 16 octets."
-  (let ((pending (ccm-pending mode))
-        (chain (ccm-chain mode)))
-    (dotimes (i 16)
-      (setf (aref chain i) (logxor (aref chain i) (aref pending i))))
-    (replace chain (ccm-ecb-block mode chain))
+  (let ((pending (ccm-pending mode)))
+    (ccm-cbc-absorb-block mode pending 0)
     (setf (fill-pointer pending) 0))
   (values))
 

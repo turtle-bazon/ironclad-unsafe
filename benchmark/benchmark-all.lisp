@@ -357,18 +357,31 @@ dropped.  Anything else is a genuine failure and is reported."
 (defun benchmark-encryption-op (kind priv pub)
   (handler-case
       (let ((message (random-octets 16)))
-        (let ((ciphertext (ironclad:encrypt-message pub message)))
-          (let ((plaintext (ironclad:decrypt-message priv ciphertext)))
-            (unless (equalp plaintext message)
-              (error "encryption roundtrip failed"))
-            (let ((encrypt-rate (items-per-second
-                                  (lambda ()
-                                    (ironclad:encrypt-message pub message))))
-                  (decrypt-rate (items-per-second
-                                  (lambda ()
-                                    (ironclad:decrypt-message priv ciphertext)))))
-              (record-lisp "public-key" (stringify kind) "encrypt" "ops/s" encrypt-rate)
-              (record-lisp "public-key" (stringify kind) "decrypt" "ops/s" decrypt-rate)))))
+        ;; RSA and ElGamal do not pad the message unless the OAEP
+        ;; scheme is requested (see the README), so their roundtrip
+        ;; only works with padding.  The other kinds use ECIES, which
+        ;; always pads.
+        (let ((oaep (and (member kind '(:rsa :elgamal)) t)))
+          (let ((ciphertext (if oaep
+                                (ironclad:encrypt-message pub message :oaep oaep)
+                                (ironclad:encrypt-message pub message))))
+            (let ((plaintext (if oaep
+                                  (ironclad:decrypt-message priv ciphertext :oaep oaep)
+                                  (ironclad:decrypt-message priv ciphertext))))
+              (unless (equalp plaintext message)
+                (error "encryption roundtrip failed"))
+              (let ((encrypt-rate (items-per-second
+                                    (lambda ()
+                                      (if oaep
+                                          (ironclad:encrypt-message pub message :oaep oaep)
+                                          (ironclad:encrypt-message pub message)))))
+                    (decrypt-rate (items-per-second
+                                   (lambda ()
+                                     (if oaep
+                                         (ironclad:decrypt-message priv ciphertext :oaep oaep)
+                                         (ironclad:decrypt-message priv ciphertext))))))
+                (record-lisp "public-key" (stringify kind) "encrypt" "ops/s" encrypt-rate)
+                (record-lisp "public-key" (stringify kind) "decrypt" "ops/s" decrypt-rate))))))
     (error (condition)
       (report-benchmark-error "public-key" kind condition))))
 
