@@ -73,8 +73,7 @@ Other:   disabled (no reliable cross-platform detection available)."
                                       :ignore-error-status t :output :string)))
         (and output (string/= (string-trim '(#\Space #\Newline) output) "")
              (not (string= (string-trim '(#\Space #\Newline) output) "0"))))
-    (error () nil)
-  )
+    (error () nil))
   #+freebsd
   (handler-case
       (let ((output (uiop:run-program '("sysctl" "-n" "hw.instruction_sse")
