@@ -139,9 +139,10 @@
             (iv (gmac-iv mac))
             (hkey (make-array 16 :element-type '(unsigned-byte 8)
                                  :initial-element 0)))
+        ;; NB: hkey is passed to the block cipher, which may use an
+        ;; assembly VOP assuming the heap layout of a simple vector.
         (declare (type (simple-array (unsigned-byte 64) (128 2 2)) table)
-                 (type (simple-array (unsigned-byte 8) (16)) hkey)
-                 (dynamic-extent hkey))
+                 (type (simple-array (unsigned-byte 8) (16)) hkey))
         (setf (gmac-key mac) table
               (gmac-total-length mac) 0
               (gmac-buffer-length mac) 0

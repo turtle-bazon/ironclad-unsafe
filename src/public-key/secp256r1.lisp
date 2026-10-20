@@ -225,11 +225,11 @@ stays within fixnum range."
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((c (make-array 16 :element-type '(unsigned-byte 64)
                        :initial-element 0)))
-    (declare (dynamic-extent c))
+    ;; NB: the product must stay in the heap; the assembly VOP assumes
+    ;; the usual heap layout of a simple vector.
     (secp256r1-fe-mul-raw c a b)
     #+(and sbcl x86-64 ironclad-assembly)
     (let ((q (secp256r1-fe-zero)))
-      (declare (dynamic-extent q))
       (secp256r1-fe-reduce-asm r q c))
     #-(and sbcl x86-64 ironclad-assembly)
     (progn
@@ -463,11 +463,10 @@ normalize first unless the words are already canonical."
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((c (make-array 16 :element-type '(unsigned-byte 64)
                        :initial-element 0)))
-    (declare (dynamic-extent c))
+    ;; NB: the product must stay in the heap; see SECP256R1-FE-MUL.
     (secp256r1-fe-sqr-raw c a)
     #+(and sbcl x86-64 ironclad-assembly)
     (let ((q (secp256r1-fe-zero)))
-      (declare (dynamic-extent q))
       (secp256r1-fe-reduce-asm r q c))
     #-(and sbcl x86-64 ironclad-assembly)
     (progn

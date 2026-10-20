@@ -173,7 +173,10 @@
                                                   :element-type '(unsigned-byte 8)))
                           (offset in-start))
                       (declare (type (simple-octet-vector ,block-length-expr) temp-block))
-                      (declare (dynamic-extent temp-block))
+                      ;; NB: temp-block is passed to the assembly
+                      ;; xor128 VOP, which assumes the heap layout of
+                      ;; a simple vector.  Keep it out of the stack.
+                      (declare (type (simple-octet-vector ,block-length-expr) temp-block))
                       (declare (type index offset))
                       (loop with end = (if (and handle-final-block padding)
                                            (- in-end (* 2 ,block-length-expr))
@@ -260,7 +263,10 @@
                                                   :element-type '(unsigned-byte 8)))
                           (offset in-start))
                       (declare (type (simple-octet-vector ,block-length-expr) temp-block))
-                      (declare (dynamic-extent temp-block))
+                      ;; NB: temp-block is passed to the assembly
+                      ;; xor128 VOP, which assumes the heap layout of
+                      ;; a simple vector.  Keep it out of the stack.
+                      (declare (type (simple-octet-vector ,block-length-expr) temp-block))
                       (declare (type index offset))
                       (loop with end = (if (and handle-final-block padding)
                                            (- in-end (* 2 ,block-length-expr))
@@ -360,8 +366,10 @@
                                                   :element-type '(unsigned-byte 8)))
                           (remaining (- in-end in-start))
                           (offset in-start))
+                      ;; NB: temp-block is passed to the assembly
+                      ;; xor128 VOP, which assumes the heap layout of a
+                      ;; simple vector, so it must stay out of the stack.
                       (declare (type (simple-octet-vector ,block-length-expr) temp-block)
-                               (dynamic-extent temp-block)
                                (type index remaining offset))
 
                       ;; Use remaining bytes in iv

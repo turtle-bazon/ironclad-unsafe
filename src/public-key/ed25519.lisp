@@ -247,8 +247,11 @@ conditional subtract of Q suffices."
   (declare (type ed25519-fe r a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((prod (make-array 16 :element-type '(unsigned-byte 32) :initial-element 0)))
-    (declare (type (simple-array (unsigned-byte 32) (16)) prod)
-             (dynamic-extent prod))
+    ;; NB: the product must stay in the heap.  The assembly multiply
+    ;; assumes the usual heap layout of a simple vector; a stack
+    ;; allocated (or escape-analyzed) array has a different layout and
+    ;; the VOP then writes outside the array, corrupting the caller.
+    (declare (type (simple-array (unsigned-byte 32) (16)) prod))
     (ed25519-fe-mul-raw prod a b)
     (ed25519-fe-normalize16 prod)
     (ed25519-fe-reduce16 prod)
@@ -274,8 +277,11 @@ conditional subtract of Q suffices."
   (declare (type ed25519-fe r a)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((prod (make-array 16 :element-type '(unsigned-byte 32) :initial-element 0)))
-    (declare (type (simple-array (unsigned-byte 32) (16)) prod)
-             (dynamic-extent prod))
+    ;; NB: the product must stay in the heap.  The assembly multiply
+    ;; assumes the usual heap layout of a simple vector; a stack
+    ;; allocated (or escape-analyzed) array has a different layout and
+    ;; the VOP then writes outside the array, corrupting the caller.
+    (declare (type (simple-array (unsigned-byte 32) (16)) prod))
     (ed25519-fe-sqr-raw prod a)
     (ed25519-fe-normalize16 prod)
     (ed25519-fe-reduce16 prod)
@@ -308,7 +314,10 @@ conditional subtract of Q suffices."
   (loop repeat (1- n) do (ed25519-fe-sq r r))
   r)
 
-(declaim (inline ed25519-fe-inv))
+;; NB: do not inline these.  When inlined, SBCL's escape analysis can
+;; stack-allocate the scratch vector that the assembly VOP works on,
+;; and the VOP then writes outside it, corrupting the caller's frame.
+(declaim (notinline ed25519-fe-inv))
 (defun ed25519-fe-inv (z)
   "Field element inverse via the standard 2^255-21 addition chain.
 Uses 254 squarings and 11 multiplications."
@@ -362,7 +371,7 @@ Uses 254 squarings and 11 multiplications."
     (ed25519-fe-mul out t1 t0)           ; z^(2^255-21)
     out))
 
-(declaim (inline ed25519-fe-pow22523))
+(declaim (notinline ed25519-fe-pow22523))
 (defun ed25519-fe-pow22523 (z)
   "Field element z^(2^252-3), used to recover x when decompressing a point."
   (declare (type ed25519-fe z)
@@ -609,6 +618,9 @@ Uses 254 squarings and 11 multiplications."
       ;; documented in src/opt/sbcl/ed25519-comb.lisp).
       (let ((point (make-array 20 :element-type '(unsigned-byte 64)))
             (scratch (make-array 384 :element-type '(unsigned-byte 64))))
+        ;; NB: both arrays are passed to the assembly comb VOP, which
+        ;; assumes the heap layout of a simple vector, so they must not
+        ;; be stack allocated.
         (declare (type (simple-array (unsigned-byte 64) (*)) point scratch))
         (ed25519-point-to-r51! point 0 p)
         ;; scratch[0..255]: scalar bits, most significant first.

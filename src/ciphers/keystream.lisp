@@ -36,7 +36,9 @@
                                 (+ (aref state 12) (ash (aref state 13) 32)))))
                (- (* 64 counter) (chacha-keystream-buffer-remaining cipher)))
              (let ((buffer (make-array 64 :element-type '(unsigned-byte 8))))
-               (declare (dynamic-extent buffer))
+               ;; NB: the buffer is passed to the assembly xor128 VOP,
+               ;; which assumes the heap layout of a simple vector.
+               (declare (type (simple-array (unsigned-byte 8) (*)) buffer))
                (multiple-value-bind (q r)
                    (truncate position 64)
                  (setf (aref state 12) (logand q #xffffffff))
@@ -52,7 +54,9 @@
              (let ((counter (+ (aref state 8) (ash (aref state 9) 32))))
                (- (* 64 counter) (salsa20-keystream-buffer-remaining cipher)))
              (let ((buffer (make-array 64 :element-type '(unsigned-byte 8))))
-               (declare (dynamic-extent buffer))
+               ;; NB: the buffer is passed to the assembly xor128 VOP,
+               ;; which assumes the heap layout of a simple vector.
+               (declare (type (simple-array (unsigned-byte 8) (*)) buffer))
                (multiple-value-bind (q r)
                    (truncate position 64)
                  (setf (aref state 8) (logand q #xffffffff))
