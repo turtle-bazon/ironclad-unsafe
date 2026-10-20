@@ -219,26 +219,26 @@ conditional subtract of Q suffices."
                 (setf (aref c i) lo
                       carry c1)))))))
 
-  ;; Conditional subtract Q if result >= Q.  Result is in c[0..7] and
-  ;; is under 2*Q (since X' < 2^256 + 38*37 < 2^256 + 1406 < 2*Q).
-  ;; Reduce c[0..7] mod Q.  Result is < 2*Q so one conditional
-  ;; subtract suffices.  Compare from the top limb down.
-  (let ((geq nil))
-    (dotimes (k 8)
-      (let ((i (- 7 k)))
-        (let ((cl (aref c i))
-              (ql (ldb (byte 32 (* i 32)) +ed25519-q+)))
-          (cond ((> cl ql) (setf geq t) (return))
-                ((< cl ql) (setf geq nil) (return))))))
-    (when geq
-      (let ((borrow 0))
-        (declare (type (unsigned-byte 32) borrow))
-        (dotimes (j 8)
-          (let ((d (- (aref c j)
-                      (ldb (byte 32 (* j 32)) +ed25519-q+)
-                      borrow)))
-            (setf (aref c j) (ldb (byte 32 0) d)
-                  borrow (if (minusp d) 1 0)))))))
+  ;; Conditional subtract Q until the result is canonical.  After the
+  ;; folds above the value is < 2^256 = 2*Q + 38, so at most two
+  ;; subtractions are needed.  Compare from the top limb down.
+  (dotimes (pass 2)
+    (let ((geq nil))
+      (dotimes (k 8)
+        (let ((i (- 7 k)))
+          (let ((cl (aref c i))
+                (ql (ldb (byte 32 (* i 32)) +ed25519-q+)))
+            (cond ((> cl ql) (setf geq t) (return))
+                  ((< cl ql) (setf geq nil) (return))))))
+      (when geq
+        (let ((borrow 0))
+          (declare (type (unsigned-byte 32) borrow))
+          (dotimes (j 8)
+            (let ((d (- (aref c j)
+                        (ldb (byte 32 (* j 32)) +ed25519-q+)
+                        borrow)))
+              (setf (aref c j) (ldb (byte 32 0) d)
+                    borrow (if (minusp d) 1 0))))))))
 
   c))
 
@@ -298,19 +298,50 @@ conditional subtract of Q suffices."
 
 (defconstant +ed25519-q-minus-2+ (- +ed25519-q+ 2))
 
-(declaim (inline ed25519-fe-inv))
-(defun ed25519-fe-inv (a)
-  "Field element inverse via Fermat's little theorem: A^(Q-2) mod Q."
-  (declare (type ed25519-fe a)
+(declaim (inline ed25519-fe-sq-n))
+(defun ed25519-fe-sq-n (r a n)
+  "R := A^(2^N).  N must be positive."
+  (declare (type ed25519-fe r a)
+           (type (integer 1) n)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((result (ed25519-fe-from-int 1))
-        (base a))
-    (declare (type ed25519-fe result base))
-    (loop for i from (1- (integer-length +ed25519-q-minus-2+)) downto 0
-          do (ed25519-fe-sq result result)
-             (when (logbitp i +ed25519-q-minus-2+)
-               (ed25519-fe-mul result result base)))
-    result))
+  (ed25519-fe-sq r a)
+  (loop repeat (1- n) do (ed25519-fe-sq r r))
+  r)
+
+(declaim (inline ed25519-fe-inv))
+(defun ed25519-fe-inv (z)
+  "Field element inverse via the standard 2^255-21 addition chain.
+Uses 254 squarings and 11 multiplications."
+  (declare (type ed25519-fe z)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((t0 (ed25519-fe-zero)) (t1 (ed25519-fe-zero))
+        (t2 (ed25519-fe-zero)) (t3 (ed25519-fe-zero))
+        (out (ed25519-fe-zero)))
+    (declare (type ed25519-fe t0 t1 t2 t3 out)
+             (dynamic-extent t0 t1 t2 t3))
+    (ed25519-fe-sq t0 z)                 ; z^2
+    (ed25519-fe-sq-n t1 t0 2)            ; z^8
+    (ed25519-fe-mul t1 z t1)             ; z^9
+    (ed25519-fe-mul t0 t0 t1)            ; z^11
+    (ed25519-fe-sq t2 t0)                ; z^22
+    (ed25519-fe-mul t1 t1 t2)            ; z^(2^5-1)
+    (ed25519-fe-sq-n t2 t1 5)            ; z^(2^10-2^5)
+    (ed25519-fe-mul t1 t2 t1)            ; z^(2^10-1)
+    (ed25519-fe-sq-n t2 t1 10)
+    (ed25519-fe-mul t2 t2 t1)            ; z^(2^20-1)
+    (ed25519-fe-sq-n t3 t2 20)
+    (ed25519-fe-mul t2 t3 t2)            ; z^(2^40-1)
+    (ed25519-fe-sq-n t2 t2 10)
+    (ed25519-fe-mul t1 t2 t1)            ; z^(2^50-1)
+    (ed25519-fe-sq-n t2 t1 50)
+    (ed25519-fe-mul t2 t2 t1)            ; z^(2^100-1)
+    (ed25519-fe-sq-n t3 t2 100)
+    (ed25519-fe-mul t2 t3 t2)            ; z^(2^200-1)
+    (ed25519-fe-sq-n t2 t2 50)
+    (ed25519-fe-mul t1 t2 t1)            ; z^(2^250-1)
+    (ed25519-fe-sq-n t1 t1 5)
+    (ed25519-fe-mul out t1 t0)           ; z^(2^255-21)
+    out))
 
 (defmethod ec-scalar-inv ((kind (eql :ed25519)) n)
   ;; Field-element Fermat inversion is faster than bignum expt-mod.
