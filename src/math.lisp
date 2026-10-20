@@ -242,7 +242,9 @@ computing the modular inverse."
                   until (= 1 (gcd b modulus))
                   finally (return b)))
          (x (mod (* n b) modulus))
-         (y (modular-inverse x modulus)))
+         ;; The input is blinded, so the faster variable-time Euclid
+         ;; inverse cannot leak information about N.
+         (y (modular-inverse-euclid x modulus)))
     (mod (* y b) modulus)))
 
 (defun expt-mod (n exponent modulus)

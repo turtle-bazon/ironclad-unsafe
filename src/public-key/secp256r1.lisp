@@ -558,7 +558,9 @@ MODULAR-INVERSE-WITH-BLINDING)."
 ;;; when its methods are not available yet.
 
 (defvar *secp256r1-base-table* nil
-  "Precomputed I * G for I in [0, 16), built on first use.")
+  "Positional table T[J][V] = V * 256^J * G, built on first use.")
+
+(declaim (ftype (function () simple-vector) secp256r1-build-base-table))
 
 
 (defun secp256r1-mixed-add! (dst p q s)
@@ -646,43 +648,7 @@ reusing scratch pool S. DST must differ from P."
 
 (defun secp256r1-ensure-base-table ()
   (or *secp256r1-base-table*
-      (setf *secp256r1-base-table*
-            (let ((table (make-array 16)))
-              (setf (aref table 0) +secp256r1-point-at-infinity+)
-              (dotimes (i 15 table)
-                (let* ((pt (ec-add (aref table i) +secp256r1-g+))
-                       (invz (secp256r1-fe-from-int
-                              (ec-scalar-inv :secp256r1
-                                             (secp256r1-fe-to-int
-                                               (secp256r1-point-z pt)))))
-                       (invz2 (secp256r1-fesq invz))
-                       (invz3 (secp256r1-femul invz2 invz))
-                       (x (secp256r1-fe-to-int
-                           (secp256r1-femul (secp256r1-point-x pt) invz2)))
-                       (y (secp256r1-fe-to-int
-                           (secp256r1-femul (secp256r1-point-y pt) invz3))))
-                  (setf (aref table (1+ i))
-                        (secp256r1-point-from-ints x y 1))))))))
-
-(declaim (inline secp256r1-select-base))
-(defun secp256r1-select-base (table v)
-  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
-           (type (integer 0 15) v))
-  (let ((sel +secp256r1-point-at-infinity+))
-    (dotimes (i 16 sel)
-      (when (= i v)
-        (setf sel (aref table i))))))
-
-(defun secp256r1-base-mult-alloc (k)
-  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
-           (type integer k))
-  (let ((table (secp256r1-ensure-base-table))
-        (r +secp256r1-point-at-infinity+))
-    (loop for j from 63 downto 0 do
-      (dotimes (i 4)
-        (setf r (ec-double r)))
-      (setf r (ec-add r (secp256r1-select-base table (ldb (byte 4 (* j 4)) k)))))
-    r))
+      (setf *secp256r1-base-table* (secp256r1-build-base-table))))
 
 (defmethod ec-scalar-mult ((p secp256r1-point) e)
   ;; Secret scalars use the fixed-schedule ladder, except for the fixed
@@ -705,12 +671,15 @@ reusing scratch pool S. DST must differ from P."
   (if (zerop e)
       +secp256r1-point-at-infinity+
       (let ((r0 (secp256r1-point-from-ints 1 1 0))
-            (r1 point)
+            (r1 (secp256r1-point-from-ints 1 1 0))
             (tmp (secp256r1-point-from-ints 1 1 0))
             (tmp2 (secp256r1-point-from-ints 1 1 0))
             (s (secp256r1-make-scratch)))
         (declare (type secp256r1-point r0 r1 tmp tmp2)
                  (type simple-vector s))
+        ;; R1 is a copy: the loop writes its result back into R1, and
+        ;; POINT may be the shared generator constant.
+        (secp256r1-point-copy! r1 point)
         (loop for i from (1- +secp256r1-bits+) downto 0 do
           (if (logbitp i e)
               (progn
@@ -892,7 +861,7 @@ reusing scratch pool S. DST must differ from P."
          (u1 (mod (* e w) +secp256r1-l+))
          (u2 (mod (* r w) +secp256r1-l+))
          ;; Joint multiplication (Shamir's trick): one pass instead of two.
-         (rp (%ec-shamir-mult +secp256r1-g+ pk u1 u2))
+         (rp (secp256r1-shamir-mult +secp256r1-g+ pk u1 u2))
          (x (subseq (ec-encode-point rp) 1 (1+ (/ +secp256r1-bits+ 8))))
          (v (ec-decode-scalar :secp256r1 x))
          (v (mod v +secp256r1-l+)))
@@ -1156,21 +1125,169 @@ reusing scratch pool S. DST must differ from P."
                  (secp256r1-fe-copy! (secp256r1-point-z dst) z3)
                  dst))))))
 
+;;; Positional fixed-base table.
+;;;
+;;; T[J][V] = V * 256^J * G for J in [0, 32) and V in [0, 256), in affine
+;;; coordinates.  A scalar multiplication is then 32 mixed additions (one
+;;; per byte of K) and no doublings at all, instead of the 256 doublings
+;;; and 64 additions of the 4-bit comb.  The table is built lazily on
+;;; first use; Montgomery's batch-inversion trick makes affine
+;;; normalization cost one inversion per row rather than one per point.
+
+(defun secp256r1-point-from-fe (x y)
+  "A fresh affine point with coordinates copied from field elements X, Y."
+  (declare (type secp256r1-fe x y)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((p (make-secp256r1-point)))
+    (secp256r1-fe-copy! (secp256r1-point-x p) x)
+    (secp256r1-fe-copy! (secp256r1-point-y p) y)
+    (setf (aref (secp256r1-point-z p) 0) 1)
+    p))
+
+(defun secp256r1-batch-affine! (points)
+  "Convert the nonzero projective POINTS to affine in place, using a
+single field inversion (Montgomery's batch trick).  Index 0 is left as
+the point at infinity."
+  (declare (type simple-vector points)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((n (length points))
+         (prods (make-array n))
+         (acc (secp256r1-fe-from-int 1)))
+    (declare (type fixnum n)
+             (type simple-vector prods)
+             (type secp256r1-fe acc))
+    (setf (aref prods 0) (secp256r1-fe-from-int 1))
+    (loop for i of-type fixnum from 1 below n do
+      (let ((z (secp256r1-point-z (aref points i))))
+        (declare (type secp256r1-fe z))
+        (secp256r1-fe-mul acc acc z)
+        (setf (aref prods i) (secp256r1-fe-copy acc))))
+    (let ((inv (secp256r1-fe-inv acc)))
+      (declare (type secp256r1-fe inv))
+      (loop for i of-type fixnum downfrom (1- n) to 1 do
+        (let* ((pt (aref points i))
+               (z (secp256r1-point-z pt))
+               (zi (secp256r1-femul inv (aref prods (1- i))))
+               (zi2 (secp256r1-fesq zi))
+               (zi3 (secp256r1-femul zi2 zi))
+               (x (secp256r1-femul (secp256r1-point-x pt) zi2))
+               (y (secp256r1-femul (secp256r1-point-y pt) zi3)))
+          (declare (type secp256r1-fe z zi zi2 zi3 x y))
+          (setf inv (secp256r1-femul inv z))
+          (setf (aref points i) (secp256r1-point-from-fe x y)))))
+    points))
+
+(defun secp256r1-build-base-table ()
+  "Build the positional table T[J][V] = V * 256^J * G."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((rows (make-array 32))
+        (base (secp256r1-point-from-ints 1 1 0))
+        (s (secp256r1-make-scratch)))
+    (declare (type simple-vector rows)
+             (type secp256r1-point base)
+             (type simple-vector s))
+    (secp256r1-point-copy! base +secp256r1-g+)
+    (dotimes (j 32 (progn (setf *secp256r1-base-table* rows) rows))
+      (declare (type fixnum j))
+      (let ((row (make-array 256))
+            (tmp (secp256r1-point-from-ints 1 1 0)))
+        (declare (type simple-vector row)
+                 (type secp256r1-point tmp))
+        (setf (aref row 0) +secp256r1-point-at-infinity+
+              (aref row 1) (secp256r1-point-from-ints 1 1 0))
+        (secp256r1-point-copy! (aref row 1) base)
+        ;; Row[V] = V * base, built from earlier entries: even V doubles
+        ;; row[V/2], odd V adds base to row[V-1].
+        (loop for v of-type fixnum from 2 below 256 do
+          (let ((dst (secp256r1-point-from-ints 1 1 0)))
+            (declare (type secp256r1-point dst))
+            (if (evenp v)
+                (secp256r1-double! dst (aref row (ash v -1)) s)
+                (secp256r1-add! dst (aref row (1- v)) base s))
+            (setf (aref row v) dst)))
+        (secp256r1-batch-affine! row)
+        (setf (aref rows j) row)
+        ;; base := 256 * base = 256^(J+1) * G
+        (loop repeat 8 do
+          (secp256r1-double! tmp base s)
+          (secp256r1-point-copy! base tmp))))))
+
+(declaim (inline secp256r1-select-base))
+(defun secp256r1-select-base (row v)
+  "Select index V from the affine positional-table ROW.  The scan touches
+every entry in order, so the memory access pattern does not depend on V."
+  (declare (type simple-vector row)
+           (type (unsigned-byte 8) v)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((sel (aref row 0)))
+    (loop for i of-type fixnum from 1 below 256
+          do (when (= i v) (setf sel (aref row i))))
+    sel))
+
 (defun secp256r1-base-mult (k)
-  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
-           (type integer k))
-  "Fixed-base 4-bit comb for G using destination-passing (!) ops."
+  "Fixed-base multiplication K*G using the positional byte table: 32
+mixed additions and no doublings."
+  (declare (type integer k)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((table (secp256r1-ensure-base-table))
         (acc (secp256r1-point-from-ints 1 1 0))
         (tmp (secp256r1-point-from-ints 1 1 0))
-        (sel (secp256r1-point-from-ints 1 1 0))
         (s (secp256r1-make-scratch)))
-    (loop for j from 63 downto 0 do
-      (dotimes (i 4)
-        (secp256r1-double! tmp acc s)
-        (secp256r1-point-copy! acc tmp))
-      (secp256r1-point-copy! sel (secp256r1-select-base table
-                                (ldb (byte 4 (* j 4)) k)))
-      (secp256r1-mixed-add! tmp acc sel s)
-      (secp256r1-point-copy! acc tmp))
+    (declare (type simple-vector table)
+             (type secp256r1-point acc tmp)
+             (type simple-vector s))
+    (dotimes (j 32 acc)
+      (declare (type fixnum j))
+      (let ((v (ldb (byte 8 (* j 8)) k)))
+        (declare (type (unsigned-byte 8) v))
+        (secp256r1-mixed-add! tmp acc
+                              (secp256r1-select-base (aref table j) v) s)
+        (secp256r1-point-copy! acc tmp)))))
+
+(defun secp256r1-shamir-mult (p q a b)
+  "Public-only joint scalar multiplication A*P + B*Q for verification.
+Uses 4-bit windows and destination-passing point operations; P must be
+the fixed generator, whose affine multiples come from the byte table."
+  (declare (type secp256r1-point p q)
+           (type integer a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (unless (eq p +secp256r1-g+)
+    (return-from secp256r1-shamir-mult (%ec-shamir-mult p q a b)))
+  (let* ((nbits (max (integer-length a) (integer-length b) 1))
+         (windows (ceiling nbits 4))
+         (tg (aref (secp256r1-ensure-base-table) 0))
+         (tq (make-array 16))
+         (acc (secp256r1-point-from-ints 1 1 0))
+         (tmp (secp256r1-point-from-ints 1 1 0))
+         (s (secp256r1-make-scratch)))
+    (declare (type fixnum nbits windows)
+             (type simple-vector tg tq)
+             (type secp256r1-point acc tmp)
+             (type simple-vector s))
+    ;; Small multiples of Q; Q is public, so they stay projective.
+    (setf (aref tq 0) +secp256r1-point-at-infinity+
+          (aref tq 1) q)
+    (loop for v of-type fixnum from 2 below 16 do
+      (let ((dst (secp256r1-point-from-ints 1 1 0)))
+        (declare (type secp256r1-point dst))
+        (if (evenp v)
+            (secp256r1-double! dst (aref tq (ash v -1)) s)
+            (secp256r1-add! dst (aref tq (1- v)) q s))
+        (setf (aref tq v) dst)))
+    (loop for w of-type fixnum downfrom (1- windows) to 0 do
+      (unless (= w (1- windows))
+        (loop repeat 4 do
+          (secp256r1-double! tmp acc s)
+          (secp256r1-point-copy! acc tmp)))
+      (let* ((shift (* w 4))
+             (ga (if (< shift nbits) (ldb (byte 4 shift) a) 0))
+             (gb (if (< shift nbits) (ldb (byte 4 shift) b) 0)))
+        (declare (type fixnum shift)
+                 (type (unsigned-byte 4) ga gb))
+        (unless (zerop ga)
+          (secp256r1-mixed-add! tmp acc (aref tg ga) s)
+          (secp256r1-point-copy! acc tmp))
+        (unless (zerop gb)
+          (secp256r1-add! tmp acc (aref tq gb) s)
+          (secp256r1-point-copy! acc tmp))))
     acc))
