@@ -361,11 +361,49 @@
     (1024 +falcon-fft-roots-1024+)))
 
 (deftype falcon-cvec () '(simple-array (complex double-float) (*)))
+(deftype falcon-dvec () '(simple-array double-float (*)))
 
 (defun falcon-cvec (n &optional (init #C(0d0 0d0)))
   (make-array n :element-type '(complex double-float) :initial-element init))
 
+(defun falcon-dvec (n)
+  (make-array n :element-type 'double-float :initial-element 0d0))
+
+(defun falcon-double-vec (v)
+  "V as a specialized double-float vector."
+  (declare (type (simple-array * (*)) v)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((n (length v))
+         (r (falcon-dvec n)))
+    (declare (type falcon-dvec r))
+    (dotimes (i n r)
+      (setf (aref r i) (float (aref v i) 0d0)))))
+
+(defun falcon-scaled-vec (v shift)
+  "V scaled by 2^SHIFT as a specialized double-float vector."
+  (declare (type (simple-array * (*)) v)
+           (type fixnum shift)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((n (length v))
+         (r (falcon-dvec n)))
+    (declare (type falcon-dvec r))
+    (dotimes (i n r)
+      (setf (aref r i) (float (ash (aref v i) shift) 0d0)))))
+
+(defun falcon-cdiv-vec (v qfc)
+  "V divided by the complex constant QFC, elementwise."
+  (declare (type falcon-cvec v)
+           (type (complex double-float) qfc)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((n (length v))
+         (r (falcon-cvec n)))
+    (declare (type falcon-cvec r))
+    (dotimes (i n r)
+      (setf (aref r i) (falcon-cdiv (aref v i) qfc)))))
+
 (defun falcon-split-fft (f)
+  (declare (type falcon-cvec f)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length f))
          (h (ash n -1))
          (w (falcon-fft-roots n))
@@ -377,6 +415,8 @@
                            (conjugate (aref w (* 2 i))))))))
 
 (defun falcon-merge-fft (f0 f1)
+  (declare (type falcon-cvec f0 f1)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((h (length f0))
          (n (* 2 h))
          (w (falcon-fft-roots n))
@@ -387,6 +427,7 @@
 
 (defun falcon-fft (f)
   "Forward FFT: coefficient reals -> FFT domain."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((n (length f)))
     (cond ((> n 2)
            (multiple-value-bind (f0 f1) (falcon-split f)
@@ -399,6 +440,7 @@
 
 (defun falcon-split (f)
   "Split a real-coefficient vector into even/odd halves (as doubles)."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length f))
          (h (ash n -1))
          (f0 (make-array h :element-type 'double-float))
@@ -408,6 +450,7 @@
             (aref f1 i) (float (aref f (+ (* 2 i) 1)) 0d0)))))
 
 (defun falcon-merge (f0 f1)
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((h (length f0))
          (f (make-array (* 2 h) :element-type 'double-float)))
     (dotimes (i h f)
@@ -416,6 +459,7 @@
 
 (defun falcon-ifft (f)
   "Inverse FFT: FFT domain -> real coefficients (doubles)."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((n (length f)))
     (cond ((> n 2)
            (multiple-value-bind (f0 f1) (falcon-split-fft f)
@@ -427,14 +471,20 @@
              r)))))
 
 (defun falcon-add-fft (a b)
+  (declare (type falcon-cvec a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length a)) (r (falcon-cvec n)))
     (dotimes (i n r) (setf (aref r i) (+ (aref a i) (aref b i))))))
 
 (defun falcon-sub-fft (a b)
+  (declare (type falcon-cvec a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length a)) (r (falcon-cvec n)))
     (dotimes (i n r) (setf (aref r i) (- (aref a i) (aref b i))))))
 
 (defun falcon-mul-fft (a b)
+  (declare (type falcon-cvec a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length a)) (r (falcon-cvec n)))
     (dotimes (i n r) (setf (aref r i) (* (aref a i) (aref b i))))))
 
@@ -460,6 +510,8 @@ so results are bit-identical to the reference."
                    (/ (- (* ai ratio) ar) denom))))))
 
 (defun falcon-adj-fft (a)
+  (declare (type falcon-cvec a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length a)) (r (falcon-cvec n)))
     (dotimes (i n r) (setf (aref r i) (conjugate (aref a i))))))
 
@@ -715,10 +767,19 @@ diagonals below (matching the reference construction)."
                   (multiple-value-bind (z00 z01)
                       (falcon-ffsampling-2 s00 s01 t0sub sigmin randbytes)
                     (values (falcon-merge-fft z00 z01) z1)))))))
-        (values (vector (falcon-samplerz (realpart (aref t0 0)) (realpart (aref tree 0))
-                                        sigmin randbytes))
-                (vector (falcon-samplerz (realpart (aref t1 0)) (realpart (aref tree 0))
-                                        sigmin randbytes))))))
+        (let ((z0 (falcon-cvec 1))
+              (z1 (falcon-cvec 1)))
+          (setf (aref z0 0)
+                (complex (falcon-samplerz (realpart (aref t0 0))
+                                          (realpart (aref tree 0))
+                                          sigmin randbytes)
+                         0d0)
+                (aref z1 0)
+                (complex (falcon-samplerz (realpart (aref t1 0))
+                                          (realpart (aref tree 0))
+                                          sigmin randbytes)
+                         0d0))
+          (values z0 z1)))))
 
 (defun falcon-ffsampling-2 (s0 s1 tree sigmin randbytes)
   "Helper: same as falcon-ffsampling (split halves already)."
@@ -783,12 +844,11 @@ diagonals below (matching the reference construction)."
   "Returns (s0 s1) integer vectors with s0+s1*h = hashed."
   (destructuring-bind ((a b) (c d)) b0fft
     ;; t = (point*d/q, -point*b/q) in FFT domain (scalar q division).
-    (let* ((pointf (falcon-fft (map 'vector (lambda (x) (float x 0d0)) hashed)))
+    (let* ((pointf (falcon-fft (falcon-double-vec hashed)))
            (qf (float +falcon-q+ 0d0))
            (qfc (complex qf 0d0))
-           (tt0 (map 'vector (lambda (e) (falcon-cdiv e qfc)) (falcon-mul-fft pointf d)))
-           (tt1 (map 'vector (lambda (e) (falcon-cdiv e qfc))
-                                    (falcon-mul-fft (falcon-negate-fft pointf) b))))
+           (tt0 (falcon-cdiv-vec (falcon-mul-fft pointf d) qfc))
+           (tt1 (falcon-cdiv-vec (falcon-mul-fft (falcon-negate-fft pointf) b) qfc)))
       (multiple-value-bind (z0f z1f)
           (falcon-ffsampling tt0 tt1 tree sigmin randbytes)
         (let* ((v0f (falcon-add-fft (falcon-mul-fft z0f a) (falcon-mul-fft z1f c)))
@@ -891,24 +951,39 @@ exactly like the reference."
 
 (declaim (inline falcon-add-vectors))
 (defun falcon-add-vectors (a b)
-  (declare (type (simple-array * (*)) a b))
+  (declare (type (simple-array * (*)) a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length a))
          (r (make-array n :element-type 'integer :initial-element 0)))
     (dotimes (i n r)
       (setf (aref r i) (+ (aref a i) (aref b i))))))
 
-(defun falcon-karatsuba (a b n)
+(defun falcon-add-vectors-range (a b ao bo n)
+  "Elementwise sum of A[AO..AO+N) and B[BO..BO+N)."
+  (declare (type (simple-array * (*)) a b)
+           (type fixnum ao bo n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((r (make-array n :element-type 'integer :initial-element 0)))
+    (declare (type (simple-array integer (*)) r))
+    (dotimes (i n r)
+      (setf (aref r i) (+ (aref a (+ ao i)) (aref b (+ bo i)))))))
+
+(defun falcon-karatsuba (a b ao bo n)
+  "Karatsuba product of A[AO..AO+N) and B[BO..BO+N); the result has 2N
+elements, the low half followed by the high half."
+  (declare (type (simple-array * (*)) a b)
+           (type fixnum ao bo n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (if (= n 1)
-      (vector (* (aref a 0) (aref b 0)) 0)
+      (vector (* (aref a ao) (aref b bo)) 0)
       (let* ((n2 (ash n -1))
-             (a0 (subseq a 0 n2)) (a1 (subseq a n2))
-             (b0 (subseq b 0 n2)) (b1 (subseq b n2))
-             (ax (falcon-add-vectors a0 a1))
-             (bx (falcon-add-vectors b0 b1))
-             (a0b0 (falcon-karatsuba a0 b0 n2))
-             (a1b1 (falcon-karatsuba a1 b1 n2))
-             (axbx (falcon-karatsuba ax bx n2))
+             (ax (falcon-add-vectors-range a a ao (+ ao n2) n2))
+             (bx (falcon-add-vectors-range b b bo (+ bo n2) n2))
+             (a0b0 (falcon-karatsuba a b ao bo n2))
+             (a1b1 (falcon-karatsuba a b (+ ao n2) (+ bo n2) n2))
+             (axbx (falcon-karatsuba ax bx 0 0 n2))
              (ab (make-array (* 2 n) :element-type 'integer :initial-element 0)))
+        (declare (type (simple-array integer (*)) ax bx a0b0 a1b1 axbx ab))
         (dotimes (i n)
           (decf (aref axbx i) (+ (aref a0b0 i) (aref a1b1 i))))
         (dotimes (i n)
@@ -918,9 +993,12 @@ exactly like the reference."
         ab)))
 
 (defun falcon-karamul (a b)
+  (declare (type (simple-array * (*)) a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length a))
-         (ab (falcon-karatsuba (coerce a 'vector) (coerce b 'vector) n))
-         (r (make-array n :initial-element 0)))
+         (ab (falcon-karatsuba (coerce a 'vector) (coerce b 'vector) 0 0 n))
+         (r (make-array n :element-type 'integer :initial-element 0)))
+    (declare (type (simple-array integer (*)) r))
     (dotimes (i n r)
       (setf (aref r i) (- (aref ab i) (aref ab (+ i n)))))))
 
@@ -975,8 +1053,8 @@ exactly like the reference."
                     (falcon-bitsize (reduce #'max f))
                     (falcon-bitsize (reduce #'min g))
                     (falcon-bitsize (reduce #'max g))))
-         (f-adj (map 'vector (lambda (x) (float (ash x (- 53 size)) 0d0)) f))
-         (g-adj (map 'vector (lambda (x) (float (ash x (- 53 size)) 0d0)) g))
+         (f-adj (falcon-scaled-vec f (- 53 size)))
+         (g-adj (falcon-scaled-vec g (- 53 size)))
          (fa (falcon-fft f-adj))
          (ga (falcon-fft g-adj))
          (rF (copy-seq ff))
@@ -988,8 +1066,8 @@ exactly like the reference."
                      (falcon-bitsize (reduce #'max rG)))))
         (when (< sz size)
           (return (values rF rG)))
-        (let* ((big-f (map 'vector (lambda (x) (float (ash x (- 53 sz)) 0d0)) rF))
-               (big-g (map 'vector (lambda (x) (float (ash x (- 53 sz)) 0d0)) rG))
+        (let* ((big-f (falcon-scaled-vec rF (- 53 sz)))
+               (big-g (falcon-scaled-vec rG (- 53 sz)))
                (big-fa (falcon-fft big-f))
                (big-ga (falcon-fft big-g))
                (den (falcon-add-fft (falcon-mul-fft fa (falcon-adj-fft fa))

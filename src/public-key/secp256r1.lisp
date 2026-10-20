@@ -52,6 +52,14 @@
 (defconstant +secp256r1-l+ 115792089210356248762697446949407573529996955224135760342422259061068512044369)
 (defconstant +secp256r1-i+ 28948022302589062190674361737351893382521535853822578548883407827216774463488)
 
+;;; The prime's limbs, little endian.  Keeping them in a vector avoids
+;;; extracting them from the bignum constant on every add and subtract.
+(defconstant +secp256r1-p-limbs+ (make-array 8 :element-type '(unsigned-byte 32)
+                                                    :initial-contents
+                                                    '(4294967295 4294967295
+                                                      4294967295 0 0 0 1
+                                                      4294967295)))
+
 ;;; P-256 field arithmetic on 32-bit limbs.
 ;;;
 ;;; A field element is (SIMPLE-ARRAY (UNSIGNED-BYTE 32) (8)), little
@@ -110,14 +118,14 @@
     (when (or (plusp carry)
               (loop for i from 7 downto 0
                     for limb = (aref r i)
-                    for plimb = (ldb (byte 32 (* i 32)) +secp256r1-p+)
+                    for plimb = (aref +secp256r1-p-limbs+ i)
                     when (/= limb plimb) return (> limb plimb)
                     finally (return t)))
       (let ((borrow 0))
         (declare (type (unsigned-byte 32) borrow))
         (dotimes (i 8)
           (let ((d (- (aref r i)
-                      (ldb (byte 32 (* i 32)) +secp256r1-p+)
+                      (aref +secp256r1-p-limbs+ i)
                       borrow)))
             (setf (aref r i) (ldb (byte 32 0) d)
                   borrow (if (minusp d) 1 0)))))))
@@ -138,7 +146,7 @@
         (declare (type (unsigned-byte 32) carry))
         (dotimes (i 8)
           (let ((s (+ (aref r i)
-                      (ldb (byte 32 (* i 32)) +secp256r1-p+)
+                      (aref +secp256r1-p-limbs+ i)
                       carry)))
             (setf (aref r i) (ldb (byte 32 0) s)
                   carry (ash s -32)))))))
@@ -207,7 +215,7 @@ stays within fixnum range."
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (loop for i from 7 downto 0
         for limb = (aref a i)
-        for plimb = (ldb (byte 32 (* i 32)) +secp256r1-p+)
+        for plimb = (aref +secp256r1-p-limbs+ i)
         when (/= limb plimb) return (> limb plimb)
         finally (return t)))
 
@@ -324,7 +332,7 @@ normalize first unless the words are already canonical."
       (let ((carry 0)
             (borrow 0))
         (dotimes (i 8)
-          (let ((pw (* 8 (ldb (byte 32 (* i 32)) +secp256r1-p+))))
+          (let ((pw (* 8 (aref +secp256r1-p-limbs+ i))))
             (multiple-value-bind (summed c1)
                 (secp256r1--adc (aref p i) pw carry)
               (multiple-value-bind (word b1)
@@ -357,7 +365,7 @@ normalize first unless the words are already canonical."
               (dotimes (i 8)
                 (multiple-value-bind (word b1)
                     (secp256r1--sbb (aref r i)
-                                    (ldb (byte 32 (* i 32)) +secp256r1-p+)
+                                    (aref +secp256r1-p-limbs+ i)
                                     borrow)
                   (setf (aref r i) word
                         borrow b1)))))))))
