@@ -3,7 +3,7 @@
 
 
 (defun list-all-kdfs ()
-  (copy-list '(:argon2i :argon2d :bcrypt :bcrypt-pbkdf
+  (copy-list '(:argon2i :argon2d :argon2id :bcrypt :bcrypt-pbkdf
                :hkdf :hmac-kdf :pbkdf1 :pbkdf2 :scrypt-kdf)))
 
 (defun make-kdf (kind &key digest
