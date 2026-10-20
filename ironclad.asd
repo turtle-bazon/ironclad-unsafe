@@ -216,9 +216,9 @@
   "dsa"
   "rsa"
   "elgamal"
-  "curve25519"
-  "curve448"
   ("ed25519" :depends-on ("ironclad/digest/sha512"))
+  ("curve25519" :depends-on ("ironclad/public-key/ed25519"))
+  "curve448"
   ("ed448" :depends-on ("ironclad/digest/sha3"))
   "secp256k1"
   "secp224r1"

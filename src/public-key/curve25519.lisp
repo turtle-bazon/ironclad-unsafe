@@ -17,8 +17,8 @@
   (defclass curve25519-point ()
     ;; Internally, we represent a point (x, y) using only the projective
     ;; coordinate (X, Z) for x, with x = X / Z.
-    ((x :initarg :x :type integer)
-     (z :initarg :z :type integer)))
+    ((x :initarg :x :type ed25519-fe)
+     (z :initarg :z :type ed25519-fe)))
   (defmethod make-load-form ((p curve25519-point) &optional env)
     (declare (ignore env))
     (make-load-form-saving-slots p)))
@@ -31,35 +31,49 @@
 (defconstant +curve25519-a24+ 121666)
 
 (defconst +curve25519-g+
-  (make-instance 'curve25519-point :x 9 :z 1))
+  (make-instance 'curve25519-point
+                 :x (ed25519-fe-from-int 9)
+                 :z (ed25519-fe-from-int 1)))
 
 
 (defmethod ec-scalar-inv ((kind (eql :curve25519)) n)
-  (expt-mod n (- +curve25519-p+ 2) +curve25519-p+))
+  (declare (type integer n))
+  (if (zerop n)
+      0
+      (ed25519-fe-to-int (ed25519-fe-inv (ed25519-fe-from-int n)))))
 
 (defun curve25519-double-and-add (x1 z1 x2 z2 x3)
-  "Point doubling and addition on curve25519 curve."
-  (declare (type integer x1 z1 x2 z2 x3)
+  "Point doubling and addition on curve25519 curve, using the shared
+2^255-19 field layer (see src/public-key/ed25519.lisp)."
+  (declare (type ed25519-fe x1 z1 x2 z2 x3)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let* ((t1 (mod (+ x1 z1) +curve25519-p+))
-         (t2 (mod (* t1 t1) +curve25519-p+))
-         (t3 (mod (- x1 z1) +curve25519-p+))
-         (t4 (mod (* t3 t3) +curve25519-p+))
-         (t5 (mod (- t2 t4) +curve25519-p+))
-         (t6 (mod (+ x2 z2) +curve25519-p+))
-         (t7 (mod (- x2 z2) +curve25519-p+))
-         (t8 (mod (* t1 t7) +curve25519-p+))
-         (t9 (mod (* t3 t6) +curve25519-p+))
-         (t10 (mod (+ t8 t9) +curve25519-p+))
-         (t11 (mod (- t8 t9) +curve25519-p+))
-         (x4 (mod (* t2 t4) +curve25519-p+))
-         (t12 (mod (* t5 +curve25519-a24+) +curve25519-p+))
-         (t13 (mod (+ t4 t12) +curve25519-p+))
-         (z4 (mod (* t5 t13) +curve25519-p+))
-         (x5 (mod (* t10 t10) +curve25519-p+))
-         (t14 (mod (* t11 t11) +curve25519-p+))
-         (z5 (mod (* x3 t14) +curve25519-p+)))
-    (declare (type integer t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 t11 t12 t13 t14 x4 z4 x5 z5))
+  (let ((t1 (ed25519-fe-zero)) (t2 (ed25519-fe-zero)) (t3 (ed25519-fe-zero))
+        (t4 (ed25519-fe-zero)) (t5 (ed25519-fe-zero)) (t6 (ed25519-fe-zero))
+        (t7 (ed25519-fe-zero)) (t8 (ed25519-fe-zero)) (t9 (ed25519-fe-zero))
+        (t10 (ed25519-fe-zero)) (t11 (ed25519-fe-zero)) (t12 (ed25519-fe-zero))
+        (t13 (ed25519-fe-zero)) (t14 (ed25519-fe-zero))
+        (x4 (ed25519-fe-zero)) (z4 (ed25519-fe-zero))
+        (x5 (ed25519-fe-zero)) (z5 (ed25519-fe-zero)))
+    (declare (type ed25519-fe t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 t11 t12 t13 t14
+                               x4 z4 x5 z5))
+    (ed25519-fe-add t1 x1 z1)
+    (ed25519-fe-sq t2 t1)
+    (ed25519-fe-sub t3 x1 z1)
+    (ed25519-fe-sq t4 t3)
+    (ed25519-fe-sub t5 t2 t4)
+    (ed25519-fe-add t6 x2 z2)
+    (ed25519-fe-sub t7 x2 z2)
+    (ed25519-fe-mul t8 t1 t7)
+    (ed25519-fe-mul t9 t3 t6)
+    (ed25519-fe-add t10 t8 t9)
+    (ed25519-fe-sub t11 t8 t9)
+    (ed25519-fe-mul x4 t2 t4)
+    (ed25519-fe-mul t12 t5 (ed25519-fe-from-int +curve25519-a24+))
+    (ed25519-fe-add t13 t4 t12)
+    (ed25519-fe-mul z4 t5 t13)
+    (ed25519-fe-sq x5 t10)
+    (ed25519-fe-sq t14 t11)
+    (ed25519-fe-mul z5 x3 t14)
     (values x4 z4 x5 z5)))
 
 (defmethod ec-scalar-mult ((p curve25519-point) n)
@@ -67,15 +81,14 @@
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer n))
   (with-slots (x z) p
-    (declare (type integer x z))
-    (assert (= 1 z))
-    (do ((x1 1)
-         (z1 0)
-         (x2 x)
-         (z2 1)
+    (declare (type ed25519-fe x z))
+    (do ((x1 (ed25519-fe-from-int 1))
+         (z1 (ed25519-fe-zero))
+         (x2 (ed25519-fe-copy x))
+         (z2 (ed25519-fe-from-int 1))
          (i 254 (1- i)))
         ((minusp i) (make-instance 'curve25519-point :x x1 :z z1))
-      (declare (type integer x1 z1 x2 z2)
+      (declare (type ed25519-fe x1 z1 x2 z2)
                (type fixnum i))
       (if (logbitp i n)
           (multiple-value-setq (x2 z2 x1 z1)
@@ -89,13 +102,15 @@
            :kind 'curve25519
            :parameter 'x
            :description "coordinate"))
-  (make-instance 'curve25519-point :x x :z 1))
+  (make-instance 'curve25519-point
+                 :x (ed25519-fe-from-int x)
+                 :z (ed25519-fe-from-int 1)))
 
 (defmethod ec-destructure-point ((p curve25519-point))
   (with-slots (x z) p
-    (declare (type integer x z))
-    (let ((x (mod (* x (ec-scalar-inv :curve25519 z)) +curve25519-p+)))
-      (list :x x))))
+    (declare (type ed25519-fe x z))
+    (let ((x (ed25519-fe-mul x (ed25519-fe-inv z))))
+      (list :x (ed25519-fe-to-int x)))))
 
 (defmethod ec-encode-scalar ((kind (eql :curve25519)) n)
   (integer-to-octets n :n-bits +curve25519-bits+ :big-endian nil))
@@ -116,7 +131,9 @@
 (defmethod ec-decode-point ((kind (eql :curve25519)) octets)
   (let ((x (ldb (byte (1- +curve25519-bits+) 0)
                 (octets-to-integer octets :big-endian nil))))
-    (ec-make-point :curve25519 :x x)))
+    (make-instance 'curve25519-point
+                   :x (ed25519-fe-from-int x)
+                   :z (ed25519-fe-from-int 1))))
 
 (defun curve25519-public-key (sk)
   "Compute the public key associated to the private key SK."
