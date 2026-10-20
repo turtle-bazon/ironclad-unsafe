@@ -497,55 +497,72 @@ No consing of intermediate points - uses 4 pre-allocated point objects."
             (ed25519-point-copy! r1 t0)
             (ed25519-point-copy! r0 t1))))))
 
-;;; Fixed-base comb for the generator point.
+;;; Fixed-base positional comb for the generator point.
 ;;;
-;;; SIGN-MESSAGE and key generation always multiply G by a secret scalar.
-;;; A 4-bit window needs 64 adds and 256 doublings instead of the
-;;; ladder's ~128 adds and 255 doublings.
+;;; SIGN-MESSAGE and key generation always multiply G by a secret
+;;; scalar, so the whole digit table can be precomputed.  Split a
+;;; 256-bit scalar into 32 base-256 digits,
+;;;
+;;;     k = sum_j d_j * 256^j,
+;;;
+;;; and precompute, for every position j,
+;;;
+;;;     T[j][v] = v * 256^j * G      (0 <= v < 256).
+;;;
+;;; Then
+;;;
+;;;     k G = sum_j T[j][d_j],
+;;;
+;;; which costs 32 unified point additions and no doublings at all.
+;;; (The old double-and-add comb needed 256 doublings plus 32 adds.)
+
+(defconstant +ed25519-base-window-size+ 8)
+(defconstant +ed25519-base-window-count+ 32)
+(defconstant +ed25519-base-window-mask+ 255)
 
 (defvar *ed25519-base-table* nil
-  "Precomputed I * G for I in [0, 256). Built on first use.")
+  "Precomputed T[J][V] = V * 256^J * G.  Built on first use.")
 
 (defun ed25519-ensure-base-table ()
   (or *ed25519-base-table*
       (setf *ed25519-base-table*
-            (let ((table (make-array 256)))
-              (setf (aref table 0) ed25519-point-at-infinity)
-              (setf (aref table 1) ed25519-base-point)
-              (loop for i from 2 below 256
-                    do (setf (aref table i)
-                             (if (evenp i)
-                                 (ec-double (aref table (ash i -1)))
-                                 (ec-add (aref table (1- i)) ed25519-base-point))))
+            (let ((table (make-array +ed25519-base-window-count+))
+                  (base ed25519-base-point))
+              (dotimes (j +ed25519-base-window-count+)
+                (let ((row (make-array 256)))
+                  (setf (aref row 0) ed25519-point-at-infinity
+                        (aref row 1) base)
+                  (loop for v from 2 below 256
+                        do (setf (aref row v)
+                                 (if (evenp v)
+                                     (ec-double (aref row (ash v -1)))
+                                     (ec-add (aref row (1- v)) base))))
+                  (setf (aref table j) row))
+                ;; base := 256 * base = 2^8 * base for the next position.
+                (dotimes (i 8)
+                  (setf base (ec-double base))))
               table))))
 
-(declaim (inline ed25519-select-base))
-(defun ed25519-select-base (table v)
-  "Select TABLE[V]."
-  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
-           (type (integer 0 255) v))
-  (aref table v))
-
 (defun ed25519-base-mult (k)
-  "Fixed-base 4-bit comb for G (secret scalar, fixed schedule).
-Destination-based: reuses pre-allocated point buffers instead of
-consing a new point per ec-double/ec-add."
+  "Fixed-base positional comb for G (secret scalar, fixed schedule).
+32 unified additions, no doublings."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer k))
   (let ((table (ed25519-ensure-base-table))
-        (acc ed25519-point-at-infinity)
-        (tmp (make-instance 'ed25519-point :x (ed25519-fe-zero) :y (ed25519-fe-zero) :z (ed25519-fe-zero) :w (ed25519-fe-zero)))
-        (out (make-instance 'ed25519-point :x (ed25519-fe-zero) :y (ed25519-fe-zero) :z (ed25519-fe-zero) :w (ed25519-fe-zero)))
-        (sel (make-instance 'ed25519-point :x (ed25519-fe-zero) :y (ed25519-fe-zero) :z (ed25519-fe-zero) :w (ed25519-fe-zero))))
-    (loop for j from 31 downto 0 do          ; 256 bits / 8 = 32 bytes
-      (dotimes (i 8)
-        (ed25519-double! tmp acc)
-        (rotatef acc tmp))
-      (setf sel (ed25519-select-base table (ldb (byte 8 (* j 8)) k)))
-      (unless (eq sel ed25519-point-at-infinity)
-        (ed25519-add! out acc sel)
-        (setf acc out)))
-    acc))
+        (acc (make-instance 'ed25519-point
+                            :x (ed25519-fe-zero) :y (ed25519-fe-zero)
+                            :z (ed25519-fe-zero) :w (ed25519-fe-zero)))
+        (out (make-instance 'ed25519-point
+                            :x (ed25519-fe-zero) :y (ed25519-fe-zero)
+                            :z (ed25519-fe-zero) :w (ed25519-fe-zero))))
+    (ed25519-point-copy! acc ed25519-point-at-infinity)
+    (dotimes (j +ed25519-base-window-count+ acc)
+      (let ((v (ldb (byte +ed25519-base-window-size+
+                         (* j +ed25519-base-window-size+))
+                    k)))
+        (unless (zerop v)
+          (ed25519-add! out acc (aref (aref table j) v))
+          (rotatef acc out))))))
 
 (defmethod ec-scalar-mult ((p ed25519-point) e)
   ;; Secret scalars use the fixed-schedule ladder.  The generator G uses
