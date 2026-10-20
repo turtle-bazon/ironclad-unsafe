@@ -362,6 +362,31 @@ Uses 254 squarings and 11 multiplications."
     (ed25519-fe-mul out t1 t0)           ; z^(2^255-21)
     out))
 
+(declaim (inline ed25519-fe-pow22523))
+(defun ed25519-fe-pow22523 (z)
+  "Field element z^(2^252-3), used to recover x when decompressing a point."
+  (declare (type ed25519-fe z)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-assembly)
+  (let ((n 0)
+        (scratch (make-array 208 :element-type '(unsigned-byte 64))))
+    (declare (type integer n)
+             (type (simple-array (unsigned-byte 64) (*)) scratch))
+    (dotimes (i 8)
+      (setf n (dpb (aref z i) (byte 32 (* 32 i)) n)))
+    (setf n (mod n +ed25519-q+))
+    (dotimes (i 5)
+      (setf (aref scratch (+ 57 i)) (ldb (byte 51 (* 51 i)) n)))
+    (ed25519-pow22523-asm scratch)
+    (let ((m 0))
+      (declare (type integer m))
+      (dotimes (i 5)
+        (setf m (+ m (ash (aref scratch (+ 37 i)) (* 51 i)))))
+      (ed25519-fe-from-int (mod m +ed25519-q+))))
+  #-(and sbcl x86-64 ironclad-assembly)
+  (ed25519-fe-from-int
+   (expt-mod (ed25519-fe-to-int z) (/ (- +ed25519-q+ 5) 8) +ed25519-q+)))
+
 (defmethod ec-scalar-inv ((kind (eql :ed25519)) n)
   ;; Field-element Fermat inversion is faster than bignum expt-mod.
   (declare (type integer n))
@@ -392,7 +417,9 @@ Uses 254 squarings and 11 multiplications."
          (v3 (mod (* v v v) +ed25519-q+))
          (uv3 (mod (* u v3) +ed25519-q+))
          (uv7 (mod (* uv3 v3 v) +ed25519-q+))
-         (x (mod (* uv3 (expt-mod uv7 (/ (- +ed25519-q+ 5) 8) +ed25519-q+)) +ed25519-q+)))
+         (x (mod (* uv3 (ed25519-fe-to-int
+                         (ed25519-fe-pow22523 (ed25519-fe-from-int uv7))))
+                  +ed25519-q+)))
     (declare (type integer u v v3 uv3 uv7 x))
     (unless (= u (mod (* v x x) +ed25519-q+))
       (setf x (mod (* x +ed25519-i+) +ed25519-q+)))
@@ -512,13 +539,106 @@ Uses 254 squarings and 11 multiplications."
 ;;; Scalar multiplication for arbitrary points (not the generator).
 ;;; Uses destination-based Montgomery ladder to avoid consing intermediate
 ;;; points.  This is used by ed25519-verify for the public-key multiplication.
+;;; Radix-2^51 representation of the same positional table, used by the
+;;; x86-64 assembly comb (see src/opt/sbcl/ed25519-comb.lisp).  Each field
+;;; element is five 64-bit limbs holding a value mod 2^255-19.
+
+(defconstant +ed25519-r51-limb-bits+ 51)
+
+(defvar *ed25519-r51-table* nil
+  "Flat T[J][V] as 5-limb radix-2^51 values: X,Y,Z,T per entry.  Built on first use.")
+(defvar *ed25519-r51-twod* nil
+  "The constant 2*d in radix-2^51 limb form.")
+
+(defun ed25519-r51-constant (n)
+  (declare (type integer n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((r (make-array 5 :element-type '(unsigned-byte 64))))
+    (dotimes (i 5 r)
+      (setf (aref r i) (ldb (byte +ed25519-r51-limb-bits+
+                                  (* +ed25519-r51-limb-bits+ i))
+                            n)))))
+
+(defun ed25519-point-to-r51! (flat base p)
+  "Store point P's X,Y,Z,T at BASE as contiguous radix-2^51 limbs."
+  (declare (type (simple-array (unsigned-byte 64) (*)) flat)
+           (type fixnum base)
+           (type ed25519-point p)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (flet ((store (off fe)
+           (declare (type fixnum off) (type ed25519-fe fe))
+           (let ((n (ed25519-fe-to-int fe)))
+             (dotimes (i 5)
+               (setf (aref flat (+ base off i))
+                     (ldb (byte +ed25519-r51-limb-bits+
+                                (* +ed25519-r51-limb-bits+ i))
+                          n))))))
+    (store 0 (slot-value p 'x))
+    (store 5 (slot-value p 'y))
+    (store 10 (slot-value p 'z))
+    (store 15 (slot-value p 'w)))
+  flat)
+
+(defun ed25519-r51-twod ()
+  (or *ed25519-r51-twod*
+      (setf *ed25519-r51-twod*
+            (ed25519-r51-constant (mod (* 2 +ed25519-d+) +ed25519-q+)))))
+
+(defun ed25519-r51-coord (result base)
+  "Integer represented by the five radix-2^51 limbs at BASE of RESULT."
+  (declare (type (simple-array (unsigned-byte 64) (*)) result)
+           (type fixnum base)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((n 0))
+    (declare (type integer n))
+    (dotimes (i 5 n)
+      (setf n (+ n (ash (aref result (+ base i))
+                        (* +ed25519-r51-limb-bits+ i)))))))
+
+
 (defun ed25519-scalar-mult-general (p e)
-  "Compute E*P for arbitrary point P using destination-based ladder.
-No consing of intermediate points - uses 4 pre-allocated point objects."
+  "Compute E*P for an arbitrary point P."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer e))
   (when (minusp e)
     (error "negative scalars not supported by ed25519-scalar-mult-general"))
+  #+(and sbcl x86-64 ironclad-assembly)
+  (if (< e (ash 1 256))
+      ;; Radix-2^51 double-and-add, all in one VOP.  The point and the
+      ;; working area live in the single scratch vector (the layout is
+      ;; documented in src/opt/sbcl/ed25519-comb.lisp).
+      (let ((point (make-array 20 :element-type '(unsigned-byte 64)))
+            (scratch (make-array 384 :element-type '(unsigned-byte 64))))
+        (declare (type (simple-array (unsigned-byte 64) (*)) point scratch))
+        (ed25519-point-to-r51! point 0 p)
+        ;; scratch[0..255]: scalar bits, most significant first.
+        (dotimes (j 256)
+          (setf (aref scratch j) (ldb (byte 1 (- 255 j)) e)))
+        ;; scratch[301..305]: 2*d.
+        (let ((twod (ed25519-r51-twod)))
+          (declare (type (simple-array (unsigned-byte 64) (*)) twod))
+          (dotimes (i 5)
+            (setf (aref scratch (+ 301 i)) (aref twod i))))
+        (ed25519-gen-mult-asm point scratch)
+        ;; scratch[276..295]: X,Y,Z,T.
+        (make-instance 'ed25519-point
+                       :x (ed25519-fe-from-int (mod (ed25519-r51-coord scratch 276)
+                                                    +ed25519-q+))
+                       :y (ed25519-fe-from-int (mod (ed25519-r51-coord scratch 281)
+                                                    +ed25519-q+))
+                       :z (ed25519-fe-from-int (mod (ed25519-r51-coord scratch 286)
+                                                    +ed25519-q+))
+                       :w (ed25519-fe-from-int (mod (ed25519-r51-coord scratch 291)
+                                                    +ed25519-q+))))
+      (ed25519-scalar-mult-general-lisp p e))
+  #-(and sbcl x86-64 ironclad-assembly)
+  (ed25519-scalar-mult-general-lisp p e))
+
+(defun ed25519-scalar-mult-general-lisp (p e)
+  "Compute E*P for arbitrary point P using destination-based ladder.
+No consing of intermediate points - uses 4 pre-allocated point objects."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
+           (type integer e))
   (let* ((r0 (make-instance 'ed25519-point :x (ed25519-fe-zero) :y (ed25519-fe-zero) :z (ed25519-fe-zero) :w (ed25519-fe-zero)))
          (r1 (make-instance 'ed25519-point :x (ed25519-fe-zero) :y (ed25519-fe-zero) :z (ed25519-fe-zero) :w (ed25519-fe-zero)))
          (t0 (make-instance 'ed25519-point :x (ed25519-fe-zero) :y (ed25519-fe-zero) :z (ed25519-fe-zero) :w (ed25519-fe-zero)))
@@ -593,46 +713,6 @@ No consing of intermediate points - uses 4 pre-allocated point objects."
                   (setf base (ec-double base))))
               table))))
 
-;;; Radix-2^51 representation of the same positional table, used by the
-;;; x86-64 assembly comb (see src/opt/sbcl/ed25519-comb.lisp).  Each field
-;;; element is five 64-bit limbs holding a value mod 2^255-19.
-
-(defconstant +ed25519-r51-limb-bits+ 51)
-
-(defvar *ed25519-r51-table* nil
-  "Flat T[J][V] as 5-limb radix-2^51 values: X,Y,Z,T per entry.  Built on first use.")
-(defvar *ed25519-r51-twod* nil
-  "The constant 2*d in radix-2^51 limb form.")
-
-(defun ed25519-r51-constant (n)
-  (declare (type integer n)
-           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((r (make-array 5 :element-type '(unsigned-byte 64))))
-    (dotimes (i 5 r)
-      (setf (aref r i) (ldb (byte +ed25519-r51-limb-bits+
-                                  (* +ed25519-r51-limb-bits+ i))
-                            n)))))
-
-(defun ed25519-point-to-r51! (flat base p)
-  "Store point P's X,Y,Z,T at BASE as contiguous radix-2^51 limbs."
-  (declare (type (simple-array (unsigned-byte 64) (*)) flat)
-           (type fixnum base)
-           (type ed25519-point p)
-           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (flet ((store (off fe)
-           (declare (type fixnum off) (type ed25519-fe fe))
-           (let ((n (ed25519-fe-to-int fe)))
-             (dotimes (i 5)
-               (setf (aref flat (+ base off i))
-                     (ldb (byte +ed25519-r51-limb-bits+
-                                (* +ed25519-r51-limb-bits+ i))
-                          n))))))
-    (store 0 (slot-value p 'x))
-    (store 5 (slot-value p 'y))
-    (store 10 (slot-value p 'z))
-    (store 15 (slot-value p 'w)))
-  flat)
-
 (defun ed25519-ensure-r51-table ()
   "Build the flat radix-2^51 positional table if needed."
   (or *ed25519-r51-table*
@@ -654,22 +734,6 @@ No consing of intermediate points - uses 4 pre-allocated point objects."
           (dotimes (i 8)
             (setf base (ec-double base))))
         (setf *ed25519-r51-table* table))))
-
-(defun ed25519-r51-twod ()
-  (or *ed25519-r51-twod*
-      (setf *ed25519-r51-twod*
-            (ed25519-r51-constant (mod (* 2 +ed25519-d+) +ed25519-q+)))))
-
-(defun ed25519-r51-coord (result base)
-  "Integer represented by the five radix-2^51 limbs at BASE of RESULT."
-  (declare (type (simple-array (unsigned-byte 64) (*)) result)
-           (type fixnum base)
-           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((n 0))
-    (declare (type integer n))
-    (dotimes (i 5 n)
-      (setf n (+ n (ash (aref result (+ base i))
-                        (* +ed25519-r51-limb-bits+ i)))))))
 
 (defun ed25519-base-mult (k)
   "Fixed-base positional comb for G (secret scalar, fixed schedule).

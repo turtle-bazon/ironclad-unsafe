@@ -61,7 +61,8 @@
   (defconstant +c-scratch-bytes+ 1648))
 
 #+(and x86-64 ironclad-assembly)
-(defmacro ed25519-with-fe-ops ((p-scr tmp1 tmp2 rax-tmp rdx-tmp) &body body)
+(defmacro ed25519-with-fe-ops ((p-scr tmp1 tmp2 rax-tmp rdx-tmp
+                                mulacc hacc c19) &body body)
   "Expand to LABELS defining FE-ADD, FE-SUB and FE-MUL on the scratch
 vector addressed by P-SCR, then evaluate BODY.  Every field element is
 five 64-bit limbs at a byte offset from P-SCR."
@@ -90,22 +91,22 @@ five 64-bit limbs at a byte offset from P-SCR."
           ;; 1. zero the nine 128-bit columns
           (inst xor ,rax-tmp ,rax-tmp)
           (dotimes (k 9)
-            (inst mov :qword (ea (+ +c-mulacc+ (* 16 k)) ,p-scr) ,rax-tmp)
-            (inst mov :qword (ea (+ +c-mulacc+ (* 16 k) 8) ,p-scr) ,rax-tmp))
+            (inst mov :qword (ea (+ ,mulacc (* 16 k)) ,p-scr) ,rax-tmp)
+            (inst mov :qword (ea (+ ,mulacc (* 16 k) 8) ,p-scr) ,rax-tmp))
           ;; 2. schoolbook 5x5 accumulation
           (dotimes (i 5)
             (dotimes (j 5)
               (inst mov ,rax-tmp (ea (+ a (* 8 i)) ,p-scr))
               (inst mul :qword (ea (+ b (* 8 j)) ,p-scr))
-              (inst add (ea (+ +c-mulacc+ (* 16 (+ i j))) ,p-scr) ,rax-tmp)
-              (inst adc (ea (+ +c-mulacc+ (* 16 (+ i j)) 8) ,p-scr) ,rdx-tmp)))
+              (inst add (ea (+ ,mulacc (* 16 (+ i j))) ,p-scr) ,rax-tmp)
+              (inst adc (ea (+ ,mulacc (* 16 (+ i j)) 8) ,p-scr) ,rdx-tmp)))
           ;; 3. fold columns 5..8 into 0..3 with 2^255 == 19
           (dotimes (k 4)
-            (let ((src (+ +c-mulacc+ (* 16 (+ k 5))))
-                  (raw (+ +c-mulacc+ (* 16 k)))
-                  (h (+ +c-hacc+ (* 16 k))))
+            (let ((src (+ ,mulacc (* 16 (+ k 5))))
+                  (raw (+ ,mulacc (* 16 k)))
+                  (h (+ ,hacc (* 16 k))))
               (inst mov ,rax-tmp (ea src ,p-scr))
-              (inst mul :qword (ea +c-c19+ ,p-scr))
+              (inst mul :qword (ea ,c19 ,p-scr))
               (inst imul ,tmp1 (ea (+ src 8) ,p-scr) 19)
               (inst add ,rdx-tmp ,tmp1)
               (inst add ,rax-tmp (ea raw ,p-scr))
@@ -113,14 +114,14 @@ five 64-bit limbs at a byte offset from P-SCR."
               (inst mov (ea h ,p-scr) ,rax-tmp)
               (inst mov (ea (+ h 8) ,p-scr) ,rdx-tmp)))
           ;; h[4] = raw[4]
-          (inst mov ,rax-tmp (ea (+ +c-mulacc+ (* 16 4)) ,p-scr))
-          (inst mov (ea (+ +c-hacc+ (* 16 4)) ,p-scr) ,rax-tmp)
-          (inst mov ,rax-tmp (ea (+ +c-mulacc+ (* 16 4) 8) ,p-scr))
-          (inst mov (ea (+ +c-hacc+ (* 16 4) 8) ,p-scr) ,rax-tmp)
+          (inst mov ,rax-tmp (ea (+ ,mulacc (* 16 4)) ,p-scr))
+          (inst mov (ea (+ ,hacc (* 16 4)) ,p-scr) ,rax-tmp)
+          (inst mov ,rax-tmp (ea (+ ,mulacc (* 16 4) 8) ,p-scr))
+          (inst mov (ea (+ ,hacc (* 16 4) 8) ,p-scr) ,rax-tmp)
           ;; 4. carry chain
           (inst xor ,tmp1 ,tmp1)
           (dotimes (k 5)
-            (let ((h (+ +c-hacc+ (* 16 k))))
+            (let ((h (+ ,hacc (* 16 k))))
               (inst mov ,rax-tmp (ea h ,p-scr))
               (inst mov ,rdx-tmp (ea (+ h 8) ,p-scr))
               (inst add ,rax-tmp ,tmp1)
@@ -162,7 +163,8 @@ five 64-bit limbs at a byte offset from P-SCR."
                            other-pointer-lowtag))
           (loop-label (gen-label))
           (skip-label (gen-label)))
-      (ed25519-with-fe-ops (p-scr tmp1 tmp2 rax-tmp rdx-tmp)
+      (ed25519-with-fe-ops (p-scr tmp1 tmp2 rax-tmp rdx-tmp
+                                  +c-mulacc+ +c-hacc+ +c-c19+)
         ;; ---- prologue ----
         (inst lea p-scr (ea data-offset scratch))
         (inst lea p-table (ea data-offset table))
@@ -241,7 +243,8 @@ five 64-bit limbs at a byte offset from P-SCR."
   (:generator 300
     (let ((data-offset (- (* n-word-bytes vector-data-offset)
                            other-pointer-lowtag)))
-      (ed25519-with-fe-ops (p-scr tmp1 tmp2 rax-tmp rdx-tmp)
+      (ed25519-with-fe-ops (p-scr tmp1 tmp2 rax-tmp rdx-tmp
+                                  +c-mulacc+ +c-hacc+ +c-c19+)
         (labels ((sq (r a) (fe-mul r a a))
                  (sq-n (r a n)
                    ;; R := A^(2^N), N > 0, with the repeated squarings
@@ -280,3 +283,183 @@ five 64-bit limbs at a byte offset from P-SCR."
             (fe-mul t1 t2 t1)         ; z^(2^250-1)
             (sq-n t1 t1 5)
             (fe-mul out t1 t0)))))))  ; z^(2^255-21)
+
+;;; Variable-base double-and-add for arbitrary points, used by verify.
+;;;
+;;; Scratch layout, in bytes:
+;;;
+;;;     0     one 64-bit word per scalar bit, most significant first
+;;;     2048  P (X,Y,Z,T)
+;;;     2208  accumulator (X,Y,Z,T)
+;;;     2368  zero, 2*d, and the field-element temporaries
+;;;     2808  multiply working area
+
+#+(and x86-64 ironclad-assembly)
+(progn
+  (defconstant +g-scalar+  0)     ; 256 words
+  (defconstant +g-p+       2048)
+  (defconstant +g-acc+     2208)
+  (defconstant +g-zero+    2368)
+  (defconstant +g-twod+    2408)
+  (defconstant +g-tmp1+    2448)
+  (defconstant +g-a+       2488)
+  (defconstant +g-b+       2528)
+  (defconstant +g-c+       2568)
+  (defconstant +g-d+       2608)
+  (defconstant +g-e+       2648)
+  (defconstant +g-f+       2688)
+  (defconstant +g-g+       2728)
+  (defconstant +g-h+       2768)
+  (defconstant +g-mulacc+  2808)  ; nine 128-bit columns
+  (defconstant +g-hacc+    2952)  ; five 128-bit accumulators
+  (defconstant +g-c19+     3032)  ; the constant 19
+  (defconstant +g-scratch-bytes+ 3040))
+
+#+(and x86-64 ironclad-assembly)
+(define-vop (ed25519-gen-mult-asm)
+  (:translate ironclad::ed25519-gen-mult-asm)
+  (:policy :fast-safe)
+  (:args (point :scs (descriptor-reg))
+         (scratch :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg :offset sb-vm::rdi-offset) p-scr)
+  (:temporary (:sc unsigned-reg :offset sb-vm::rsi-offset) p-point)
+  (:temporary (:sc unsigned-reg :offset sb-vm::r8-offset) jj)
+  (:temporary (:sc unsigned-reg :offset sb-vm::r10-offset) tmp1)
+  (:temporary (:sc unsigned-reg :offset sb-vm::r11-offset) tmp2)
+  (:temporary (:sc unsigned-reg :offset sb-vm::rax-offset) rax-tmp)
+  (:temporary (:sc unsigned-reg :offset sb-vm::rdx-offset) rdx-tmp)
+  (:generator 1500
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag))
+          (main-top (gen-label))
+          (skip-label (gen-label)))
+      (ed25519-with-fe-ops (p-scr tmp1 tmp2 rax-tmp rdx-tmp
+                                  +g-mulacc+ +g-hacc+ +g-c19+)
+        (labels ((point-double (dst src)
+                   ;; dbl-2008-hwcd with a = -1.
+                   (let ((x src) (y (+ src 40)) (z (+ src 80)))
+                     (fe-mul +g-a+ x x)                 ; A = X^2
+                     (fe-mul +g-b+ y y)                 ; B = Y^2
+                     (fe-mul +g-c+ z z)                 ; C = Z^2
+                     (fe-add +g-c+ +g-c+ +g-c+)         ; C = 2Z^2
+                     (fe-sub +g-d+ +g-zero+ +g-a+)      ; D = -A
+                     (fe-add +g-tmp1+ x y)              ; X+Y
+                     (fe-mul +g-e+ +g-tmp1+ +g-tmp1+)   ; (X+Y)^2
+                     (fe-sub +g-e+ +g-e+ +g-a+)
+                     (fe-sub +g-e+ +g-e+ +g-b+)
+                     (fe-add +g-g+ +g-d+ +g-b+)         ; G = D+B
+                     (fe-sub +g-f+ +g-g+ +g-c+)         ; F = G-C
+                     (fe-sub +g-h+ +g-d+ +g-b+)         ; H = D-B
+                     (fe-mul (+ dst 0) +g-e+ +g-f+)
+                     (fe-mul (+ dst 40) +g-g+ +g-h+)
+                     (fe-mul (+ dst 80) +g-f+ +g-g+)
+                     (fe-mul (+ dst 120) +g-e+ +g-h+)))
+                 (point-add (dst p q)
+                   ;; add-2008-hwcd-3 with k = 2d.
+                   (fe-sub +g-a+ (+ p 40) (+ p 0))     ; Y1-X1
+                   (fe-add +g-b+ (+ p 40) (+ p 0))     ; Y1+X1
+                   (fe-sub +g-tmp1+ (+ q 40) (+ q 0))  ; Y2-X2
+                   (fe-add +g-c+ (+ q 40) (+ q 0))     ; Y2+X2
+                   (fe-mul +g-a+ +g-a+ +g-tmp1+)       ; A
+                   (fe-mul +g-b+ +g-b+ +g-c+)          ; B
+                   (fe-mul +g-c+ (+ p 120) (+ q 120))  ; T1*T2
+                   (fe-mul +g-c+ +g-c+ +g-twod+)       ; C = 2d*T1*T2
+                   (fe-mul +g-d+ (+ p 80) (+ q 80))    ; Z1*Z2
+                   (fe-add +g-d+ +g-d+ +g-d+)          ; D = 2Z1Z2
+                   (fe-sub +g-e+ +g-b+ +g-a+)          ; E = B-A
+                   (fe-sub +g-f+ +g-d+ +g-c+)          ; F = D-C
+                   (fe-add +g-g+ +g-d+ +g-c+)          ; G = D+C
+                   (fe-add +g-h+ +g-b+ +g-a+)          ; H = B+A
+                   (fe-mul (+ dst 0) +g-e+ +g-f+)
+                   (fe-mul (+ dst 40) +g-g+ +g-h+)
+                   (fe-mul (+ dst 80) +g-f+ +g-g+)
+                   (fe-mul (+ dst 120) +g-e+ +g-h+)))
+          (inst lea p-scr (ea data-offset scratch))
+          (inst lea p-point (ea data-offset point))
+          ;; P := the input point (already radix-2^51)
+          (dotimes (k 20)
+            (inst mov rax-tmp (ea (* 8 k) p-point))
+            (inst mov :qword (ea (+ +g-p+ (* 8 k)) p-scr) rax-tmp))
+          (inst xor rax-tmp rax-tmp)
+          (dotimes (k 5)
+            (inst mov :qword (ea (+ +g-zero+ (* 8 k)) p-scr) rax-tmp))
+          (inst mov :qword (ea +g-c19+ p-scr) 19)
+          ;; acc := identity (0, 1, 1, 0)
+          (dotimes (k 20)
+            (inst mov :qword (ea (+ +g-acc+ (* 8 k)) p-scr) rax-tmp))
+          (inst mov rax-tmp 1)
+          (inst mov :qword (ea (+ +g-acc+ 40) p-scr) rax-tmp)
+          (inst mov :qword (ea (+ +g-acc+ 80) p-scr) rax-tmp)
+          ;; left-to-right double-and-add over 256 bits
+          (inst xor jj jj)
+          (emit-label main-top)
+          (point-double +g-acc+ +g-acc+)
+          (inst movzx '(:byte :dword) tmp1 (ea +g-scalar+ p-scr jj 8))
+          (inst test tmp1 tmp1)
+          (inst jmp :z skip-label)
+          (point-add +g-acc+ +g-acc+ +g-p+)
+          (emit-label skip-label)
+          (inst inc jj)
+          (inst cmp jj 256)
+          (inst jmp :nz main-top))))))
+
+;;; z^(2^252-3), the exponent needed to decompress an ed25519 point.
+;;; Same scratch layout and field routines as the inversion above.
+
+#+(and x86-64 ironclad-assembly)
+(define-vop (ed25519-pow22523-asm)
+  (:translate ironclad::ed25519-pow22523-asm)
+  (:policy :fast-safe)
+  (:args (scratch :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg :offset sb-vm::rdi-offset) p-scr)
+  (:temporary (:sc unsigned-reg :offset sb-vm::r8-offset) jj)
+  (:temporary (:sc unsigned-reg :offset sb-vm::r10-offset) tmp1)
+  (:temporary (:sc unsigned-reg :offset sb-vm::r11-offset) tmp2)
+  (:temporary (:sc unsigned-reg :offset sb-vm::rax-offset) rax-tmp)
+  (:temporary (:sc unsigned-reg :offset sb-vm::rdx-offset) rdx-tmp)
+  (:generator 300
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (ed25519-with-fe-ops (p-scr tmp1 tmp2 rax-tmp rdx-tmp
+                                  +c-mulacc+ +c-hacc+ +c-c19+)
+        (labels ((sq (r a) (fe-mul r a a))
+                 (sq-n (r a n)
+                   (fe-mul r a a)
+                   (when (> n 1)
+                     (let ((top (gen-label)))
+                       (inst mov jj (1- n))
+                       (emit-label top)
+                       (fe-mul r r r)
+                       (inst dec jj)
+                       (inst jmp :nz top)))))
+          (let ((z +c-x2+) (out +c-result+)
+                (t0 +c-y2+) (t1 +c-z2+) (t2 +c-t2+) (t3 +c-ymx1+))
+            (inst lea p-scr (ea data-offset scratch))
+            (inst mov :qword (ea +c-c19+ p-scr) 19)
+            (sq t0 z)
+            (sq t1 t0)
+            (sq t1 t1)
+            (fe-mul t1 z t1)
+            (fe-mul t0 t0 t1)
+            (sq t0 t0)
+            (fe-mul t0 t1 t0)        ; z^(2^5-1)
+            (sq-n t1 t0 5)
+            (fe-mul t0 t1 t0)        ; z^(2^10-1)
+            (sq-n t1 t0 10)
+            (fe-mul t1 t1 t0)        ; z^(2^20-1)
+            (sq-n t2 t1 20)
+            (fe-mul t1 t2 t1)        ; z^(2^40-1)
+            (sq-n t1 t1 10)
+            (fe-mul t0 t1 t0)        ; z^(2^50-1)
+            (sq-n t1 t0 50)
+            (fe-mul t1 t1 t0)        ; z^(2^100-1)
+            (sq-n t2 t1 100)
+            (fe-mul t1 t2 t1)        ; z^(2^200-1)
+            (sq-n t1 t1 50)
+            (fe-mul t0 t1 t0)        ; z^(2^250-1)
+            (sq t0 t0)
+            (sq t0 t0)
+            (fe-mul out t0 z)))))))  ; z^(2^252-3)
