@@ -515,6 +515,9 @@
   (:temporary (:sc unsigned-reg :offset sb-vm::rbx-offset) rbx)
   (:temporary (:sc unsigned-reg :offset rcx-offset) ecx)
   (:generator 10
+    ;; CPUID clobbers EBX; touching RBX keeps the declared temporary
+    ;; alive, so that the framework saves and restores it.
+    (inst mov rbx rbx)
     (inst mov eax 1)
     (inst cpuid)
     (inst bt ecx 1)))
@@ -528,6 +531,7 @@
   (:temporary (:sc unsigned-reg :offset sb-vm::rbx-offset) rbx)
   (:temporary (:sc unsigned-reg :offset rcx-offset) ecx)
   (:generator 10
+    (inst mov rbx rbx)
     (inst mov eax 1)
     (inst cpuid)
     (inst bt ecx 25)))
@@ -588,6 +592,7 @@
   (:temporary (:sc unsigned-reg :offset sb-vm::rbx-offset) rbx)
   (:temporary (:sc unsigned-reg :offset rcx-offset) ecx)
   (:generator 10
+    (inst mov rbx rbx)
     (inst mov eax 1)
     (inst cpuid)
     (inst bt ecx 29)))
@@ -1789,7 +1794,205 @@
             (inst adc hh 0)
             (dword-inst mov (r32 i) tmp)))
         (emit-label done)))))
+
+(define-vop (secp256r1-reduce-fast-asm)
+  ;; Carry-free variant of the P-256 reduction.
+  ;;
+  ;; The straight-line version propagates a carry through all eight
+  ;; limbs of every one of the ten S-value lists, so the whole
+  ;; reduction is one long serial dependency chain.  Here the limbs of
+  ;; each list are summed into 64-bit accumulators without any carry
+  ;; propagation (a limb sum is below 2^34, so it cannot overflow), and
+  ;; the carries are propagated exactly once, afterwards.  Only four
+  ;; accumulators are live at a time: the low four limbs are summed
+  ;; and normalized first, then the high four.
+  ;;
+  ;; The result is identical to SECP256R1-REDUCE-ASM: the total of the
+  ;; list sums and the overflow word are the same in both versions.
+  (:translate ironclad::secp256r1-fe-reduce-fast-asm)
+  (:policy :fast-safe)
+  (:args (r :scs (descriptor-reg))
+         (q :scs (descriptor-reg))
+         (c :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg) kk hh tmp t2 acc0 acc1 acc2 acc3)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag))
+          (done (gen-label)))
+      (flet ((c64 (k) (ea (+ data-offset (* 8 k)) c))
+             (c32 (k) (dword-ea (+ data-offset (* 8 k)) c))
+             (r32 (i) (dword-ea (+ data-offset (* 4 i)) r))
+             (q32 (i) (dword-ea (+ data-offset (* 4 i)) q)))
+        ;; Phase 0: normalize c in place (needed for the portable
+        ;; product path; a no-op for VOP-produced words).
+        (dotimes (k 15)
+          (inst mov tmp (c64 k))
+          (inst mov t2 tmp)
+          (inst shr t2 32)
+          (dword-inst mov (c64 k) tmp)
+          (inst add (c64 (1+ k)) t2))
+        (inst mov tmp (c64 15))
+        (dword-inst mov (c64 15) tmp)
+        ;; Phase 1: N := S6 + S7 + S8 + S9 into r, overflow into HH.
+        ;; Lists are low-word-first c indices, NIL for padding.
+        (inst mov acc0 0)
+        (inst mov acc1 0)
+        (inst mov acc2 0)
+        (inst mov acc3 0)
+        (dolist (idxs '((11 12 13 nil nil nil 8 10)
+                        (12 13 14 15 nil nil 9 11)
+                        (13 14 15 8 9 10 nil 12)
+                        (14 15 nil 9 10 11 nil 13)))
+          (dotimes (i 4)
+            (let ((j (nth i idxs)))
+              (when j
+                (dword-inst mov tmp (c32 j))
+                (inst add (nth i (list acc0 acc1 acc2 acc3)) tmp)))))
+        (inst mov t2 0)
+        (dotimes (i 4)
+          (inst mov tmp (nth i (list acc0 acc1 acc2 acc3)))
+          (inst add tmp t2)
+          (dword-inst mov (r32 i) tmp)
+          (inst mov t2 tmp)
+          (inst shr t2 32))
+        (inst mov acc0 0)
+        (inst mov acc1 0)
+        (inst mov acc2 0)
+        (inst mov acc3 0)
+        (dolist (idxs '((11 12 13 nil nil nil 8 10)
+                        (12 13 14 15 nil nil 9 11)
+                        (13 14 15 8 9 10 nil 12)
+                        (14 15 nil 9 10 11 nil 13)))
+          (dotimes (i 4)
+            (let ((j (nth (+ i 4) idxs)))
+              (when j
+                (dword-inst mov tmp (c32 j))
+                (inst add (nth i (list acc0 acc1 acc2 acc3)) tmp)))))
+        (dotimes (i 4)
+          (inst mov tmp (nth i (list acc0 acc1 acc2 acc3)))
+          (inst add tmp t2)
+          (dword-inst mov (r32 (+ i 4)) tmp)
+          (inst mov t2 tmp)
+          (inst shr t2 32))
+        (inst mov hh t2)
+        ;; Phase 2: P := S1 + 2S2 + 2S3 + S4 + S5 into q,
+        ;; overflow into KK. HH still holds hn, untouched below.
+        (inst mov acc0 0)
+        (inst mov acc1 0)
+        (inst mov acc2 0)
+        (inst mov acc3 0)
+        (dolist (idxs '((0 1 2 3 4 5 6 7)
+                        (nil nil nil 11 12 13 14 15)
+                        (nil nil nil 11 12 13 14 15)
+                        (nil nil nil 12 13 14 15 nil)
+                        (nil nil nil 12 13 14 15 nil)
+                        (8 9 10 nil nil nil 14 15)
+                        (9 10 11 13 14 15 13 8)))
+          (dotimes (i 4)
+            (let ((j (nth i idxs)))
+              (when j
+                (dword-inst mov tmp (c32 j))
+                (inst add (nth i (list acc0 acc1 acc2 acc3)) tmp)))))
+        (inst mov t2 0)
+        (dotimes (i 4)
+          (inst mov tmp (nth i (list acc0 acc1 acc2 acc3)))
+          (inst add tmp t2)
+          (dword-inst mov (q32 i) tmp)
+          (inst mov t2 tmp)
+          (inst shr t2 32))
+        (inst mov acc0 0)
+        (inst mov acc1 0)
+        (inst mov acc2 0)
+        (inst mov acc3 0)
+        (dolist (idxs '((0 1 2 3 4 5 6 7)
+                        (nil nil nil 11 12 13 14 15)
+                        (nil nil nil 11 12 13 14 15)
+                        (nil nil nil 12 13 14 15 nil)
+                        (nil nil nil 12 13 14 15 nil)
+                        (8 9 10 nil nil nil 14 15)
+                        (9 10 11 13 14 15 13 8)))
+          (dotimes (i 4)
+            (let ((j (nth (+ i 4) idxs)))
+              (when j
+                (dword-inst mov tmp (c32 j))
+                (inst add (nth i (list acc0 acc1 acc2 acc3)) tmp)))))
+        (dotimes (i 4)
+          (inst mov tmp (nth i (list acc0 acc1 acc2 acc3)))
+          (inst add tmp t2)
+          (dword-inst mov (q32 (+ i 4)) tmp)
+          (inst mov t2 tmp)
+          (inst shr t2 32))
+        (inst mov kk t2)
+        ;; Spill hp (KK) to c[0]; c is dead from here on.
+        (inst mov (c64 0) kk)
+        ;; Phase 3: single-chain T := P + 8p - N into r, high word
+        ;; into KK. PW limbs are 8x the p limbs: -1 and 1 stand for
+        ;; #xFFFFFFFF and 1, shifted left by 3 below.
+        (inst mov kk 0)
+        (dotimes (i 8)
+          (let ((pw (nth i '(-1 -1 -1 0 0 0 1 -1))))
+            (dword-inst mov tmp (q32 i))
+            (dword-inst mov t2 pw)
+            (inst shl t2 3)
+            (inst add tmp t2)
+            (inst add tmp kk)
+            (dword-inst mov t2 (r32 i))
+            (inst sub tmp t2)
+            (inst mov kk tmp)
+            (inst sar kk 32)
+            (dword-inst mov (r32 i) tmp)))
+        ;; Phase 4: H := hp + K - hn into HH.
+        (inst mov tmp (c64 0))
+        (inst add tmp kk)
+        (inst sub tmp hh)
+        (inst mov hh tmp)
+        ;; Phase 4b: fold H: R += H at 0,7; R -= H at 3,6.
+        ;; HH holds H hereafter; KK is the signed fold carry.
+        (inst mov kk 0)
+        (dotimes (i 8)
+          (let ((s (nth i '(1 0 0 -1 0 0 -1 1))))
+            (dword-inst mov tmp (r32 i))
+            (inst add tmp kk)
+            (cond ((= s 1) (inst add tmp hh))
+                  ((= s -1) (inst sub tmp hh)))
+            (inst mov kk tmp)
+            (inst sar kk 32)
+            (dword-inst mov (r32 i) tmp)))
+        ;; Phase 5: compare R against p (borrow into HH), then
+        ;; subtract p unless (KK = 0 and borrow = 1), i.e. unless
+        ;; R < p with no 2^256 overflow.
+        (inst mov hh 0)
+        (dotimes (i 8)
+          (let ((pl (nth i '(-1 -1 -1 0 0 0 1 -1))))
+            (dword-inst mov tmp (r32 i))
+            (inst sub tmp hh)
+            (inst mov hh 0)
+            (inst adc hh 0)
+            (dword-inst mov t2 pl)
+            (inst sub tmp t2)
+            (inst adc hh 0)))
+        (inst mov tmp hh)
+        (inst xor tmp 1)
+        (inst or tmp kk)
+        (inst test tmp tmp)
+        (inst jmp :z done)
+        (inst mov hh 0)
+        (dotimes (i 8)
+          (let ((pl (nth i '(-1 -1 -1 0 0 0 1 -1))))
+            (dword-inst mov tmp (r32 i))
+            (inst sub tmp hh)
+            (inst mov hh 0)
+            (inst adc hh 0)
+            (dword-inst mov t2 pl)
+            (inst sub tmp t2)
+            (inst adc hh 0)
+            (dword-inst mov (r32 i) tmp)))
+        (emit-label done)))))
 ) ; PROGN
+
 #+x86-64
 (define-vop (secp256r1-sqr-raw-asm)
   (:translate ironclad::secp256r1-fe-sqr-raw-asm)
@@ -2955,6 +3158,7 @@
             (inst adc hh 0)
             (dword-inst mov (r32 i) tmp)))
         (emit-label done)))))
+
 
 #+x86-64
 (define-vop (secp256r1-sqr-raw-asm)

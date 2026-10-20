@@ -219,6 +219,20 @@ stays within fixnum range."
         when (/= limb plimb) return (> limb plimb)
         finally (return t)))
 
+(defun secp256r1-fe-reduce-fast (r q c)
+  "R := C mod P, using the carry-free assembly reduction.
+R and Q are eight 32-bit limbs, C holds sixteen 64-bit limbs."
+  (declare (type (simple-array (unsigned-byte 32) (8)) r q)
+           (type (simple-array (unsigned-byte 64) (16)) c)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-assembly)
+  (secp256r1-fe-reduce-fast-asm r q c)
+  #-(and sbcl x86-64 ironclad-assembly)
+  (progn
+    (secp256r1-fe-normalize16 c)
+    (secp256r1-fe-solinas r c))
+  r)
+
 (defun secp256r1-fe-mul (r a b)
   "R := (A * B) mod P for reduced residues in limb form."
   (declare (type secp256r1-fe r a b)
@@ -230,7 +244,7 @@ stays within fixnum range."
     (secp256r1-fe-mul-raw c a b)
     #+(and sbcl x86-64 ironclad-assembly)
     (let ((q (secp256r1-fe-zero)))
-      (secp256r1-fe-reduce-asm r q c))
+      (secp256r1-fe-reduce-fast r q c))
     #-(and sbcl x86-64 ironclad-assembly)
     (progn
       (secp256r1-fe-normalize16 c)

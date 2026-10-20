@@ -260,6 +260,14 @@
   (any)
   :overwrite-fndb-silently t)
 
+(defknown ironclad::secp256r1-fe-reduce-fast-asm
+  ((simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 64) (*)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+
 #+x86-64
 (defknown ironclad::secp256r1-fe-mul-raw-asm
   ((simple-array (unsigned-byte 64) (*))
@@ -271,6 +279,14 @@
 
 #+x86-64
 (defknown ironclad::secp256r1-fe-reduce-asm
+  ((simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 64) (*)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+
+(defknown ironclad::secp256r1-fe-reduce-fast-asm
   ((simple-array (unsigned-byte 32) (*))
    (simple-array (unsigned-byte 32) (*))
    (simple-array (unsigned-byte 64) (*)))
