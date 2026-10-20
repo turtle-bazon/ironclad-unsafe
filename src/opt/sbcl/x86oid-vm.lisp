@@ -1,4 +1,14 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
+;;;; IMPORTANT: the VOPs below address their array arguments with a
+;;;; fixed offset from the array descriptor (see the DATA-OFFSET
+;;;; computations), which assumes the usual heap layout of a simple
+;;;; vector.  An array that lives on the stack -- because it is
+;;;; declared DYNAMIC-EXTENT, or because SBCL's escape analysis
+;;;; stack-allocates it -- has a different layout, and the VOP then
+;;;; reads and writes outside the array, silently corrupting the
+;;;; caller's stack frame.  Never pass a stack-allocated array to a
+;;;; VOP; keep such scratch vectors in the heap.
+
 #+(and sbcl (or x86 x86-64) ironclad-assembly)
 (defpackage :ironclad-vm
   ;; more recent SBCL exports various symbols making this package
