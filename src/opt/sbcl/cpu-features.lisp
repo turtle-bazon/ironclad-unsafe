@@ -73,7 +73,8 @@ Other:   disabled (no reliable cross-platform detection available)."
                                       :ignore-error-status t :output :string)))
         (and output (string/= (string-trim '(#\Space #\Newline) output) "")
              (not (string= (string-trim '(#\Space #\Newline) output) "0"))))
-    (error () nil))
+    (error () nil)
+  )
   #+freebsd
   (handler-case
       (let ((output (uiop:run-program '("sysctl" "-n" "hw.instruction_sse")
@@ -106,4 +107,60 @@ Other:   disabled (no reliable cross-platform detection available)."
                           pclmulqdq-supported-p
                           (setf pclmulqdq-support-known-p t
                                 pclmulqdq-supported-p (pclmulqdq-support-p)))
+  #-ironclad-assembly nil)
+
+;;; CPUID leaf 7 feature bits: AVX2 (EBX bit 5), BMI2 (EBX bit 8) and
+;;; ADX (EBX bit 19).
+;;;
+;;; BMI2 and ADX only add general purpose instructions, so the CPUID
+;;; bit is all that has to be checked.  AVX2 additionally needs the
+;;; operating system to preserve the YMM register state, which is
+;;; checked separately below.
+
+#+(and sbcl x86-64)
+(defun bmi2-supported-p ()
+  "True when the CPU implements the BMI2 instruction set."
+  (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
+  #+ironclad-assembly (not (null (bmi2-support-p)))
+  #-ironclad-assembly nil)
+
+#+(and sbcl x86-64)
+(defun adx-supported-p ()
+  "True when the CPU implements the ADX instruction set."
+  (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
+  #+ironclad-assembly (not (null (adx-support-p)))
+  #-ironclad-assembly nil)
+
+;;; AVX2 detection.  The kernel only reports the AVX2 flag when the
+;;; operating system also saves the YMM register state, so the CPUID
+;;; bit alone is not enough.
+
+#+(and sbcl x86-64)
+(defun avx2-os-supported-p ()
+  "True when the OS enables the AVX2 register state."
+  #+linux
+  (let ((flags nil))
+    (with-open-file (stream "/proc/cpuinfo" :if-does-not-exist nil)
+      (when stream
+        (loop for line = (read-line stream nil nil)
+              while (and line (not flags))
+              when (search "flags" line)
+              do (setf flags line))))
+    (and flags (not (null (search "avx2" flags)))))
+  #+darwin
+  (let ((output ""))
+    (ignore-errors
+      (setf output (uiop:run-program '("sysctl" "-n" "hw.optional.avx2")
+                                     :ignore-error-status t :output :string)))
+    (and output
+         (not (string= (string-trim '(#\Space #\Newline) output) ""))))
+  #-(or linux darwin)
+  nil)
+
+#+(and sbcl x86-64)
+(defun avx2-supported-p ()
+  "True when the CPU implements AVX2 and the OS enables its state."
+  (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
+  #+ironclad-assembly (and (not (null (avx2-cpu-support-p)))
+                            (avx2-os-supported-p))
   #-ironclad-assembly nil)

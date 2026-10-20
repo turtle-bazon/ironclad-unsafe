@@ -499,12 +499,20 @@
       (inst movdqu (nth-xmm-mem buffer 2) x2)
       (inst movdqu (nth-xmm-mem buffer 3) x3))))
 
+;;; CPUID probes.  CPUID writes EAX, EBX, ECX and EDX, so EBX has to
+;;; be declared as a temporary: RBX holds SBCL's SPECIAL register on
+;;; x86-64 and is callee-saved, so a VOP that clobbers it without
+;;; saying so corrupts the special binding of its caller.
+;;;
+;;; The result is the carry flag, as the callers expect a boolean.
+
 #+x86-64
 (define-vop (pclmulqdq-support-p)
   (:translate ironclad::pclmulqdq-support-p)
   (:policy :fast-safe)
   (:conditional :c)
   (:temporary (:sc unsigned-reg :offset rax-offset) eax)
+  (:temporary (:sc unsigned-reg :offset sb-vm::rbx-offset) rbx)
   (:temporary (:sc unsigned-reg :offset rcx-offset) ecx)
   (:generator 10
     (inst mov eax 1)
@@ -517,6 +525,7 @@
   (:policy :fast-safe)
   (:conditional :c)
   (:temporary (:sc unsigned-reg :offset rax-offset) eax)
+  (:temporary (:sc unsigned-reg :offset sb-vm::rbx-offset) rbx)
   (:temporary (:sc unsigned-reg :offset rcx-offset) ecx)
   (:generator 10
     (inst mov eax 1)
@@ -524,11 +533,59 @@
     (inst bt ecx 25)))
 
 #+x86-64
+(define-vop (bmi2-support-p)
+  ;; CPUID leaf 7, subleaf 0: EBX bit 8 is BMI2.  The result is the
+  ;; carry flag, as for the other CPUID probes.
+  (:translate ironclad::bmi2-support-p)
+  (:policy :fast-safe)
+  (:conditional :c)
+  (:temporary (:sc unsigned-reg :offset rax-offset) eax)
+  (:temporary (:sc unsigned-reg :offset sb-vm::rbx-offset) rbx)
+  (:temporary (:sc unsigned-reg :offset rcx-offset) ecx)
+  (:generator 10
+    (inst mov eax 7)
+    (inst mov ecx 0)
+    (inst cpuid)
+    (inst bt rbx 8)))
+
+#+x86-64
+(define-vop (adx-support-p)
+  ;; CPUID leaf 7, subleaf 0: EBX bit 19 is ADX.
+  (:translate ironclad::adx-support-p)
+  (:policy :fast-safe)
+  (:conditional :c)
+  (:temporary (:sc unsigned-reg :offset rax-offset) eax)
+  (:temporary (:sc unsigned-reg :offset sb-vm::rbx-offset) rbx)
+  (:temporary (:sc unsigned-reg :offset rcx-offset) ecx)
+  (:generator 10
+    (inst mov eax 7)
+    (inst mov ecx 0)
+    (inst cpuid)
+    (inst bt rbx 19)))
+
+#+x86-64
+(define-vop (avx2-cpu-support-p)
+  ;; CPUID leaf 7, subleaf 0: EBX bit 5 is AVX2.  The operating system
+  ;; must also enable the YMM state; that is checked separately.
+  (:translate ironclad::avx2-cpu-support-p)
+  (:policy :fast-safe)
+  (:conditional :c)
+  (:temporary (:sc unsigned-reg :offset rax-offset) eax)
+  (:temporary (:sc unsigned-reg :offset sb-vm::rbx-offset) rbx)
+  (:temporary (:sc unsigned-reg :offset rcx-offset) ecx)
+  (:generator 10
+    (inst mov eax 7)
+    (inst mov ecx 0)
+    (inst cpuid)
+    (inst bt rbx 5)))
+
+#+x86-64
 (define-vop (sha-ni-support-p)
   (:translate ironclad::sha-ni-support-p)
   (:policy :fast-safe)
   (:conditional :c)
   (:temporary (:sc unsigned-reg :offset rax-offset) eax)
+  (:temporary (:sc unsigned-reg :offset sb-vm::rbx-offset) rbx)
   (:temporary (:sc unsigned-reg :offset rcx-offset) ecx)
   (:generator 10
     (inst mov eax 1)

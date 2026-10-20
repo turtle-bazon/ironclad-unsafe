@@ -62,6 +62,27 @@
   :overwrite-fndb-silently t)
 
 #+x86-64
+(defknown ironclad::bmi2-support-p
+  ()
+  (boolean)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
+(defknown ironclad::adx-support-p
+  ()
+  (boolean)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
+(defknown ironclad::avx2-cpu-support-p
+  ()
+  (boolean)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
 (defknown ironclad::sha-ni-support-p
   ()
   (boolean)
