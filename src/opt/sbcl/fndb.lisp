@@ -151,6 +151,13 @@
   :overwrite-fndb-silently t)
 
 #+x86-64
+(defknown ironclad::hqc-clmul64
+  ((unsigned-byte 64) (unsigned-byte 64))
+  (values (unsigned-byte 64) (unsigned-byte 64))
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
 (defknown ironclad::secp256r1-fe-mul
   ((simple-array (unsigned-byte 32) (*))
    (simple-array (unsigned-byte 32) (*))

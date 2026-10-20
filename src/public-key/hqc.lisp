@@ -276,9 +276,14 @@
 
 (declaim (inline hqc-u64vec))
 (defun hqc-u64vec (n)
+  (declare (type fixnum n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (make-array n :element-type '(unsigned-byte 64) :initial-element 0))
 
 (defun hqc-vec-add (o v1 v2 size)
+  (declare (type (array (unsigned-byte 64) (*)) o v1 v2)
+           (type fixnum size)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i size o)
     (setf (aref o i) (logxor (aref v1 i) (aref v2 i)))))
 
@@ -443,12 +448,20 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
 ;;; GF(2)[x] Karatsuba multiply + reduce mod x^n - 1.
 ;;;
 
-(declaim (inline hqc-base-mul))
-(defun hqc-base-mul (c a b)
+(defvar *hqc-use-pclmul*
+  #+(and sbcl x86-64 ironclad-assembly) (pclmulqdq-supported-p)
+  #-(and sbcl x86-64 ironclad-assembly) nil)
+
+(defun hqc-base-mul-serial (c a b)
   "Constant-time bit-serial carryless 64x64 -> 128-bit product into C[0..1]."
+  (declare (type (simple-array (unsigned-byte 64) (*)) c)
+           (type (unsigned-byte 64) a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((l 0) (h 0))
+    (declare (type (unsigned-byte 64) l h))
     (dotimes (j 64)
-      (let ((bmask (- (ldb (byte 1 j) b))))
+      (let ((bmask (if (logbitp j b) #xFFFFFFFFFFFFFFFF 0)))
+        (declare (type (unsigned-byte 64) bmask))
         (if (zerop j)
             (setf l (logxor l (logand a bmask)))
             (let ((low-bits (logand a (1- (ash 1 (- 64 j))))))
@@ -458,8 +471,27 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
           (aref c 1) h)
     (values)))
 
+(declaim (inline hqc-base-mul))
+(defun hqc-base-mul (c a b)
+  "Carryless 64x64 -> 128-bit product into C[0..1]."
+  (declare (type (simple-array (unsigned-byte 64) (*)) c)
+           (type (unsigned-byte 64) a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-assembly)
+  (if *hqc-use-pclmul*
+      (multiple-value-bind (l h) (hqc-clmul64 a b)
+        (setf (aref c 0) l
+              (aref c 1) h)
+        (values))
+      (hqc-base-mul-serial c a b))
+  #-(and sbcl x86-64 ironclad-assembly)
+  (hqc-base-mul-serial c a b))
+
 (declaim (inline hqc-karatsuba-add1 hqc-karatsuba-add2 hqc-vec-reduce))
 (defun hqc-karatsuba-add1 (alh blh a b size-l size-h)
+  (declare (type (array (unsigned-byte 64) (*)) alh blh a b)
+           (type fixnum size-l size-h)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i size-h)
     (setf (aref alh i) (logxor (aref a i) (aref a (+ i size-l))))
     (setf (aref blh i) (logxor (aref b i) (aref b (+ i size-l)))))
@@ -469,6 +501,9 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
   (values))
 
 (defun hqc-karatsuba-add2 (o tmp1 tmp2 size-l size-h)
+  (declare (type (array (unsigned-byte 64) (*)) o tmp1 tmp2)
+           (type fixnum size-l size-h)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i (* 2 size-l))
     (setf (aref tmp1 i) (logxor (aref tmp1 i) (aref o i))))
   (dotimes (i (* 2 size-h))
@@ -478,6 +513,9 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
   (values))
 
 (defun hqc-karatsuba (o a b size)
+  (declare (type (array (unsigned-byte 64) (*)) o a b)
+           (type fixnum size)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (if (= size 1)
       (let ((c (hqc-u64vec 2)))
         (hqc-base-mul c (aref a 0) (aref b 0))
@@ -495,6 +533,7 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
                              :displaced-to b :displaced-index-offset size-l))
          (tmp2 (make-array (* 2 size-h) :element-type '(unsigned-byte 64)
                                :displaced-to o :displaced-index-offset (* 2 size-l))))
+    (declare (type fixnum size-h size-l))
     (hqc-karatsuba o a b size-l)
     (hqc-karatsuba tmp2 ah bh size-h)
     (hqc-karatsuba-add1 alh blh a b size-l size-h)
@@ -503,8 +542,11 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
     (values))))
 
 (defun hqc-vec-reduce (o a)
+  (declare (type (array (unsigned-byte 64) (*)) o a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((n64 (hqc-vec-n-64))
         (rem (mod (hqc-n) 64)))
+    (declare (type fixnum n64 rem))
     (dotimes (i n64)
       (let ((r (ash (aref a (+ i n64 -1)) (- rem)))
             (carry (logand (ash (aref a (+ i n64)) (- 64 rem)) #xFFFFFFFFFFFFFFFF)))
@@ -513,8 +555,12 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
     (values)))
 
 (defun hqc-vec-mul (o v1 v2)
+  (declare (type (array (unsigned-byte 64) (*)) o v1 v2)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n64 (hqc-vec-n-64))
          (karat (hqc-u64vec (* 2 n64))))
+    (declare (type fixnum n64)
+             (type (simple-array (unsigned-byte 64) (*)) karat))
     (hqc-karatsuba karat v1 v2 n64)
     (hqc-vec-reduce o karat)
     (values)))

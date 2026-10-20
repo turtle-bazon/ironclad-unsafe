@@ -71,6 +71,28 @@
 
 #+(and sbcl (or x86 x86-64) ironclad-assembly)
 (progn
+
+;;; Carryless 64x64 -> 128 multiplication.  Used by the GF(2) polynomial
+;;; multipliers in HQC (and available to other bit-oriented code).
+#+x86-64
+(define-vop (hqc-clmul64)
+  (:translate ironclad::hqc-clmul64)
+  (:policy :fast-safe)
+  (:args (a :scs (unsigned-reg))
+         (b :scs (unsigned-reg)))
+  (:arg-types unsigned-num unsigned-num)
+  (:results (lo :scs (unsigned-reg))
+            (hi :scs (unsigned-reg)))
+  (:result-types unsigned-num unsigned-num)
+  (:temporary (:sc double-reg) x0)
+  (:temporary (:sc double-reg) x1)
+  (:generator 4
+    (inst movq x0 a)
+    (inst movq x1 b)
+    (inst pclmulqdq x0 x1 0)
+    (inst movq lo x0)
+    (inst pextrq hi x0 1)))
+
 (define-vop (fill-block-ub8)
   (:policy :fast-safe)
   (:args (block :scs (descriptor-reg))
