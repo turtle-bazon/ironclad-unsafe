@@ -128,7 +128,7 @@
                       (aref +secp256r1-p-limbs+ i)
                       borrow)))
             (setf (aref r i) (ldb (byte 32 0) d)
-                  borrow (if (minusp d) 1 0)))))))
+                  borrow (logand (ash d -32) 1)))))))
   r)
 
 (defun secp256r1-fe-sub (r a b)
@@ -140,7 +140,7 @@
     (dotimes (i 8)
       (let ((d (- (aref a i) (aref b i) borrow)))
         (setf (aref r i) (ldb (byte 32 0) d)
-              borrow (if (minusp d) 1 0))))
+              borrow (logand (ash d -32) 1))))
     (when (plusp borrow)
       (let ((carry 0))
         (declare (type (unsigned-byte 32) carry))
