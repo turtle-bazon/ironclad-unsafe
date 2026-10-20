@@ -163,3 +163,17 @@ Other:   disabled (no reliable cross-platform detection available)."
   #+ironclad-assembly (and (not (null (avx2-cpu-support-p)))
                             (avx2-os-supported-p))
   #-ironclad-assembly nil)
+
+;;; Whether the assembler of this SBCL knows an instruction.  MULX,
+;;; ADCX and ADOX are only in the assembler of an SBCL that was built
+;;; on a machine with AVX2.
+
+#+(and sbcl x86-64)
+(defun ironclad-instruction-known-p (name)
+  "True when the assembler knows the instruction NAME."
+  (declare (type string name))
+  (handler-case
+      (let* ((table (symbol-value (find-symbol "*INST-ENCODER*" "SB-ASSEM")))
+             (sym (find-symbol name "SB-ASSEM")))
+        (and table sym (gethash sym table)))
+    (error () nil)))
