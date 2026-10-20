@@ -163,7 +163,15 @@ A and B are 32-bit field limbs, BORROW is 0 or 1."
                  (s (+ (aref r (+ i j)) plo carry)))
             (setf (aref r (+ i j)) (ldb (byte 32 0) s)
                   carry (+ (ash s -32) phi))))
-        (setf (aref r (+ i 8)) carry)))
+        ;; The carry can reach 2^32, which does not fit in the 32-bit
+        ;; limb array, so propagate it into the higher limbs.
+        (let ((c carry))
+          (declare (type (unsigned-byte 32) c))
+          (loop for k from (+ i 8) below 16
+                while (plusp c)
+                do (let ((s (+ (aref r k) c)))
+                     (setf (aref r k) (ldb (byte 32 0) s)
+                           c (ash s -32)))))))
     r))
 
 (defun ed25519-fe-normalize16 (c)
