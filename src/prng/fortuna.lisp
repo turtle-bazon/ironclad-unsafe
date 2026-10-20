@@ -91,6 +91,17 @@
   (declare (ignorable seed))
   (make-fortuna cipher))
 
+(defmethod make-prng ((name (eql :fortuna-generator)) &key seed (cipher :aes))
+  "The bare Fortuna generator, as advertised by LIST-ALL-PRNGS.
+The generator keeps its own key, so the seed is ignored; it still
+needs an initial reseed before it can produce any blocks."
+  (declare (ignorable seed))
+  (let ((generator (make-instance 'fortuna-generator :cipher cipher)))
+    (prng-reseed (make-array 32 :element-type '(unsigned-byte 8)
+                             :initial-element 0)
+                 generator)
+    generator))
+
 ;; FIXME: this is more than a little ugly; maybe there should be a
 ;; prng-registry or something?
 (defmethod make-prng ((name (eql 'fortuna)) &key seed (cipher :aes))
