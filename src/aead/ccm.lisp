@@ -108,27 +108,40 @@ to be complete."
     (encrypt (ccm-ecb mode) input output)
     output))
 
-(defun ccm-cbc-absorb-block (mode data offset)
+(defun ccm-simple-octet-vector-p (data)
+  "True when DATA can be handed to the assembly xor128 VOP, which
+assumes the heap layout of a simple vector."
+  (declare (type (vector (unsigned-byte 8)) data))
+  #+(and sbcl x86-64 ironclad-assembly)
+  (typep data '(simple-array (unsigned-byte 8) (*)))
+  #-(and sbcl x86-64 ironclad-assembly)
+  nil)
+
+(defun ccm-cbc-absorb-block (mode data offset simple)
   "XOR the 16 octets of DATA at OFFSET into the CBC-MAC chain, then
 encrypt the chain in place.
 
 DATA may be any vector of octets; the assembly path needs a simple
-array, and falls back to a byte-at-a-time XOR for anything else."
-  (declare (type (vector (unsigned-byte 8)) data))
+array, and falls back to a byte-at-a-time XOR for anything else.  SIMPLE
+says whether DATA is such a simple array; the caller checks that once
+for the whole message, instead of once per block."
+  (declare (type (vector (unsigned-byte 8)) data)
+           (type boolean simple))
   (let ((chain (ccm-chain mode)))
     (declare (type (simple-array (unsigned-byte 8) (16)) chain))
-    ;; Encrypt the chain in place; the assembly encryptor reads the
-    ;; whole block before it writes it back.
     #+(and sbcl x86-64 ironclad-assembly)
     (progn
-      (if (typep data '(simple-array (unsigned-byte 8) (*)))
+      (if simple
           (xor128 chain 0 data offset chain 0)
           (dotimes (i 16)
             (setf (aref chain i)
                   (logxor (aref chain i) (aref data (+ offset i))))))
+      ;; Encrypt the chain in place; the assembly encryptor reads the
+      ;; whole block before it writes it back.
       (aes-encrypt-block (ccm-ecb mode) chain 0 chain 0))
     #-(and sbcl x86-64 ironclad-assembly)
     (progn
+      (declare (ignore simple))
       (dotimes (i 16)
         (setf (aref chain i)
               (logxor (aref chain i) (aref data (+ offset i)))))
@@ -139,12 +152,13 @@ array, and falls back to a byte-at-a-time XOR for anything else."
 When PENDING is empty and at least 16 bytes remain, XOR a full block
 directly into the chain and encrypt, avoiding per-byte PENDING pushes."
   (declare (type (vector (unsigned-byte 8)) data))
-  (let ((pending (ccm-pending mode)))
+  (let ((pending (ccm-pending mode))
+        (simple (ccm-simple-octet-vector-p data)))
     (loop with pos = start
           do (cond
                ((and (zerop (fill-pointer pending))
                      (<= 16 (- end pos)))
-                 (ccm-cbc-absorb-block mode data pos)
+                 (ccm-cbc-absorb-block mode data pos simple)
                  (incf pos 16))
                (t
                 (loop while (and (< (fill-pointer pending) 16) (< pos end))
@@ -159,7 +173,8 @@ directly into the chain and encrypt, avoiding per-byte PENDING pushes."
   "XOR the full 16-octet PENDING buffer into the chain and encrypt.
 Caller ensures PENDING holds exactly 16 octets."
   (let ((pending (ccm-pending mode)))
-    (ccm-cbc-absorb-block mode pending 0)
+    ;; The pending buffer is adjustable, so it is not a simple array.
+    (ccm-cbc-absorb-block mode pending 0 nil)
     (setf (fill-pointer pending) 0))
   (values))
 
