@@ -314,6 +314,25 @@ conditional subtract of Q suffices."
 Uses 254 squarings and 11 multiplications."
   (declare (type ed25519-fe z)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-assembly)
+  (let ((n 0)
+        (scratch (make-array 208 :element-type '(unsigned-byte 64))))
+    (declare (type integer n)
+             (type (simple-array (unsigned-byte 64) (*)) scratch))
+    (dotimes (i 8)
+      (setf n (dpb (aref z i) (byte 32 (* 32 i)) n)))
+    (setf n (mod n +ed25519-q+))
+    ;; Scratch element 57 is the radix-2^51 input, element 37 the result
+    ;; (see the layout in src/opt/sbcl/ed25519-comb.lisp).
+    (dotimes (i 5)
+      (setf (aref scratch (+ 57 i)) (ldb (byte 51 (* 51 i)) n)))
+    (ed25519-inv-asm scratch)
+    (let ((m 0))
+      (declare (type integer m))
+      (dotimes (i 5)
+        (setf m (+ m (ash (aref scratch (+ 37 i)) (* 51 i)))))
+      (ed25519-fe-from-int (mod m +ed25519-q+))))
+  #-(and sbcl x86-64 ironclad-assembly)
   (let ((t0 (ed25519-fe-zero)) (t1 (ed25519-fe-zero))
         (t2 (ed25519-fe-zero)) (t3 (ed25519-fe-zero))
         (out (ed25519-fe-zero)))
@@ -574,11 +593,112 @@ No consing of intermediate points - uses 4 pre-allocated point objects."
                   (setf base (ec-double base))))
               table))))
 
+;;; Radix-2^51 representation of the same positional table, used by the
+;;; x86-64 assembly comb (see src/opt/sbcl/ed25519-comb.lisp).  Each field
+;;; element is five 64-bit limbs holding a value mod 2^255-19.
+
+(defconstant +ed25519-r51-limb-bits+ 51)
+
+(defvar *ed25519-r51-table* nil
+  "Flat T[J][V] as 5-limb radix-2^51 values: X,Y,Z,T per entry.  Built on first use.")
+(defvar *ed25519-r51-twod* nil
+  "The constant 2*d in radix-2^51 limb form.")
+
+(defun ed25519-r51-constant (n)
+  (declare (type integer n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((r (make-array 5 :element-type '(unsigned-byte 64))))
+    (dotimes (i 5 r)
+      (setf (aref r i) (ldb (byte +ed25519-r51-limb-bits+
+                                  (* +ed25519-r51-limb-bits+ i))
+                            n)))))
+
+(defun ed25519-point-to-r51! (flat base p)
+  "Store point P's X,Y,Z,T at BASE as contiguous radix-2^51 limbs."
+  (declare (type (simple-array (unsigned-byte 64) (*)) flat)
+           (type fixnum base)
+           (type ed25519-point p)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (flet ((store (off fe)
+           (declare (type fixnum off) (type ed25519-fe fe))
+           (let ((n (ed25519-fe-to-int fe)))
+             (dotimes (i 5)
+               (setf (aref flat (+ base off i))
+                     (ldb (byte +ed25519-r51-limb-bits+
+                                (* +ed25519-r51-limb-bits+ i))
+                          n))))))
+    (store 0 (slot-value p 'x))
+    (store 5 (slot-value p 'y))
+    (store 10 (slot-value p 'z))
+    (store 15 (slot-value p 'w)))
+  flat)
+
+(defun ed25519-ensure-r51-table ()
+  "Build the flat radix-2^51 positional table if needed."
+  (or *ed25519-r51-table*
+      (let ((table (make-array (* +ed25519-base-window-count+ 256 20)
+                               :element-type '(unsigned-byte 64)))
+            (base ed25519-base-point))
+        (dotimes (j +ed25519-base-window-count+)
+          (let ((row (make-array 256)))
+            (setf (aref row 0) ed25519-point-at-infinity
+                  (aref row 1) base)
+            (loop for v from 2 below 256
+                  do (setf (aref row v)
+                           (if (evenp v)
+                               (ec-double (aref row (ash v -1)))
+                               (ec-add (aref row (1- v)) base))))
+            (dotimes (v 256)
+              (ed25519-point-to-r51! table (* (+ (* j 256) v) 20)
+                                     (aref row v))))
+          (dotimes (i 8)
+            (setf base (ec-double base))))
+        (setf *ed25519-r51-table* table))))
+
+(defun ed25519-r51-twod ()
+  (or *ed25519-r51-twod*
+      (setf *ed25519-r51-twod*
+            (ed25519-r51-constant (mod (* 2 +ed25519-d+) +ed25519-q+)))))
+
+(defun ed25519-r51-coord (result base)
+  "Integer represented by the five radix-2^51 limbs at BASE of RESULT."
+  (declare (type (simple-array (unsigned-byte 64) (*)) result)
+           (type fixnum base)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((n 0))
+    (declare (type integer n))
+    (dotimes (i 5 n)
+      (setf n (+ n (ash (aref result (+ base i))
+                        (* +ed25519-r51-limb-bits+ i)))))))
+
 (defun ed25519-base-mult (k)
   "Fixed-base positional comb for G (secret scalar, fixed schedule).
 32 unified additions, no doublings."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer k))
+  #+(and sbcl x86-64 ironclad-assembly)
+  (let ((table (ed25519-ensure-r51-table))
+        (twod (ed25519-r51-twod))
+        (scratch (make-array 208 :element-type '(unsigned-byte 64))))
+    (declare (type (simple-array (unsigned-byte 64) (*)) table twod scratch))
+    ;; scratch[0..31]: the 32 base-256 digits (one per 64-bit word).
+    (dotimes (j 32)
+      (setf (aref scratch j) (ldb (byte 8 (* j 8)) k)))
+    ;; scratch[32..36]: the constant 2*d (byte offset 256).
+    (dotimes (i 5)
+      (setf (aref scratch (+ 32 i)) (aref twod i)))
+    (ed25519-comb-asm table scratch)
+    ;; scratch[37..56]: the result X,Y,Z,T (byte offset 296).
+    (make-instance 'ed25519-point
+                   :x (ed25519-fe-from-int (mod (ed25519-r51-coord scratch 37)
+                                                +ed25519-q+))
+                   :y (ed25519-fe-from-int (mod (ed25519-r51-coord scratch 42)
+                                                +ed25519-q+))
+                   :z (ed25519-fe-from-int (mod (ed25519-r51-coord scratch 47)
+                                                +ed25519-q+))
+                   :w (ed25519-fe-from-int (mod (ed25519-r51-coord scratch 52)
+                                                +ed25519-q+))))
+  #-(and sbcl x86-64 ironclad-assembly)
   (let ((table (ed25519-ensure-base-table))
         (acc (make-instance 'ed25519-point
                             :x (ed25519-fe-zero) :y (ed25519-fe-zero)

@@ -65,6 +65,7 @@
                                             :serial t
                                             :components ((:file "fndb")
                                                          (:file "x86oid-vm")
+                                                         (:file "ed25519-comb")
                                                          (:file "cpu-features")))))
                              (:file "common")
                              (:module "ciphers"
