@@ -270,13 +270,17 @@
 (defmethod shared-initialize ((kdf argon2) slot-names &rest initargs
                               &key block-count additional-key additional-data &allow-other-keys)
   (declare (ignore initargs))
-  (let ((no-data (make-array 0 :element-type '(unsigned-byte 8))))
+  (let* ((no-data (make-array 0 :element-type '(unsigned-byte 8)))
+         ;; The work area must match the block count actually used;
+         ;; sizing it from the raw BLOCK-COUNT (possibly NIL) left a
+         ;; zero-length array and an out-of-bounds write below.
+         (count (max 8 (or block-count 4096))))
     (setf (argon2-block kdf) (make-array +argon2-block-size+
                                          :element-type '(unsigned-byte 64))
-          (argon2-block-count kdf) (max 8 (or block-count 4096))
+          (argon2-block-count kdf) count
           (argon2-additional-key kdf) (or additional-key no-data)
           (argon2-additional-data kdf) (or additional-data no-data)
-          (argon2-work-area kdf) (make-array (* +argon2-block-size+ block-count)
+          (argon2-work-area kdf) (make-array (* +argon2-block-size+ count)
                                              :element-type '(unsigned-byte 64))
           (argon2-digester kdf) (make-mac :blake2-mac no-data)))
   kdf)

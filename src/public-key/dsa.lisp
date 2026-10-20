@@ -194,5 +194,7 @@
       (let* ((w (modular-inverse s q))
              (u1 (mod (* m w) q))
              (u2 (mod (* r w) q))
-             (v (mod (mod (* (expt-mod g u1 p) (expt-mod y u2 p)) p) q)))
+             ;; U1, U2, G and Y are public, so the variable-time
+             ;; sliding-window exponentiation is safe here.
+             (v (mod (mod (* (expt-mod/unsafe g u1 p) (expt-mod/unsafe y u2 p)) p) q)))
         (= v r)))))

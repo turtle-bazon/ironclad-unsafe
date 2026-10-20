@@ -69,7 +69,9 @@
          (uv (mod (* u v) +ed448-q+))
          (u3v (mod (* u u uv) +ed448-q+))
          (u5v3 (mod (* u3v uv uv) +ed448-q+))
-         (x (mod (* u3v (expt-mod u5v3 (/ (- +ed448-q+ 3) 4) +ed448-q+)) +ed448-q+)))
+         ;; The value recovered here depends only on the public key, so
+         ;; the variable-time sliding-window exponentiation is safe.
+         (x (mod (* u3v (expt-mod/unsafe u5v3 (/ (- +ed448-q+ 3) 4) +ed448-q+)) +ed448-q+)))
     (declare (type integer u v uv u3v u5v3 x))
     (unless (evenp x)
       (setf x (- +ed448-q+ x)))

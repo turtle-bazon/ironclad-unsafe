@@ -245,8 +245,10 @@
            (s (getf signature-elements :s)))
       (and (< 0 r p)
            (< 0 s (- p 1))
-           (= (expt-mod g m p)
-              (mod (* (expt-mod y r p) (expt-mod r s p)) p))))))
+           ;; All values are public here, so the variable-time
+           ;; sliding-window exponentiation is safe.
+           (= (expt-mod/unsafe g m p)
+              (mod (* (expt-mod/unsafe y r p) (expt-mod/unsafe r s p)) p))))))
 
 (defmethod diffie-hellman ((private-key elgamal-private-key) (public-key elgamal-public-key))
   (let ((p (elgamal-key-p private-key))
