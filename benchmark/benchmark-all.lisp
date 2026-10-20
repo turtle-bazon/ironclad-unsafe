@@ -905,11 +905,7 @@ dropped.  Anything else is a genuine failure and is reported."
     (dolist (kind (ironclad:list-all-kdfs))
       (format t "kdf ~a~%" kind)
       (finish-output)
-      ;; The Argon2 index generation corrupts the heap, which can
-      ;; abort the whole benchmark run, so the Argon2 kinds are left
-      ;; out until the bug is fixed.
-      (unless (member kind '(:argon2i :argon2d :argon2id))
-        (benchmark-kdf kind))))
+      (benchmark-kdf kind)))
   (when (selected "prngs")
     (dolist (name (ironclad:list-all-prngs))
       (format t "prng ~a~%" name)

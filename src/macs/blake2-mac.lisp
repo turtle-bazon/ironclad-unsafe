@@ -47,11 +47,17 @@
   mac)
 
 (defun blake2-mac-digest (mac)
-  (let ((digest (make-array (digest-length mac)
-                            :element-type '(unsigned-byte 8)))
-        (mac-copy (copy-blake2-mac mac)))
-    (blake2-finalize (blake2-digest mac-copy) digest 0)
-    digest))
+  (let* ((mac-copy (copy-blake2-mac mac))
+         (digest (blake2-digest mac-copy))
+         ;; The digest always produces a full length hash, so the
+         ;; buffer has to be big enough for it.  The result is then
+         ;; truncated to the length the MAC promises; writing the full
+         ;; hash into a shorter buffer would corrupt the heap.
+         (full (make-array (digest-length digest)
+                           :element-type '(unsigned-byte 8)))
+         (length (digest-length mac)))
+    (blake2-finalize digest full 0)
+    (subseq full 0 length)))
 
 (defmac blake2-mac
         make-blake2-mac
