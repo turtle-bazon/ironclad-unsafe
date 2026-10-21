@@ -40,6 +40,162 @@
 (defconst +ed448-point-at-infinity+
   (make-instance 'ed448-point :x 0 :y 1 :z 1))
 
+;;; ------------------------------------------------------------------
+;;; The scalar multiplication in the limb field
+;;;;
+;;; The points stay as they are, as bignums, and the scalar
+;;; multiplication is done in the limb field, where the product of two
+;;; field elements is four times faster than the product of two
+;;; bignums and the division that follows it.  The coordinates are
+;;; converted at each end of the multiplication, which costs about a
+;;; microsecond and is nothing next to the multiplication itself.
+
+(defvar +ed448-d-limbs+
+  (goldilocks-fe-from-int (+ +ed448-q+ +ed448-d+))
+  "The constant d of the Ed448 curve, in limbs.")
+
+(defun ed448-point-double-limbs (x1 y1 z1)
+  "The double of the point (X1 : Y1 : Z1), in limbs.
+The three coordinates are returned as multiple values."
+  (declare (type goldilocks-fe x1 y1 z1)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((a (goldilocks-fe-add x1 y1))
+         (b (goldilocks-fe-mul a a))
+         (c (goldilocks-fe-mul x1 x1))
+         (d (goldilocks-fe-mul y1 y1))
+         (e (goldilocks-fe-add c d))
+         (f (goldilocks-fe-mul z1 z1))
+         (g (goldilocks-fe-sub e (goldilocks-fe-add f f)))
+         (x2 (goldilocks-fe-mul (goldilocks-fe-sub b e) g))
+         (y2 (goldilocks-fe-mul (goldilocks-fe-sub c d) e))
+         (z2 (goldilocks-fe-mul e g)))
+    (values x2 y2 z2)))
+
+(defun ed448-point-add-limbs (x1 y1 z1 x2 y2 z2)
+  "The sum of the points (X1 : Y1 : Z1) and (X2 : Y2 : Z2), in limbs.
+The three coordinates are returned as multiple values."
+  (declare (type goldilocks-fe x1 y1 z1 x2 y2 z2)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((a (goldilocks-fe-mul z1 z2))
+         (b (goldilocks-fe-mul a a))
+         (c (goldilocks-fe-mul x1 x2))
+         (d (goldilocks-fe-mul y1 y2))
+         (k (goldilocks-fe-mul c d))
+         (e (goldilocks-fe-mul +ed448-d-limbs+ k))
+         (f (goldilocks-fe-sub b e))
+         (g (goldilocks-fe-add b e))
+         (h (goldilocks-fe-mul (goldilocks-fe-add x1 y1) (goldilocks-fe-add x2 y2)))
+         (i (goldilocks-fe-mul a f))
+         (j (goldilocks-fe-mul a g))
+         (x3 (goldilocks-fe-mul i (goldilocks-fe-sub (goldilocks-fe-sub h c) d)))
+         (y3 (goldilocks-fe-mul j (goldilocks-fe-sub d c)))
+         (z3 (goldilocks-fe-mul f g)))
+    (values x3 y3 z3)))
+
+(defun ed448-ladder-mult-limbs (x y z e)
+  "E times the point (X : Y : Z), in the limb field.
+X, Y and Z are bignums, and the result is a point."
+  (declare (type integer x y z e)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (when (minusp e)
+    (error "negative scalars are not supported by ed448-ladder-mult-limbs"))
+  (if (zerop e)
+      +ed448-point-at-infinity+
+      (let* ((r0x (goldilocks-fe-from-int 0))
+             (r0y (goldilocks-fe-from-int 1))
+             (r0z (goldilocks-fe-from-int 1))
+             (r1x (goldilocks-fe-from-int x))
+             (r1y (goldilocks-fe-from-int y))
+             (r1z (goldilocks-fe-from-int z))
+             (tx nil) (ty nil) (tz nil) (ux nil) (uy nil) (uz nil))
+        (declare (ignorable tx ty tz ux uy uz))
+        (loop for i from (1- +ed448-bits+) downto 0 do
+          (if (logbitp i e)
+              (progn
+                (multiple-value-setq (tx ty tz)
+                  (ed448-point-add-limbs r0x r0y r0z r1x r1y r1z))
+                (multiple-value-setq (ux uy uz)
+                  (ed448-point-double-limbs r1x r1y r1z))
+                (setf r0x tx r0y ty r0z tz
+                      r1x ux r1y uy r1z uz))
+              (progn
+                (multiple-value-setq (tx ty tz)
+                  (ed448-point-add-limbs r0x r0y r0z r1x r1y r1z))
+                (multiple-value-setq (ux uy uz)
+                  (ed448-point-double-limbs r0x r0y r0z))
+                (setf r1x tx r1y ty r1z tz
+                      r0x ux r0y uy r0z uz))))
+        (make-instance 'ed448-point
+                       :x (goldilocks-fe-to-int r0x)
+                       :y (goldilocks-fe-to-int r0y)
+                       :z (goldilocks-fe-to-int r0z)))))
+
+(defvar *ed448-base-table-limbs* nil
+  "Precomputed I * G for I in [0, 16), in limbs.")
+
+(defun ed448-ensure-base-table-limbs ()
+  (or *ed448-base-table-limbs*
+      (setf *ed448-base-table-limbs*
+            (let ((table (make-array 16))
+                  (x nil) (y nil) (z nil))
+              (declare (ignorable x y z))
+              (setf (aref table 0) (vector (goldilocks-fe-from-int 0)
+                                           (goldilocks-fe-from-int 1)
+                                           (goldilocks-fe-from-int 1))
+                    (aref table 1) (vector (goldilocks-fe-from-int
+                                            (slot-value +ed448-b+ 'x))
+                                           (goldilocks-fe-from-int
+                                            (slot-value +ed448-b+ 'y))
+                                           (goldilocks-fe-from-int 1)))
+              (loop for i from 2 below 16
+                    do (progn
+                         (multiple-value-setq (x y z)
+                           (if (evenp i)
+                               (ed448-point-double-limbs
+                                (aref (aref table (ash i -1)) 0)
+                                (aref (aref table (ash i -1)) 1)
+                                (aref (aref table (ash i -1)) 2))
+                               (ed448-point-add-limbs
+                                (aref (aref table (1- i)) 0)
+                                (aref (aref table (1- i)) 1)
+                                (aref (aref table (1- i)) 2)
+                                (aref (aref table 1) 0)
+                                (aref (aref table 1) 1)
+                                (aref (aref table 1) 2))))
+                         (setf (aref table i) (vector x y z))))
+              table))))
+
+(defun ed448-base-mult-limbs (k)
+  "The fixed-base comb for G, in the limb field."
+  (declare (type integer k)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((table (ed448-ensure-base-table-limbs))
+        (ax (goldilocks-fe-from-int 0))
+        (ay (goldilocks-fe-from-int 1))
+        (az (goldilocks-fe-from-int 1))
+        (x nil) (y nil) (z nil))
+    (declare (ignorable x y z))
+    (loop for j from 113 downto 0 do          ; 456 bits / 4 = 114 nibbles
+      (progn
+        (dotimes (i 4)
+          (multiple-value-setq (x y z) (ed448-point-double-limbs ax ay az))
+          (setf ax x ay y az z))
+        ;; The point is selected with a linear scan, so that the time
+        ;; does not depend on the secret scalar.
+        (let ((v (ldb (byte 4 (* j 4)) k)))
+          (dotimes (i 16)
+            (when (= i v)
+              (multiple-value-setq (x y z)
+                (ed448-point-add-limbs ax ay az
+                                       (aref (aref table i) 0)
+                                       (aref (aref table i) 1)
+                                       (aref (aref table i) 2)))
+              (setf ax x ay y az z))))))
+    (make-instance 'ed448-point
+                   :x (goldilocks-fe-to-int ax)
+                   :y (goldilocks-fe-to-int ay)
+                   :z (goldilocks-fe-to-int az))))
+
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun ed448-dom (x y)
@@ -179,46 +335,11 @@
 ;;; Uses destination-based Montgomery ladder to avoid consing intermediate
 ;;; points.  This is used by ed448-verify for the public-key multiplication.
 (defun ed448-scalar-mult-general (p e)
-  "Compute E*P for arbitrary point P using destination-based ladder.
-No consing of intermediate points - uses 4 pre-allocated point objects."
+  "Compute E*P for arbitrary point P, in the limb field."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer e))
-  (when (minusp e)
-    (error "negative scalars not supported by ed448-scalar-mult-general"))
-  (let* ((r0 (make-instance 'ed448-point :x 0 :y 0 :z 0))
-         (r1 (make-instance 'ed448-point :x 0 :y 0 :z 0))
-         (t0 (make-instance 'ed448-point :x 0 :y 0 :z 0))
-         (t1 (make-instance 'ed448-point :x 0 :y 0 :z 0)))
-    ;; Initialize r0 = infinity (0,1,1), r1 = P
-    (setf (slot-value r0 'x) 0 (slot-value r0 'y) 1
-          (slot-value r0 'z) 1)
-    (setf (slot-value r1 'x) (slot-value p 'x)
-          (slot-value r1 'y) (slot-value p 'y)
-          (slot-value r1 'z) (slot-value p 'z))
-    ;; Process bits from MSB to LSB
-    (do ((i (1- (integer-length e)) (1- i)))
-        ((minusp i) r0)
-      (if (logbitp i e)
-          (progn
-            (ed448-add! t0 r0 r1)
-            (ed448-double! t1 r1)
-            ;; Copy t0 -> r0, t1 -> r1 (no aliasing: copy slot values)
-            (setf (slot-value r0 'x) (slot-value t0 'x)
-                  (slot-value r0 'y) (slot-value t0 'y)
-                  (slot-value r0 'z) (slot-value t0 'z))
-            (setf (slot-value r1 'x) (slot-value t1 'x)
-                  (slot-value r1 'y) (slot-value t1 'y)
-                  (slot-value r1 'z) (slot-value t1 'z)))
-          (progn
-            (ed448-add! t0 r1 r0)
-            (ed448-double! t1 r0)
-            ;; Copy t0 -> r1, t1 -> r0
-            (setf (slot-value r1 'x) (slot-value t0 'x)
-                  (slot-value r1 'y) (slot-value t0 'y)
-                  (slot-value r1 'z) (slot-value t0 'z))
-            (setf (slot-value r0 'x) (slot-value t1 'x)
-                  (slot-value r0 'y) (slot-value t1 'y)
-                  (slot-value r0 'z) (slot-value t1 'z)))))))
+  (ed448-ladder-mult-limbs (slot-value p 'x) (slot-value p 'y)
+                           (slot-value p 'z) e))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Fixed-base comb for the generator point.
@@ -257,20 +378,7 @@ No consing of intermediate points - uses 4 pre-allocated point objects."
   "Fixed-base 4-bit comb for G (secret scalar, fixed schedule)."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer k))
-  (let ((table (ed448-ensure-base-table))
-        (acc +ed448-point-at-infinity+)
-        (tmp (make-instance 'ed448-point :x 0 :y 0 :z 0))
-        (out (make-instance 'ed448-point :x 0 :y 0 :z 0))
-        (sel (make-instance 'ed448-point :x 0 :y 0 :z 0)))
-    (loop for j from 113 downto 0 do          ; 456 bits / 4 = 114 nibbles
-      (dotimes (i 4)
-        (ed448-double! tmp acc)
-        (ed448-point-copy! acc tmp))
-      (setf sel (ed448-select-base table (ldb (byte 4 (* j 4)) k)))
-      (unless (eq sel +ed448-point-at-infinity+)
-        (ed448-add! out acc sel)
-        (setf acc out)))
-    acc))
+  (ed448-base-mult-limbs k))
 
 (defmethod ec-scalar-mult ((p ed448-point) e)
   ;; Secret scalars use the fixed-schedule ladder, except for the fixed
@@ -284,46 +392,12 @@ No consing of intermediate points - uses 4 pre-allocated point objects."
       (ed448-ladder-mult p e)))
 
 (defun ed448-ladder-mult (point e)
-  "Fixed-schedule Montgomery ladder using destination-passing ops."
+  "Fixed-schedule Montgomery ladder, in the limb field."
   (declare (type ed448-point point)
            (type integer e)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (when (minusp e)
-    (error "negative scalars are not supported by ed448-ladder-mult"))
-  (if (zerop e)
-      +ed448-point-at-infinity+
-      (let ((r0 (make-instance 'ed448-point :x 0 :y 0 :z 0))
-            (r1 (make-instance 'ed448-point :x 0 :y 0 :z 0))
-            (tmp (make-instance 'ed448-point :x 0 :y 0 :z 0))
-            (tmp2 (make-instance 'ed448-point :x 0 :y 0 :z 0)))
-        (declare (type ed448-point r0 r1 tmp tmp2))
-        ;; Initialize r0 = infinity (0,1,1), r1 = P
-        (setf (slot-value r0 'x) 0 (slot-value r0 'y) 1
-              (slot-value r0 'z) 1)
-        (setf (slot-value r1 'x) (slot-value point 'x)
-              (slot-value r1 'y) (slot-value point 'y)
-              (slot-value r1 'z) (slot-value point 'z))
-        (loop for i from (1- +ed448-bits+) downto 0 do
-          (if (logbitp i e)
-              (progn
-                (ed448-add! tmp r0 r1)
-                (ed448-double! tmp2 r1)
-                (setf (slot-value r0 'x) (slot-value tmp 'x)
-                      (slot-value r0 'y) (slot-value tmp 'y)
-                      (slot-value r0 'z) (slot-value tmp 'z))
-                (setf (slot-value r1 'x) (slot-value tmp2 'x)
-                      (slot-value r1 'y) (slot-value tmp2 'y)
-                      (slot-value r1 'z) (slot-value tmp2 'z)))
-              (progn
-                (ed448-add! tmp r0 r1)
-                (ed448-double! tmp2 r0)
-                (setf (slot-value r1 'x) (slot-value tmp 'x)
-                      (slot-value r1 'y) (slot-value tmp 'y)
-                      (slot-value r1 'z) (slot-value tmp 'z))
-                (setf (slot-value r0 'x) (slot-value tmp2 'x)
-                      (slot-value r0 'y) (slot-value tmp2 'y)
-                      (slot-value r0 'z) (slot-value tmp2 'z)))))
-        r0)))
+  (ed448-ladder-mult-limbs (slot-value point 'x) (slot-value point 'y)
+                           (slot-value point 'z) e))
 
 (defmethod ec-point-on-curve-p ((p ed448-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))

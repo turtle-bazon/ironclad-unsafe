@@ -62,26 +62,72 @@
     (declare (type integer t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 t11 t12 t13 t14 x4 z4 x5 z5))
     (values x4 z4 x5 z5)))
 
+;;; ------------------------------------------------------------------
+;;; The scalar multiplication in the limb field
+;;;;
+;;; As in Ed448, the point stays as it is, as a bignum, and the scalar
+;;; multiplication is done in the limb field, where the product of two
+;;; field elements is four times faster than the product of two
+;;; bignums and the division that follows it.
+
+(defvar +curve448-a24-limbs+
+  (goldilocks-fe-from-int +curve448-a24+)
+  "The constant a24 of the Curve448 curve, in limbs.")
+
+(defun curve448-double-and-add-limbs (x1 z1 x2 z2 x3)
+  "The double and add of the Curve448 curve, in limbs.
+The four coordinates are returned as multiple values."
+  (declare (type goldilocks-fe x1 z1 x2 z2 x3)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((t1 (goldilocks-fe-add x1 z1))
+         (t2 (goldilocks-fe-sub x1 z1))
+         (t3 (goldilocks-fe-sub x2 z2))
+         (t4 (goldilocks-fe-mul t1 t3))
+         (t5 (goldilocks-fe-add x2 z2))
+         (t6 (goldilocks-fe-mul t2 t5))
+         (t7 (goldilocks-fe-sub t4 t6))
+         (t8 (goldilocks-fe-mul t7 t7))
+         (z5 (goldilocks-fe-mul x3 t8))
+         (t9 (goldilocks-fe-add t4 t6))
+         (x5 (goldilocks-fe-mul t9 t9))
+         (t10 (goldilocks-fe-mul t1 t1))
+         (t11 (goldilocks-fe-mul t2 t2))
+         (x4 (goldilocks-fe-mul t10 t11))
+         (t12 (goldilocks-fe-sub t10 t11))
+         (t13 (goldilocks-fe-mul t12 +curve448-a24-limbs+))
+         (t14 (goldilocks-fe-add t13 t10))
+         (z4 (goldilocks-fe-mul t14 t12)))
+    (values x4 z4 x5 z5)))
+
+(defun curve448-ladder-mult-limbs (x n)
+  "N times the point (X : 1), in the limb field.
+X is a bignum, and the result is a point."
+  (declare (type integer x n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((x1 (goldilocks-fe-from-int 1))
+        (z1 (goldilocks-fe-from-int 0))
+        (x2 (goldilocks-fe-from-int x))
+        (z2 (goldilocks-fe-from-int 1))
+        (x3 (goldilocks-fe-from-int x)))
+    (loop for i from 447 downto 0 do
+      (if (logbitp i n)
+          (multiple-value-setq (x2 z2 x1 z1)
+            (curve448-double-and-add-limbs x2 z2 x1 z1 x3))
+          (multiple-value-setq (x1 z1 x2 z2)
+            (curve448-double-and-add-limbs x1 z1 x2 z2 x3))))
+    (make-instance 'curve448-point
+                   :x (goldilocks-fe-to-int x1)
+                   :z (goldilocks-fe-to-int z1))))
+
 (defmethod ec-scalar-mult ((p curve448-point) n)
-  ;; Point multiplication on curve448 curve using the Montgomery ladder.
+  ;; Point multiplication on curve448 curve using the Montgomery ladder,
+  ;; in the limb field.
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer n))
   (with-slots (x z) p
     (declare (type integer x z))
     (assert (= 1 z))
-    (do ((x1 1)
-         (z1 0)
-         (x2 x)
-         (z2 1)
-         (i 447 (1- i)))
-        ((minusp i) (make-instance 'curve448-point :x x1 :z z1))
-      (declare (type integer x1 z1 x2 z2)
-               (type fixnum i))
-      (if (logbitp i n)
-          (multiple-value-setq (x2 z2 x1 z1)
-            (curve448-double-and-add x2 z2 x1 z1 x))
-          (multiple-value-setq (x1 z1 x2 z2)
-            (curve448-double-and-add x1 z1 x2 z2 x))))))
+    (curve448-ladder-mult-limbs x n)))
 
 (defmethod ec-make-point ((kind (eql :curve448)) &key x)
   (unless x
