@@ -1602,6 +1602,70 @@
 
 
 #+x86-64
+(define-vop (goldilocks-mul-raw-asm)
+  ;; The product of two field elements of the Goldilocks field, as
+  ;; sixteen limbs of 56 bits.
+  ;;
+  ;; A limb is 56 bits, so the product of two limbs is 112 bits: the
+  ;; low 64 bits and the high 48 bits of the product.  The low halves
+  ;; of the products of a column are summed in one register and the
+  ;; high halves in another, and the carry out of the first is added
+  ;; to the second.  The sum of the column is then the second register
+  ;; shifted up by 64 bits, plus the first, and the limb that comes
+  ;; out of it is the low 56 bits of the first register.
+  ;;
+  ;; MULX would spare the registers RAX and RDX, and would not touch
+  ;; the flags, but the MULX of SBCL is assembled with a VEX prefix,
+  ;; which makes it the VPMADD52LUQ of the AVX-512 IFMA extension
+  ;; rather than the MULX of BMI2, which has only a legacy encoding.
+  ;; So the product is made with MUL, which fixes RAX and RDX and
+  ;; clears the flags; the carry of the addition of the low halves is
+  ;; the only thing that is needed of the flags, and it is used right
+  ;; away.
+  (:translate ironclad::goldilocks-fe-mul-raw-asm)
+  (:policy :fast-safe)
+  (:args (c :scs (descriptor-reg))
+         (a :scs (descriptor-reg))
+         (b :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg) lo hi carry tmp)
+  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+  (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (flet ((a64 (i) (ea (+ data-offset (* 8 i)) a))
+             (b64 (i) (ea (+ data-offset (* 8 i)) b))
+             (c64 (k) (ea (+ data-offset (* 8 k)) c)))
+        (inst mov carry 0)
+        (dotimes (k 15)
+          (inst mov lo carry)
+          (inst mov hi 0)
+          (dolist (i (loop for x from (max 0 (- k 7)) to (min 7 k)
+                           collect x))
+            (let ((j (- k i)))
+              (inst mov rax-tmp (a64 i))
+              (inst mov tmp (b64 j))
+              (inst mul tmp)
+              (inst add lo rax-tmp)
+              (inst adc hi rdx-tmp)))
+          ;; The limb is the low 56 bits of the low half, and the
+          ;; carry into the next column is the rest of the column.
+          (inst mov tmp lo)
+          (inst shl tmp 8)
+          (inst shr tmp 8)
+          (inst mov (c64 k) tmp)
+          (inst mov tmp lo)
+          (inst shr tmp 56)
+          (inst shl hi 8)
+          (inst or tmp hi)
+          (inst mov carry tmp))
+        (inst mov (c64 15) carry)))))
+
+
+#+x86-64
 (define-vop (ed25519-sqr-raw-asm)
   (:translate ironclad::ed25519-fe-sqr-raw-asm)
   (:policy :fast-safe)

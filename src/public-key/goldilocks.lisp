@@ -103,26 +103,30 @@ This is the portable version; the assembly version is faster."
   (declare (type goldilocks-fe a b)
            (type goldilocks-product r)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (dotimes (k 16) (setf (aref r k) 0))
-  (dotimes (i 8)
-    (let ((carry 0))
-      (declare (type integer carry))
-      (dotimes (j 8)
-        (let* ((prod (* (aref a i) (aref b j)))
-               (plo (logand prod +goldilocks-limb-mask+))
-               (phi (ash prod -56))
-               (k (+ i j))
-               (s (+ (aref r k) plo carry)))
-          (setf (aref r k) (logand s +goldilocks-limb-mask+)
-                carry (+ (ash s -56) phi))))
-      ;; The carry can be as large as a limb, so it has to be
-      ;; propagated into the higher limbs.
-      (loop for k from (+ i 8) below 16
-            while (plusp carry)
-            do (let ((s (+ (aref r k) carry)))
-                 (setf (aref r k) (logand s +goldilocks-limb-mask+)
-                       carry (ash s -56))))))
-  r)
+  #+(and sbcl x86-64 ironclad-assembly)
+  (goldilocks-fe-mul-raw-asm r a b)
+  #-(and sbcl x86-64 ironclad-assembly)
+  (progn
+    (dotimes (k 16) (setf (aref r k) 0))
+    (dotimes (i 8)
+      (let ((carry 0))
+        (declare (type integer carry))
+        (dotimes (j 8)
+          (let* ((prod (* (aref a i) (aref b j)))
+                 (plo (logand prod +goldilocks-limb-mask+))
+                 (phi (ash prod -56))
+                 (k (+ i j))
+                 (s (+ (aref r k) plo carry)))
+            (setf (aref r k) (logand s +goldilocks-limb-mask+)
+                  carry (+ (ash s -56) phi))))
+        ;; The carry can be as large as a limb, so it has to be
+        ;; propagated into the higher limbs.
+        (loop for k from (+ i 8) below 16
+              while (plusp carry)
+              do (let ((s (+ (aref r k) carry)))
+                   (setf (aref r k) (logand s +goldilocks-limb-mask+)
+                         carry (ash s -56))))))
+    r))
 
 (defun goldilocks-fe-reduce8 (c)
   "Reduce the eight limbs of C, which may be loose, modulo the prime.

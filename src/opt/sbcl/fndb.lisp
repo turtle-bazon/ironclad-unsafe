@@ -214,6 +214,15 @@
   :overwrite-fndb-silently t)
 
 #+x86-64
+(defknown ironclad::goldilocks-fe-mul-raw-asm
+  ((simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
 (defknown ironclad::ed25519-comb-asm
   ((simple-array (unsigned-byte 64) (*))
    (simple-array (unsigned-byte 64) (*)))
