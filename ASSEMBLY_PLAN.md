@@ -78,19 +78,39 @@ fourteen limbs, and the Comba is the one of Ed25519 with seven limbs
 instead of eight.
 
 The fold is where the care is needed, and where a first attempt
-failed.  Three things have to be right at once:
+failed: the subtraction and the addition meet at the fourth limb,
+and the sum there can be negative, so the carry out of that limb
+can be -1.  The way out is the one the P-256 code takes, two
+arrays and signed carries.
 
-* the subtraction of H from the low seven limbs borrows, and the
-  borrow is a whole B^7, which is congruent to B^3 - 1, so it has to
-  be compensated by one less at the bottom and one more at the
-  fourth limb;
-* the subtraction and the addition meet at the fourth limb, where
-  the borrow and the carry have to be added together, and the sum
-  can be negative, so the carry out of that limb can be -1;
-* what is left above B^7 is folded in again, and the excess of that
-  fold can be 1, and folding it again can give an excess of 1
-  again, so the fold has to be a loop and not a fixed number of
-  rounds.
+With B = 2^32 and p = B^7 - B^3 + 1, the value of the product N
+is L + H*B^7, where L is the low seven limbs and H the high seven,
+and B^7 is congruent to B^3 - 1, so
+
+    N = L + H*B^3 - H   (mod p).
+
+So the value is the sum of three parts, and they are put in two
+arrays, so that no part is read after it has been written:
+
+* the first array holds L, unchanged;
+* the second holds H*B^3 - H: the limbs of H are added at the
+  fourth limb and up, in the order of the limbs, so that a limb of H
+  is read before the word it is added to is written, and H is then
+  given back from the first seven words.
+
+The two arrays are then added, word by word, and the excess is what
+is left above B^7: the high words of the second array, plus the
+carry of the addition, plus the borrow of the subtraction, which is
+a whole B^7 and so is congruent to B^3 - 1.  The excess is folded in
+the same way, the words at the fourth limb and up get it and the
+first seven words give it back, and the excess of that fold is
+folded in again: the excess can be 1, and folding it in can give an
+excess of 1 again, so the fold is a loop and not a fixed number of
+rounds.  The last step is the conditional subtraction of the prime.
+
+Every carry and every borrow along the way is signed, and the
+carries are propagated with an arithmetic shift, so that a sum which
+is negative simply carries -1 into the next word.
 
 The same shape of the reduction is in the field of P-256, in
 `src/public-key/secp256r1.lisp`, and its assembly version is the
