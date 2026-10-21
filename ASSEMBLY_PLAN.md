@@ -77,18 +77,30 @@ EOF
 echo "written"
 ## Notes on BMI2, ADX and AVX2 (measured, 2026-10-21)
 
-The CPU feature detection is in place
-(`bmi2-supported-p`, `adx-supported-p`, `avx2-supported-p` in
+The CPU feature detection is in place (`bmi2-supported-p`,
+`adx-supported-p`, `avx2-supported-p`, `avx512-supported-p` in
 `src/opt/sbcl/cpu-features.lisp`).  The findings below are what the
 measurements showed, and they decide where the new instruction sets can
 actually pay off.
 
+An earlier revision of this file claimed that the assembler of the
+SBCL in use did not know `MULX`, `ADCX` and `ADOX`, and that they
+would have to be emitted as raw bytes.  That was wrong: the check
+that produced it, `ironclad-instruction-known-p`, looked the
+instruction up in the `SB-ASSEM` package, but SBCL creates the
+structure for an x86-64 instruction in `SB-X86-64-ASM`, so the check
+always answered NIL.  With the check fixed, both SBCL 2.6.7 and
+2.6.9 turn out to know `MULX`, `ADCX`, `ADOX` and the whole AVX2 and
+AVX-512 instruction set.
+
 ### Where they do *not* help
 
 * **BMI2 `MULX` in the 32-bit limb Comba** (`secp256r1-mul-raw-asm`,
-  `ed25519-mul-raw-asm`): no gain.  `MULX` avoids the fixed RAX/RDX
-  operands of `MUL`, but the out-of-order engine already renames those
-  registers away, so the product latency and throughput are the same.
+  `ed25519-mul-raw-asm`): little gain.  `MULX` avoids the fixed
+  RAX/RDX operands of `MUL`, but the out-of-order engine already
+  renames those registers away, so the product latency and
+  throughput are the same.  It does free the registers, which
+  matters when the accumulator needs more of them.
 * **ADX `ADCX`/`ADOX` in a 32-bit limb Comba**: the accumulator of a
   Comba column is 128 bits wide, and the products of two 32-bit limbs
   are 64 bits, so the two halves of a product are *not* independent
@@ -115,7 +127,9 @@ actually pay off.
   The reduction is cheap as well: 2^448 = 2^224 + 1 (mod q) and 224
   bits are exactly four limbs, so the high half of a product is folded
   back by adding it and by adding it shifted up by four limbs.
-  This is the design to use for ed448 and curve448.
+  This is the design to use for ed448 and curve448.  Both
+  instructions are now known to the assembler, so the kernel can be
+  written with them directly.
 * **A 4-lane AVX2 field**: `VPMULUDQ` fits a field of 32-bit limbs, but
   only in a layout where four independent products are needed at once
   and the results are used separately.  The symmetric primitives
@@ -126,18 +140,43 @@ actually pay off.
 
 ### Constraints to keep in mind
 
-* `MULX`, `ADCX` and `ADOX` are only in the assembler of an SBCL that
-  was built on a machine with AVX2.  The assembler of the SBCL used
-  here does not have them, so they have to be emitted as raw bytes;
-  `ironclad-instruction-known-p` checks for them.
-* A VOP that emits raw bytes needs fixed registers.  SBCL only honours
-  the register offsets of the special registers (RAX, RBX, RCX, RDX);
-  the general purpose registers are allocated dynamically, and the
-  argument registers (RDI, RSI, RDX, RCX) are only predictable when
-  the VOP does not clobber them.  A VOP that uses `MULX` therefore has
-  to keep to RAX, RBX, RCX and RDX, and may use RDI and RSI as the
-  base of a memory operand.
-* The `:translate` of a VOP has to name a *different* symbol than the
+* The assembler of SBCL 2.6.7 and 2.6.9 knows `MULX`, `ADCX`, `ADOX`
+  and the whole AVX2 and AVX-512 instruction set, so they can be
+  emitted directly; no raw byte encoding is needed.
+  `ironclad-instruction-known-p` checks for an instruction, and
+  looks it up in the `SB-X86-64-ASM` package, where SBCL creates
+  the structure for an instruction when it defines it.
+* A VOP must not use an instruction that the CPU of the machine it
+  runs on does not have.  The features of the machine are detected
+  once, when the system is loaded, and cached; the assembly code
+  that uses them is only reached when the corresponding feature was
+  found.
+* The features of the development machine (AMD Zen 2) and of the
+  target machine (Intel Xeon, Skylake) differ, so a path that is
+  only exercised on one of them is not enough:
+
+  | feature  | AMD Zen 2    | Intel Skylake |
+  |----------|--------------|---------------|
+  | AES-NI   | yes          | yes           |
+  | PCLMULQDQ| yes          | yes           |
+  | SHA-NI   | yes          | **no**        |
+  | BMI1/2   | yes          | yes           |
+  | ADX      | yes          | yes           |
+  | AVX2     | yes          | yes           |
+  | AVX-512  | **no**       | yes           |
+
+  The target has no SHA-NI: the SHA-256 code must keep working
+  without it.  An AVX-512 path can only be tested on the target.
+* A VOP's `:translate` has to name a *different* symbol than the
   VOP itself (`secp256r1-reduce-fast-asm` translates
   `ironclad::secp256r1-fe-reduce-fast-asm`), and the `defknown` for
   the translated symbol has to exist in `src/opt/sbcl/fndb.lisp`.
+  The argument types of the `defknown` have to be real types;
+  `unsigned-num` is only understood by the VOP itself.
+* A `defknown` whose arguments are vectors must not be given a
+  vector that SBCL's escape analysis can stack allocate.  A stack
+  vector has a different layout from a heap vector, and a VOP that
+  addresses its array argument with the heap layout then reads and
+  writes outside the array.  Passing the array through a function
+  that is not inlined makes the array escape into a real call, and
+  it is then always heap allocated.
