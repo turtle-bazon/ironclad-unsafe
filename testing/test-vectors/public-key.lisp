@@ -312,6 +312,55 @@ elements A and B against the integer arithmetic."
       ok))
   t)
 
+(rtest:deftest :secp224r1-point-limbs
+  ;; The point arithmetic of P-224 in limbs.  Check the double and the
+  ;; sum against the integer arithmetic.  The points are compared up to
+  ;; a common factor in Z, which is what the projective equality does.
+  (let ((q ironclad::+secp224r1-p+)
+        (ok t))
+    (flet ((element (n)
+             (ironclad::secp224r1-fe-from-int (mod n q)))
+           (point (x y z)
+             (make-instance 'ironclad::secp224r1-point
+                            :x (ironclad::secp224r1-fe-to-int x)
+                            :y (ironclad::secp224r1-fe-to-int y)
+                            :z (ironclad::secp224r1-fe-to-int z)))
+           (same-p (xa ya za xb yb zb)
+             (and (= (mod (* xa (* zb zb)) q) (mod (* xb (* za za)) q))
+                  (= (mod (* ya (* zb zb) zb) q)
+                     (mod (* yb (* za za) za) q)))))
+      (dotimes (i 100)
+        (let ((x1 (element (random q)))
+              (y1 (element (random q)))
+              (z1 (element (1+ (random (1- q)))))
+              (x2 (element (random q)))
+              (y2 (element (random q)))
+              (z2 (element (1+ (random (1- q))))))
+          ;; The double.
+          (multiple-value-bind (dx dy dz)
+              (ironclad::secp224r1-point-double-limbs x1 y1 z1)
+            (let ((r (ironclad::ec-double (point x1 y1 z1))))
+              (unless (same-p (ironclad::secp224r1-fe-to-int dx)
+                              (ironclad::secp224r1-fe-to-int dy)
+                              (ironclad::secp224r1-fe-to-int dz)
+                              (slot-value r 'ironclad::x)
+                              (slot-value r 'ironclad::y)
+                              (slot-value r 'ironclad::z))
+                (setf ok nil))))
+          ;; The sum.
+          (multiple-value-bind (sx sy sz)
+              (ironclad::secp224r1-point-add-limbs x1 y1 z1 x2 y2 z2)
+            (let ((r (ironclad::ec-add (point x1 y1 z1) (point x2 y2 z2))))
+              (unless (same-p (ironclad::secp224r1-fe-to-int sx)
+                              (ironclad::secp224r1-fe-to-int sy)
+                              (ironclad::secp224r1-fe-to-int sz)
+                              (slot-value r 'ironclad::x)
+                              (slot-value r 'ironclad::y)
+                              (slot-value r 'ironclad::z))
+                (setf ok nil))))))
+      ok))
+  t)
+
 (rtest:deftest :ecdsa-reject-degenerate-signatures
   (multiple-value-bind (priv pub) (ironclad:generate-key-pair :ecdsa)
     (let* ((msg (ironclad:random-data 32))

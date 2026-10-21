@@ -470,6 +470,103 @@
                 carry (ash v -32)))))
     (secp224r1-fe-reduce r c)
     r))
+(defvar +secp224r1-one+ (secp224r1-fe-from-int 1)
+  "The constant one, in limbs.")
+(defvar +secp224r1-two+ (secp224r1-fe-from-int 2)
+  "The constant two, in limbs.")
+(defvar +secp224r1-three+ (secp224r1-fe-from-int 3)
+  "The constant three, in limbs.")
+(defvar +secp224r1-four+ (secp224r1-fe-from-int 4)
+  "The constant four, in limbs.")
+(defvar +secp224r1-eight+ (secp224r1-fe-from-int 8)
+  "The constant eight, in limbs.")
+
+(defun secp224r1-fe-equal (a b)
+  "True when the field elements A and B are the same."
+  (declare (type secp224r1-fe a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (and (= (aref a 0) (aref b 0))
+       (= (aref a 1) (aref b 1))
+       (= (aref a 2) (aref b 2))
+       (= (aref a 3) (aref b 3))
+       (= (aref a 4) (aref b 4))
+       (= (aref a 5) (aref b 5))
+       (= (aref a 6) (aref b 6))))
+
+(defun secp224r1-point-double-limbs (x1 y1 z1)
+  "The double of the point (X1 : Y1 : Z1), in limbs.
+The three coordinates are returned as multiple values."
+  (declare (type secp224r1-fe x1 y1 z1)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((xx (secp224r1-fe-mul x1 x1))
+         (yy (secp224r1-fe-mul y1 y1))
+         (yyyy (secp224r1-fe-mul yy yy))
+         (zz (secp224r1-fe-mul z1 z1))
+         (x1+yy (secp224r1-fe-add x1 yy))
+         (y1+z1 (secp224r1-fe-add y1 z1))
+         ;; s = 2*((x1+yy)^2 - xx - yyyy)
+         (w (secp224r1-fe-mul x1+yy x1+yy))
+         (w (secp224r1-fe-sub w xx))
+         (w (secp224r1-fe-sub w yyyy))
+         (s (secp224r1-fe-mul +secp224r1-two+ w))
+         ;; m = 3*(xx - zz^2), for the curve whose a is -3
+         (w (secp224r1-fe-mul zz zz))
+         (w (secp224r1-fe-sub xx w))
+         (m (secp224r1-fe-mul +secp224r1-three+ w))
+         ;; u = m^2 - 2s
+         (u (secp224r1-fe-mul m m))
+         (u (secp224r1-fe-sub u (secp224r1-fe-mul +secp224r1-two+ s)))
+         ;; y2 = m*(s - u) - 8*yyyy
+         (w (secp224r1-fe-sub s u))
+         (w (secp224r1-fe-mul m w))
+         (y2 (secp224r1-fe-sub w (secp224r1-fe-mul +secp224r1-eight+ yyyy)))
+         ;; z2 = (y1+z1)^2 - yy - zz
+         (w (secp224r1-fe-mul y1+z1 y1+z1))
+         (w (secp224r1-fe-sub w yy))
+         (z2 (secp224r1-fe-sub w zz)))
+    (values u y2 z2)))
+
+(defun secp224r1-point-add-limbs (x1 y1 z1 x2 y2 z2)
+  "The sum of the points (X1 : Y1 : Z1) and (X2 : Y2 : Z2), in limbs.
+The three coordinates are returned as multiple values."
+  (declare (type secp224r1-fe x1 y1 z1 x2 y2 z2)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((z1z1 (secp224r1-fe-mul z1 z1))
+         (z2z2 (secp224r1-fe-mul z2 z2))
+         (u1 (secp224r1-fe-mul x1 z2z2))
+         (u2 (secp224r1-fe-mul x2 z1z1))
+         (s1 (secp224r1-fe-mul y1 (secp224r1-fe-mul z2 z2z2)))
+         (s2 (secp224r1-fe-mul y2 (secp224r1-fe-mul z1 z1z1))))
+    (if (secp224r1-fe-equal u1 u2)
+        (if (secp224r1-fe-equal s1 s2)
+            ;; The points are the same, so the sum is the double.
+            (secp224r1-point-double-limbs x1 y1 z1)
+            ;; The points are opposites, so the sum is at infinity.
+            (values +secp224r1-one+ +secp224r1-one+ (secp224r1-fe-zero)))
+        (let* ((h (secp224r1-fe-sub u2 u1))
+               (i (secp224r1-fe-mul (secp224r1-fe-mul +secp224r1-four+ h) h))
+               (j (secp224r1-fe-mul h i))
+               (r (secp224r1-fe-mul +secp224r1-two+
+                                 (secp224r1-fe-sub s2 s1)))
+               (v (secp224r1-fe-mul u1 i))
+               ;; x3 = r^2 - j - 2v
+               (x3 (secp224r1-fe-mul r r))
+               (x3 (secp224r1-fe-sub x3 j))
+               (x3 (secp224r1-fe-sub x3 (secp224r1-fe-mul +secp224r1-two+ v)))
+               ;; y3 = r*(v - x3) - 2*s1*j
+               (w (secp224r1-fe-sub v x3))
+               (w (secp224r1-fe-mul r w))
+               (y3 (secp224r1-fe-sub w
+                              (secp224r1-fe-mul +secp224r1-two+
+                                            (secp224r1-fe-mul s1 j))))
+               ;; z3 = ((z1+z2)^2 - z1z1 - z2z2)*h
+               (z1+z2 (secp224r1-fe-add z1 z2))
+               (w (secp224r1-fe-mul z1+z2 z1+z2))
+               (w (secp224r1-fe-sub w z1z1))
+               (w (secp224r1-fe-sub w z2z2))
+               (z3 (secp224r1-fe-mul w h)))
+          (values x3 y3 z3)))))
+
 (defun secp224r1-fe-mul (a b)
   "The product of the field elements A and B, reduced."
   (declare (type secp224r1-fe a b)

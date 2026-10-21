@@ -152,12 +152,17 @@ the first has already changed.
 The field of P-224 is now in the tree, in limbs of 32 bits, with
 the product of two elements, their sum and their difference, all
 reduced, and the new test :secp224r1-field checks them against the
-integer arithmetic.  The point arithmetic that uses them is still to
-come.  Two things were worth knowing: the reduction of a product
+integer arithmetic.  The point arithmetic is in the tree too, as
+secp224r1-point-double-limbs and secp224r1-point-add-limbs, and the
+new test :secp224r1-point-limbs checks the two of them against the
+integer arithmetic, up to the common factor in Z that the projective
+equality allows.  The scalar multiplication that uses them is still
+to come.  Three things were worth knowing: the reduction of a product
 takes the low half and the high half of the value, so a sum, which
 has no high half, is reduced by the same code with the words above
-the seventh zero; and the borrow of a subtraction is subtracted, not
-added, which is the same sign as the borrow in the reduction.
+the seventh zero; the borrow of a subtraction is subtracted, not
+added, which is the same sign as the borrow in the reduction; and a
+variable may not be called T, which is a constant.
 
 The field of P-224 was measured with bignums: the product of two
 elements is 42 nanoseconds and the division that follows it 187, so
