@@ -47,12 +47,20 @@ by rewriting field arithmetic with limb-based representations and assembly VOPs.
 - Similar to ed25519 but with p = 2^448 - 2^224 - 1 (Goldilocks).
 - Use radix-2^56 limbs (8 limbs) with the efficient reduction.
 - Done: the reduction of an integer modulo the prime without a
-  division (rev 900), and the field in limbs of 56 bits, in Lisp, as
-  the reference for the assembly version (rev 901).
-- To do: the assembly version of the product and of the reduction,
-  and the move of the point arithmetic of ed448 and curve448 from
-  bignums to limbs.  `MULX` is not usable, see the notes below, so
-  the product is made with `MUL`.
+  division (rev 900); the field in limbs of 56 bits, in Lisp, as the
+  reference (rev 901); the product of two field elements in assembly
+  (rev 903); and the reduction of a product in assembly (rev 904).
+  The product of two field elements now takes 122 nanoseconds,
+  against 440 for the product of two bignums and the division that
+  follows it.
+- To do: the reduction of the sum or the difference of two field
+  elements is still done in Lisp, and is the largest part of their
+  cost; it needs a VOP of its own, or the VOP of the product, which
+  would do, if the high half of the product were zero.  And the point
+  arithmetic of ed448 and curve448 has to be moved from bignums to
+  limbs, which is the last step, and the one that makes the field
+  layer pay off.  `MULX` is not usable, see the notes below, so the
+  product is made with `MUL`.
 
 ### Phase 5 — Falcon (FFT/NTT)
 - Replace recursive complex-double FFT with iterative, cache-friendly version.
