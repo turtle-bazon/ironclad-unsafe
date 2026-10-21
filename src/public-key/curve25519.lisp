@@ -109,7 +109,12 @@
 (defmethod ec-destructure-point ((p curve25519-point))
   (with-slots (x z) p
     (declare (type ed25519-fe x z))
-    (let ((x (ed25519-fe-mul x (ed25519-fe-inv z))))
+    ;; NB: ED25519-FE-MUL takes three arguments, R, A and B, and computes
+    ;; R := A * B.  Passing only two of them leaves B undefined; the
+    ;; field layer is compiled with (safety 0), so the missing argument
+    ;; is not diagnosed and the assembly multiply then dereferences
+    ;; whatever happened to be in the argument register.
+    (let ((x (ed25519-fe-mul x x (ed25519-fe-inv z))))
       (list :x (ed25519-fe-to-int x)))))
 
 (defmethod ec-encode-scalar ((kind (eql :curve25519)) n)
