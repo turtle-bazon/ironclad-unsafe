@@ -137,9 +137,17 @@ are the whole of the difficulty of this reduction:
   in one sum hides the borrow of the second, because the two cancel in
   the sum and only the carry of the sum survives.
 
-What is left is the last of these: the value after the fold is still
-off by B^4, which is the fourth limb of the excess, so the part of
-the excess that is given back at the bottom is one limb out of place.
+The fold is now in two passes, the excess added at the fourth limb
+and up and given back at the bottom, and the value before the fold
+is congruent to the product.  The value after the fold is still
+wrong, and the words three to six come out as (2^56-1, 2^56-1, 2^56-1,
+2^56-1) where the excess of the case, which is B^3 - 2, has the
+limbs (2^56-2, 2^56-1, 2^56-1, 0).  So the first pass is adding
+the limbs of the excess one place too high, or the second is taking
+them back one place too low: the excess has to be added at the
+fourth limb and up, and taken back at the bottom, and the borrow of
+the second has to be carried on to the words above the third, which
+the first has already changed.
 
 The field of P-224 was measured with bignums: the product of two
 elements is 42 nanoseconds and the division that follows it 187, so
