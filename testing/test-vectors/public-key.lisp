@@ -262,6 +262,46 @@ elements A and B against the integer arithmetic."
     ok)
   t)
 
+(rtest:deftest :secp224r1-field
+  ;; The field of P-224 in limbs of 32 bits.  Check the product of two
+  ;; elements, and the reduction of a product, against the integer
+  ;; arithmetic.
+  (let ((q ironclad::+secp224r1-p+)
+        (ok t))
+    (flet ((element (n)
+             (ironclad::secp224r1-fe-from-int (mod n q)))
+           (product (a b)
+             ;; The product of two elements, and the reduction of it.
+             (let ((c (make-array 14 :element-type '(unsigned-byte 64)
+                                    :initial-element 0))
+                   (r (ironclad::secp224r1-fe-zero)))
+               (ironclad::secp224r1-fe-mul-raw c a b)
+               (ironclad::secp224r1-fe-reduce r c)
+               r)))
+      ;; The edges of the field.
+      (dolist (v (list 0 1 2 (1- q) (- q 2) (ash 1 223) (1- (ash 1 223))
+                     (- (ash 1 223))))
+        (let ((a (element v)))
+          (unless (= (mod v q) (ironclad::secp224r1-fe-to-int a))
+            (setf ok nil))
+          (unless (= (ironclad::secp224r1-fe-to-int (product a a))
+                     (mod (* (mod v q) (mod v q)) q))
+            (setf ok nil))))
+      ;; And elements of random size.
+      (loop repeat 500 do
+        (let ((a (element (loop with acc = 0
+                              repeat (random 8)
+                              do (setf acc (+ (ash acc 32) (random (expt 2 32))))
+                              finally (return acc))))
+              (b (element (random q))))
+          (unless (= (ironclad::secp224r1-fe-to-int (product a b))
+                     (mod (* (ironclad::secp224r1-fe-to-int a)
+                             (ironclad::secp224r1-fe-to-int b))
+                          q))
+            (setf ok nil))))
+      ok))
+  t)
+
 (rtest:deftest :ecdsa-reject-degenerate-signatures
   (multiple-value-bind (priv pub) (ironclad:generate-key-pair :ecdsa)
     (let* ((msg (ironclad:random-data 32))

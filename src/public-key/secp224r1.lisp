@@ -376,3 +376,150 @@
   (let ((s (ec-decode-scalar :secp224r1 (secp224r1-key-x private-key)))
         (p (ec-decode-point :secp224r1 (secp224r1-key-y public-key))))
     (ec-encode-point (ec-scalar-mult p s))))
+
+;; The prime in limbs.  This is a DEFVAR and not a DEFCONSTANT: the
+;; value is a vector, and a DEFCONSTANT whose value is a vector makes
+;; every recompilation of this file fail with DEFCONSTANT-UNEQL.
+(defvar +secp224r1-p-limbs+ '#(1 0 0 4294967295 4294967295 4294967295
+                              4294967295))
+
+(deftype secp224r1-fe () '(simple-array (unsigned-byte 32) (7)))
+
+(declaim (inline secp224r1-fe-zero secp224r1-fe-from-int
+                 secp224r1-fe-to-int))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun secp224r1-fe-zero ()
+    (make-array 7 :element-type '(unsigned-byte 32) :initial-element 0)))
+
+(defun secp224r1-fe-from-int (n)
+  "The field element N, reduced."
+  (declare (type integer n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((r (secp224r1-fe-zero)))
+    (dotimes (i 7 r)
+      (setf (aref r i) (ldb (byte 32 (* i 32)) n)))))
+
+(defun secp224r1-fe-to-int (a)
+  "The integer value of the field element A."
+  (declare (type secp224r1-fe a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((n 0))
+    (declare (type integer n))
+    (dotimes (i 7 n)
+      (setf n (dpb (aref a i) (byte 32 (* i 32)) n)))))
+
+(defun secp224r1-fe-mul-raw (c a b)
+  "C := A * B, as fourteen limbs of 32 bits, in words of 64 bits."
+  (declare (type secp224r1-fe a b)
+           (type (simple-array (unsigned-byte 64) (14)) c)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (dotimes (k 14) (setf (aref c k) 0))
+  (dotimes (i 7)
+    (let ((carry 0))
+      (declare (type integer carry))
+      (dotimes (j 7)
+        (let* ((prod (* (aref a i) (aref b j)))
+               (plo (ldb (byte 32 0) prod))
+               (phi (ash prod -32))
+               (k (+ i j))
+               (s (+ (aref c k) plo carry)))
+          (setf (aref c k) (logand s #xffffffff)
+                carry (+ (ash s -32) phi))))
+      ;; The carry can be larger than a limb, so it is propagated.
+      (loop for k from (+ i 7) below 14
+            while (plusp carry)
+            do (let ((s (+ (aref c k) carry)))
+                 (setf (aref c k) (logand s #xffffffff)
+                       carry (ash s -32))))))
+  c)
+
+(defun secp224r1-fe-reduce (r c)
+  "R := C mod P, the Solinas form of the P-224 prime.
+C holds fourteen limbs of 32 bits, in words of 64 bits, and R holds
+seven limbs of 32 bits.
+
+The prime is B^7 - B^3 + 1 with B = 2^32, so B^7 is congruent to
+B^3 - 1.  The value of C is the low seven limbs, L, plus the high
+seven limbs, H, times B^7, so it is congruent to L + H*B^3 - H.
+
+The three parts go into two arrays, so that no part is read after it
+has been written, and every carry and every borrow is signed, so that
+a sum which is negative carries -1 into the next word."
+  (declare (type (simple-array (unsigned-byte 64) (14)) c)
+           (type secp224r1-fe r)
+           (optimize (speed 1) (safety 3) (space 0) (debug 0)))
+  (let ((q (make-array 11 :element-type '(unsigned-byte 64) :initial-element 0))
+        (carry 0) (borrow 0) (excess 0))
+    ;; q := H*B^3 - H.  The limbs of H go to the fourth limb and up,
+    ;; and H is then given back from the first seven words.
+    (dotimes (j 7)
+      (let ((v (+ (aref c (+ 7 j)) carry)))
+        (setf (aref q (+ 3 j)) (logand v #xffffffff)
+              carry (ash v -32))))
+    (setf (aref q 10) carry)
+    (dotimes (i 7)
+      (let ((v (+ (- (aref q i) (aref c (+ 7 i))) borrow)))
+        (setf (aref q i) (logand v #xffffffff)
+              borrow (ash v -32))))
+    ;; The value is L + q, with the excess being what is left above
+    ;; B^7: the high words of q, the carry of the addition of H*B^3,
+    ;; the borrow of the subtraction of H, and the carry of the
+    ;; addition of L.
+    (setf carry 0)
+    (dotimes (i 7)
+      (let ((v (+ (aref c i) (aref q i) carry)))
+        (setf (aref q i) (logand v #xffffffff)
+              carry (ash v -32))))
+    (let ((v 0))
+      (dotimes (i 3)
+        (setf v (+ v (ash (aref q (+ 7 i)) (* 32 i)))))
+      (setf excess (+ v (ash (aref q 10) 96) borrow carry)))
+    ;; The excess is congruent to itself times B^3, less itself, and
+    ;; is folded in until there is none.  The excess can be 1, and
+    ;; folding it in can give an excess of 1 again, so this is a loop.
+    (do ((more (plusp excess))) ((not more))
+      ;; The excess is added at the fourth limb and up, with a carry.
+      (setf carry 0)
+      (dotimes (i 4)
+        (let ((v (+ (aref q (+ 3 i)) (ldb (byte 32 (* 32 i)) excess) carry)))
+          (setf (aref q (+ 3 i)) (logand v #xffffffff)
+                carry (ash v -32))))
+      ;; And given back at the bottom, with a borrow.  The two have to
+      ;; be done separately: adding them together would hide the
+      ;; borrow of the second.  The borrow has to be carried on to the
+      ;; words above the fourth, which the first pass has changed.
+      (setf borrow 0)
+      (dotimes (i 7)
+        (let ((v (+ (- (aref q i)
+                       (if (< i 4) (ldb (byte 32 (* 32 i)) excess) 0))
+                    borrow)))
+          (setf (aref q i) (logand v #xffffffff)
+                borrow (ash v -32))))
+      (setf excess (+ carry borrow))
+      (setf (aref q 7) 0)
+      (setf (aref q 8) 0)
+      (setf (aref q 9) 0)
+      (setf more (plusp excess)))
+    ;; The value is below B^7 now, and the prime is B^7 - B^3 + 1, so
+    ;; the value is at least the prime exactly when the addition of
+    ;; B^3 - 1 reaches B^7.  The sum is made in a copy, so that the
+    ;; value is left alone.
+    (let ((sum (make-array 7 :element-type '(unsigned-byte 64)
+                             :initial-element 0))
+          (cc 0))
+      (dotimes (i 7)
+        (let* ((add (if (<= i 2) #xffffffff 0))
+               (v (+ (aref q i) add cc)))
+          (setf (aref sum i) (logand v #xffffffff)
+                cc (ash v -32))))
+      (when (= cc 1)
+        ;; The prime is subtracted.  It is below the value, so no
+        ;; borrow runs out of the top.
+        (let ((bb 0))
+          (dotimes (i 7)
+            (let ((v (- (aref q i) (aref +secp224r1-p-limbs+ i) bb)))
+              (setf (aref q i) (logand v #xffffffff)
+                    bb (ash v -32)))))))
+    (dotimes (i 7) (setf (aref r i) (aref q i)))
+  r))
