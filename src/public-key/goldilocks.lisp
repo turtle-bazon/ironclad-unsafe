@@ -179,6 +179,12 @@ The result is in C, and is below the prime."
 The result is in the low eight limbs of C; the others are clobbered."
   (declare (type goldilocks-product c)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-assembly)
+  (progn
+    (goldilocks-fe-reduce-asm c)
+    c)
+  #-(and sbcl x86-64 ironclad-assembly)
+  (progn
   ;; The product is the low half plus the high half shifted up by 448
   ;; bits, and 2^448 = 2^224 + 1 modulo the prime, so the high half is
   ;; added once at the bottom and once shifted up by 224 bits.
@@ -195,7 +201,7 @@ The result is in the low eight limbs of C; the others are clobbered."
     (dotimes (i 8) (setf (aref r i) (aref c i)))
     (goldilocks-fe-reduce8 r)
     (dotimes (i 8) (setf (aref c i) (aref r i)))
-    c))
+    c)))
 
 (defun goldilocks-fe-mul (a b)
   "The product of the field elements A and B, reduced."

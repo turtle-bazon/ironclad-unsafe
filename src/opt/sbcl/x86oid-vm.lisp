@@ -1666,6 +1666,114 @@
 
 
 #+x86-64
+(define-vop (goldilocks-reduce-asm)
+  ;; Reduce the sixteen limbs of C, a product, modulo the prime.
+  ;; The result is in the low eight limbs of C.
+  ;;
+  ;; The prime is 2^448 - 2^224 - 1, so 2^448 is congruent to
+  ;; 2^224 + 1 modulo it.  The high half of the product is folded back
+  ;; into the low half, once at the bottom and once shifted up by 224
+  ;; bits, and what is left above 2^448 bits is folded back in as
+  ;; well.  The limbs are left loose while they are folded, and are
+  ;; brought back into range afterwards.
+  ;;
+  ;; The last step subtracts the prime if the value is at least the
+  ;; prime.  The prime is 2^448 less 2^224 + 1, so the value is at
+  ;; least the prime exactly when the addition of 2^224 + 1 reaches
+  ;; 2^448.  The addition is made in the high half of C, which is
+  ;; free by then, so that the value itself is left alone.
+  (:translate ironclad::goldilocks-fe-reduce-asm)
+  (:policy :fast-safe)
+  (:args (c :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg) tmp tmp2 carry mask mask1)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (flet ((c64 (i) (ea (+ data-offset (* 8 i)) c)))
+        (inst mov mask #x00ffffffffffffff)
+        (inst mov mask1 #x00fffffffffffffe)
+        ;; The low half of the product plus the high half.
+        (dotimes (i 8)
+          (inst mov tmp (c64 i))
+          (inst mov tmp2 (c64 (+ i 8)))
+          (inst add tmp tmp2)
+          (inst mov (c64 i) tmp))
+        ;; The high half, shifted up by 224 bits, which is four limbs.
+        (dotimes (i 4)
+          (inst mov tmp (c64 (+ 4 i)))
+          (inst mov tmp2 (c64 (+ 8 i)))
+          (inst add tmp tmp2)
+          (inst mov (c64 (+ 4 i)) tmp)
+          (inst mov tmp2 (c64 (+ 12 i)))
+          (inst mov (c64 (+ 8 i)) tmp2))
+        ;; And what is above 2^448 bits, folded back in.
+        (dotimes (i 4)
+          (inst mov tmp (c64 i))
+          (inst mov tmp2 (c64 (+ 8 i)))
+          (inst add tmp tmp2)
+          (inst mov (c64 i) tmp)
+          (inst mov tmp (c64 (+ 4 i)))
+          (inst mov tmp2 (c64 (+ 8 i)))
+          (inst add tmp tmp2)
+          (inst mov (c64 (+ 4 i)) tmp))
+        ;; Bring the limbs back into range.  What is above 2^448 bits
+        ;; is congruent to itself, and to itself shifted up by 224
+        ;; bits, so it is folded back in, until there is none.
+        (let ((top (gen-label))
+              (done (gen-label)))
+          (emit-label top)
+          (inst mov carry 0)
+          (dotimes (i 8)
+            (inst mov tmp (c64 i))
+            (inst shr tmp 56)
+            (inst mov tmp2 (c64 i))
+            (inst and tmp2 mask)
+            (inst add tmp2 carry)
+            (inst mov (c64 i) tmp2)
+            (inst shr tmp2 56)
+            (inst add tmp tmp2)
+            (inst mov carry tmp)
+            (inst mov tmp2 (c64 i))
+            (inst and tmp2 mask)
+            (inst mov (c64 i) tmp2))
+          (inst test carry carry)
+          (inst jmp :z done)
+          (inst add (c64 0) carry)
+          (inst add (c64 4) carry)
+          (inst jmp top)
+          (emit-label done))
+        ;; The value is below 2^448 now, and the prime is 2^448 less
+        ;; 2^224 + 1, so the value is at least the prime exactly when
+        ;; the addition of 2^224 + 1 reaches 2^448.  The addition is
+        ;; made in the high half of C, which is free by then.
+        (inst mov carry 0)
+        (dotimes (i 8)
+          (inst mov tmp (c64 i))
+          (if (or (= i 0) (= i 4))
+              (inst add tmp 1)
+              (inst add tmp 0))
+          (inst add tmp carry)
+          (inst mov tmp2 tmp)
+          (inst shr tmp2 56)
+          (inst and tmp mask)
+          (inst mov (c64 (+ 8 i)) tmp)
+          (inst mov carry tmp2))
+        ;; The carry out of the addition says whether the prime has to
+        ;; be subtracted.  The sum of the value and 2^224 + 1 is in the
+        ;; high half of C, and the sum less 2^448 is the value less the
+        ;; prime, so the high half is the answer whenever the prime
+        ;; has to be subtracted.
+        (let ((done (gen-label)))
+          (inst test carry carry)
+          (inst jmp :z done)
+          (dotimes (i 8)
+            (inst mov tmp (c64 (+ 8 i)))
+            (inst mov (c64 i) tmp))
+          (emit-label done))))))
+
+
+#+x86-64
 (define-vop (ed25519-sqr-raw-asm)
   (:translate ironclad::ed25519-fe-sqr-raw-asm)
   (:policy :fast-safe)
