@@ -190,6 +190,35 @@ covering the rate at which the defect actually occurs."
          (equalp actual (ironclad:curve25519-public-key sk))))
   t)
 
+(rtest:deftest :goldilocks-reduction
+  ;; The field of Ed448 and Curve448 is the "Goldilocks" prime
+  ;; 2^448 - 2^224 - 1, whose reduction is done by folding the high
+  ;; half of a value back into the low half instead of by a division.
+  ;; Check the reduction against the general remainder, for values of
+  ;; every size, and around the boundaries of the folds.
+  (let* ((q ironclad::+goldilocks-q+)
+         (ok t)
+         (values (list 0 1 -1 q (1+ q) (- (1+ q)) (1- q)
+                      (ash 1 448) (1- (ash 1 448)) (1+ (ash 1 448))
+                      (- (ash 1 448)) (ash 1 672) (1- (ash 1 672))
+                      (1+ (ash 1 672)) (ash 1 896) (1- (ash 1 896))
+                      (+ q (ash 1 224)) (- (+ q (ash 1 224))))))
+    (dolist (v values)
+      (unless (= (mod v q) (ironclad::goldilocks-reduce v))
+        (setf ok nil)))
+    ;; And for values of random size.
+    (loop repeat 2000 do
+      (let ((v (loop with acc = 0
+                        repeat (random 12)
+                        do (setf acc (+ (ash acc 64) (random (expt 2 64))))
+                        finally (return acc))))
+        (unless (and (= (mod v q) (ironclad::goldilocks-reduce v))
+                     (= (mod (- v) q) (ironclad::goldilocks-reduce (- v)))
+                     (= (mod (* v q) q) (ironclad::goldilocks-reduce (* v q))))
+          (setf ok nil))))
+    ok)
+  t)
+
 (rtest:deftest :ecdsa-reject-degenerate-signatures
   (multiple-value-bind (priv pub) (ironclad:generate-key-pair :ecdsa)
     (let* ((msg (ironclad:random-data 32))

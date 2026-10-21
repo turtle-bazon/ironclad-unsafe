@@ -218,8 +218,10 @@
   "elgamal"
   ("ed25519" :depends-on ("ironclad/digest/sha512"))
   ("curve25519" :depends-on ("ironclad/public-key/ed25519"))
-  "curve448"
-  ("ed448" :depends-on ("ironclad/digest/sha3"))
+  "goldilocks"
+  ("curve448" :depends-on ("ironclad/public-key/goldilocks"))
+  ("ed448" :depends-on ("ironclad/digest/sha3"
+                        "ironclad/public-key/goldilocks"))
   "secp256k1"
   "secp224r1"
   "secp256r1"
