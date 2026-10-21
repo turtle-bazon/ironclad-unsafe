@@ -68,7 +68,37 @@ by rewriting field arithmetic with limb-based representations and assembly VOPs.
 - And the point arithmetic of ed448 and curve448 has to be moved from
   bignums to limbs, which is the last step, and the one that makes
   the field layer pay off.  `MULX` is not usable, see the notes
-  below, so the product is made with `MUL`.
+  below, so the product is made with `MUL.
+
+#### The move of ed448 and curve448 to limbs
+
+The point arithmetic need not be changed at all to gain most of the
+speed: the points can stay as they are, as bignums, and the scalar
+multiplication can be done in the limb field, with a conversion of
+the coordinates at each end.  The conversions cost about a
+microsecond each, and there are six of them, so they do not matter.
+
+What is needed is then:
+
+* the point doubling and the point addition of ed448, in limbs: they
+  are the fourteen operations of `ec-double` and `ec-add` of
+  `src/public-key/ed448.lisp`, each of which is a product, a sum or
+  a difference of two field elements;
+* the same for curve448, whose point arithmetic is in
+  `src/public-key/curve448.lisp`;
+* a scalar multiplication that uses them, over the bits of the
+  scalar, with the table of precomputed multiples if the generic one
+  is worth keeping: the table holds 256 points, and the points in it
+  would have to be in limbs as well;
+* the inversion, which is `ed448-recover-x` and its counterpart in
+  curve448, is a modexp with an exponent of 446 bits, and would be
+  worth doing in limbs too: it is about a quarter of the time of a
+  signature.
+
+The result of the move is a signature that is three times faster,
+which takes the gap of ed448 from 29.5 times to about 10 times, and
+the same machinery would serve secp224r1, whose gap is 20.2 times
+and whose prime has the same shape.
 
 ### Phase 5 — Falcon (FFT/NTT)
 - Replace recursive complex-double FFT with iterative, cache-friendly version.
