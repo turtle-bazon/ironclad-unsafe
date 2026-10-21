@@ -174,6 +174,18 @@ keep the product buffer and the reduction scratch in the scratch
 pool that the point operations already carry, and to multiply into
 the pool rather than into fresh vectors.
 
+The key generation of the falcon is the slowest thing in the whole
+table, at two hundred and thirteen milliseconds, and the number
+theoretic transform is not what costs there.  The generation of the
+NTRU is a hundred and fifty seven of those milliseconds, so
+seventy-four per cent of the key generation is the generation of
+the NTRU and its solution, and the fast Fourier transform and the
+sampling of the signature are the rest.  The NTRU generation uses
+the transform, so it is one of the places the transform matters, but
+it is not where the transform's own cost shows: the solve of the
+NTRU is a linear algebra over the field, and the sampling of the
+polynomials is a Gaussian sampler.
+
 The falcon verify is worth a note, because it is not the field that
 costs there.  The prime of this implementation is 12289, a small
 one, so the modular arithmetic is cheap; what costs is the shape of
