@@ -197,6 +197,10 @@ so it needs two buffers per level of the recursion."
     (dotimes (i n r)
       (setf (aref r i) (falcon-mulmod (aref a i) (aref b i))))))
 
+(defun falcon-mul-zq-ntt (f g-ntt)
+  "Multiply F by G, whose transform is already made."
+  (falcon-intt (falcon-mul-ntt (falcon-ntt f) g-ntt)))
+
 (defun falcon-mul-zq (f g)
   "Multiply polys mod (x^n+1, q) via NTT."
   (falcon-intt (falcon-mul-ntt (falcon-ntt f) (falcon-ntt g))))
@@ -299,7 +303,7 @@ so it needs two buffers per level of the recursion."
 ;;; Verify
 ;;;
 
-(defun falcon-verify (msg sig pk &optional (params +falcon-512-params+))
+(defun falcon-verify (msg sig pk &optional (params +falcon-512-params+) pk-ntt)
   "Verify SIG over MSG under PK (FIPS 206 wire format); returns T/nil."
   (let ((*falcon-params* params))
     (let* ((n (falcon-n))
@@ -312,7 +316,8 @@ so it needs two buffers per level of the recursion."
       (unless (and (= (length sig) sig-bytelen)
                    (= (aref sig 0) (+ #x30 logn)))
         (return-from falcon-verify nil))
-      (let* ((h (falcon-deserialize (subseq pk 1) n))
+      (let* ((h (or pk-ntt
+                  (falcon-ntt (falcon-deserialize (subseq pk 1) n))))
              (salt (subseq sig +falcon-head-len+
                            (+ +falcon-head-len+ +falcon-salt-len+)))
              (enc (subseq sig (+ +falcon-head-len+ +falcon-salt-len+)))
@@ -321,7 +326,7 @@ so it needs two buffers per level of the recursion."
         (when (null s1)
           (return-from falcon-verify nil))
         (let* ((c (falcon-hash-to-point msg salt n))
-               (s0raw (falcon-sub-zq c (falcon-mul-zq s1 h)))
+               (s0raw (falcon-sub-zq c (falcon-mul-zq-ntt s1 h)))
                (half (ash +falcon-q+ -1))
                (norm 0))
           (dotimes (i n)
@@ -338,12 +343,16 @@ so it needs two buffers per level of the recursion."
 
 (defclass falcon-512-public-key ()
   ((bytes :initarg :bytes :reader falcon-key-bytes
-          :type (simple-array (unsigned-byte 8) (*))))
+          :type (simple-array (unsigned-byte 8) (*)))
+   (h :initform nil :accessor falcon-512-key-h
+       :documentation "The transform of the public key, made once."))
   (:documentation "897-byte Falcon-512 public key."))
 
 (defclass falcon-1024-public-key ()
   ((bytes :initarg :bytes :reader falcon-key-bytes
-          :type (simple-array (unsigned-byte 8) (*))))
+          :type (simple-array (unsigned-byte 8) (*)))
+   (h :initform nil :accessor falcon-1024-key-h
+       :documentation "The transform of the public key, made once."))
   (:documentation "1793-byte Falcon-1024 public key."))
 
 (defmethod make-public-key ((kind (eql :falcon-512))
@@ -374,13 +383,21 @@ so it needs two buffers per level of the recursion."
                              &key (start 0) end &allow-other-keys)
   (falcon-verify (subseq message start (or end (length message)))
                  signature (falcon-key-bytes key)
-                 +falcon-512-params+))
+                 +falcon-512-params+
+                 (or (falcon-512-key-h key)
+                     (setf (falcon-512-key-h key)
+                           (falcon-ntt (falcon-deserialize
+                                        (subseq (falcon-key-bytes key) 1) 512))))))
 
 (defmethod verify-signature ((key falcon-1024-public-key) message signature
                              &key (start 0) end &allow-other-keys)
   (falcon-verify (subseq message start (or end (length message)))
                  signature (falcon-key-bytes key)
-                 +falcon-1024-params+))
+                 +falcon-1024-params+
+                 (or (falcon-1024-key-h key)
+                     (setf (falcon-1024-key-h key)
+                           (falcon-ntt (falcon-deserialize
+                                        (subseq (falcon-key-bytes key) 1) 1024))))))
 
 
 ;;;
