@@ -176,7 +176,43 @@ the pool rather than into fresh vectors.
 
 The key generation of the falcon is the slowest thing in the whole
 table, at two hundred and thirteen milliseconds, and the number
-theoretic transform is not what costs there.  The generation of the
+theoretic transform is not what costs there.  What the measurements
+say, for a key of five hundred and twelve coefficients, is this: the
+solution of the NTRU equation is a hundred and thirty-three
+milliseconds of it, the reduction of the sample by Babai is four
+milliseconds and a half, the sampling of the polynomials is seven
+milliseconds, and the Gram-Schmidt norm is seven and a half.  So
+the solution of the NTRU equation is two thirds of the key
+generation, and it is built out of the fast Fourier transform and the
+Karatsuba product: a transform of five hundred and twelve
+coefficients takes four hundred microseconds, a product of two of
+them takes six hundred, and the reduction calls the transform four
+times and the product twice for each of its seven rounds.
+
+Both of those are slower than they should be for what they do, and
+the reason is the same in each: they are made of many small arrays.
+The transform of five hundred and twelve coefficients makes three
+thousand of them, and the Karatsuba product of the same size makes
+about eight thousand, and a fifth of a transform and a third of a
+product is the time spent making them.  A transform with a pool of
+buffers per level of its recursion, and a product that writes into
+a destination rather than returning a fresh array, would both be
+several times quicker, and neither of them changes what the
+transform or the product computes.
+
+The two of them are the same shape as the number theoretic transform
+of the falcon, which is split into the even and the odd
+coefficients, transformed, and merged, and which is the same work
+over a different field.  So the same treatment serves both, and the
+plan for the transform of the number theoretic transform applies to
+the fast Fourier transform: a pool of buffers per level of the
+recursion, the results written into the buffers of the level above
+rather than into fresh arrays, and the two split and merge steps
+inlined so that the buffers can be shared.  The one thing to be
+careful about is that the merge writes the sum of a pair and the
+difference of a pair to the two places that follow each other, so
+the results of the two halves cannot share the buffer of the halves
+themselves.  The generation of the
 NTRU is a hundred and fifty seven of those milliseconds, so
 seventy-four per cent of the key generation is the generation of
 the NTRU and its solution, and the fast Fourier transform and the
