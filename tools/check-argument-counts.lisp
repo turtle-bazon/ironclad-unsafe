@@ -27,8 +27,20 @@
 ;;;;
 ;;;;   sbcl --load ~/quicklisp/setup.lisp --script tools/check-argument-counts.lisp
 ;;;;
-;;;; It reports every mismatch and exits with a non-zero status when it
-;;;; finds one.
+;;;; Do not add --non-interactive to that line: in this SBCL (2.6.7)
+;;;; --non-interactive and --script together do not run the script at
+;;;; all, and the exit code is then always 0, so a build would report
+;;;; success without having checked anything.
+;;;;
+;;;; It reports every mismatch, and the files it could not read, and
+;;;; exits with
+;;;;
+;;;;   0  every file was read, and every call matches its definition
+;;;;   1  a call does not match its definition
+;;;;   2  some file could not be read, so the check is partial
+;;;;
+;;;; The exit code is 2, not 0, when a file was skipped, so that a
+;;;; partial check cannot be mistaken for a clean one.
 
 (require :asdf)
 (push (truename #p"./") asdf:*central-registry*)
@@ -86,12 +98,58 @@ fewer arguments than the definition wants is then legal."
 ;;; ------------------------------------------------------------------
 
 (defvar *problems* nil)
-(defvar *unreadable* nil)
-(defvar *seen-unreadable* nil)
+(defvar *unreadable* nil)          ; a list of (path . condition)
+(defvar *forms-cache* (make-hash-table :test #'equal))
 
-(defun read-forms (path)
+(defun read-error-reason (condition)
+  "A short description of CONDITION, which is why a file could not be
+read.  The reader reports where it stopped in the message of the
+error, so the name of the file is not repeated here."
+  (typecase condition
+    (simple-error
+     (handler-case
+         (apply #'format nil (simple-error-format-control condition)
+                (simple-error-format-arguments condition))
+       (error () (format nil "~A" condition))))
+    (t (format nil "~A" condition))))
+
+(defun evaluate-definition-form (form)
+  "Evaluate FORM when it defines something.
+
+A file can use a read-time evaluation that needs a constant or a
+function that the same file defines: Ironclad's whirlpool does.  The
+reader does not evaluate the definitions, so whether the file can be
+read at all depends on whether they happen to be visible when the
+read-time evaluation is reached.  Evaluating the definitions as they
+are read makes the file readable, and the coverage of the check the
+same from one run to the next."
+  (when (and (consp form) (proper-list-p form))
+    (let ((head (car form)))
+      (cond
+        ((and (symbolp head)
+              (member (symbol-name head)
+                      '("DEFCONSTANT" "DEFPARAMETER" "DEFVAR" "DEFUN" "DEFMACRO")
+                      :test #'string-equal))
+         (eval-quietly form))
+        ((and (symbolp head) (string-equal (symbol-name head) "EVAL-WHEN"))
+         ;; The clauses are (:compile-toplevel ...) (:load-toplevel ...)
+         ;; and (:execute ...); the body of the last one is wanted.
+         ;; The forms are evaluated one at a time: a constant that is
+         ;; already defined, and whose value is not the same, would
+         ;; otherwise stop the rest of the body from being evaluated.
+         (let ((body (rest (car (last form)))))
+           (dolist (form body)
+             (eval-quietly form))))))))
+
+(defun eval-quietly (form)
+  "Evaluate FORM, ignoring a failure and the style warnings that a
+redefinition gives."
+  (handler-bind ((style-warning #'muffle-warning))
+    (ignore-errors (eval form))))
+
+(defun read-forms-1 (path)
   "Read the forms of PATH.  Returns NIL when the file cannot be read,
-which happens for the files that use a reader macro we do not have."
+which happens for the files that need a package we do not have."
   (handler-case
       (with-open-file (stream path :direction :input :element-type 'character
                                   :external-format :utf-8)
@@ -112,13 +170,21 @@ which happens for the files that use a reader macro we do not have."
                                      (symbol-name (second form))
                                      (second form)))))
                        (when pkg (setf *package* pkg))))
+                   (evaluate-definition-form form)
                    (push form forms))
           (nreverse forms)))
-    (error ()
-      (unless (member path *seen-unreadable* :test #'equal)
-        (push path *seen-unreadable*)
-        (push path *unreadable*))
+    (error (c)
+      ;; A style warning is not a failure: the file is still read.
+      (push (cons path c) *unreadable*)
       nil)))
+
+(defun read-forms (path)
+  "The forms of PATH, read once and kept.  Returns NIL when the file
+cannot be read."
+  (multiple-value-bind (forms presentp) (gethash path *forms-cache*)
+    (if presentp
+        forms
+        (setf (gethash path *forms-cache*) (read-forms-1 path)))))
 
 (defun source-files ()
   (directory "src/**/*.lisp"))
@@ -227,8 +293,10 @@ that is also a variable is not checked."
     (when *unreadable*
       (format t "~&~D files could not be read and were skipped:~%"
               (length *unreadable*))
-      (dolist (path (sort (copy-list *unreadable*) #'string< :key #'pathname-name))
-        (format t "  ~A~%" (pathname path))))
+      (dolist (entry (sort (copy-list *unreadable*) #'string<
+                           :key (lambda (e) (namestring (pathname (car e))))))
+        (format t "  ~A~%    ~A~%" (pathname (car entry))
+                (read-error-reason (cdr entry)))))
     (format t "~&-- calls that do not match the definition --~%")
     (if (null *problems*)
         (format t "none found~%")
@@ -242,4 +310,11 @@ that is also a variable is not checked."
     (when *problems*
       (format t "~&~D mismatches found.~%" (length *problems*))
       (sb-ext:exit :code 1))
+    (when *unreadable*
+      ;; The check is partial: the files above were not read, so the
+      ;; verdict is about the rest of the sources only.
+      (format t "~&The check is partial: the files above were not read.~%")
+      (sb-ext:exit :code 2))
     (format t "~&All calls match their definition.~%")))
+
+(main)
