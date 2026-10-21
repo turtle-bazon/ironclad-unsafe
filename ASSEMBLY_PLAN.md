@@ -118,16 +118,28 @@ VOP `secp256r1-reduce-fast-asm`, which sums the shifted pieces of
 the product into 64-bit accumulators and propagates the carries
 once, at the end.  That is the shape to copy.
 
-The reduction has been written in Lisp and now runs: the product, the
-construction of H*B^3 - H and the borrow all behave as designed, and
-the small cases reduce correctly.  The extreme case, (p-1)^2, still
-comes out wrong, and the fault is in the excess: it is the high part
-of the value above B^7, and it is the whole of it, the words seven to
-nine together with the carry of the addition of L and the borrow of
-the subtraction of H.  The borrow is a whole B^7, so it counts as
-minus one in the excess, and the carry of the addition of L counts as
-plus one.  What is left to find is how those two and the three high
-words have to be put together for the excess to be the high part.
+The reduction has been written in Lisp and now runs.  The value
+before the fold is now correct: it is congruent to the product, which
+is the check that matters.  Getting there took four fixes, and they
+are the whole of the difficulty of this reduction:
+
+* the borrow of a subtraction is a whole B^7, and it counts as minus
+  one in the excess, so it has to be *added* to the next word, not
+  subtracted from it;
+* a carry and a borrow are signed, and the high part of a negative
+  number is its floor and not its truncation, so the shift has to
+  floor: `ash` and not `truncate`;
+* the excess is the whole high part of the value: the words seven to
+  nine, the carry of the addition of L, which counts as plus one, and
+  the borrow of the subtraction of H, which counts as minus one;
+* the fold must add the excess at the fourth limb and up and take it
+  back at the bottom in two separate passes.  Adding and subtracting
+  in one sum hides the borrow of the second, because the two cancel in
+  the sum and only the carry of the sum survives.
+
+What is left is the last of these: the value after the fold is still
+off by B^4, which is the fourth limb of the excess, so the part of
+the excess that is given back at the bottom is one limb out of place.
 
 The field of P-224 was measured with bignums: the product of two
 elements is 42 nanoseconds and the division that follows it 187, so
