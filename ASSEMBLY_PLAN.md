@@ -46,6 +46,13 @@ by rewriting field arithmetic with limb-based representations and assembly VOPs.
 ### Phase 4 — ed448
 - Similar to ed25519 but with p = 2^448 - 2^224 - 1 (Goldilocks).
 - Use radix-2^56 limbs (8 limbs) with the efficient reduction.
+- Done: the reduction of an integer modulo the prime without a
+  division (rev 900), and the field in limbs of 56 bits, in Lisp, as
+  the reference for the assembly version (rev 901).
+- To do: the assembly version of the product and of the reduction,
+  and the move of the point arithmetic of ed448 and curve448 from
+  bignums to limbs.  `MULX` is not usable, see the notes below, so
+  the product is made with `MUL`.
 
 ### Phase 5 — Falcon (FFT/NTT)
 - Replace recursive complex-double FFT with iterative, cache-friendly version.
@@ -127,9 +134,9 @@ AVX-512 instruction set.
   The reduction is cheap as well: 2^448 = 2^224 + 1 (mod q) and 224
   bits are exactly four limbs, so the high half of a product is folded
   back by adding it and by adding it shifted up by four limbs.
-  This is the design to use for ed448 and curve448.  Both
-  instructions are now known to the assembler, so the kernel can be
-  written with them directly.
+  This is the design to use for ed448 and curve448.
+  **But `MULX` cannot be used, see below**, so the product is made
+  with `MUL`, which fixes RAX and RDX and clears the flags.
 * **A 4-lane AVX2 field**: `VPMULUDQ` fits a field of 32-bit limbs, but
   only in a layout where four independent products are needed at once
   and the results are used separately.  The symmetric primitives
@@ -137,6 +144,49 @@ AVX-512 instruction set.
   ChaCha20 in the four lanes of a YMM register is the classic SIMD
   formulation and would remove most of the 5.7x gap of the `chacha`
   cipher.
+
+### `MULX` is broken in SBCL, and `ADCX`/`ADOX` are not (measured 2026-10-21)
+
+Two things about the assembler of SBCL 2.6.7 were measured on the
+target and on the development machine, with a VOP that loads a value
+into a register, uses the instruction, and reads the register again
+afterwards.
+
+* **`ADCX` and `ADOX` work, and their carry chains are independent.**
+  A VOP that adds with `ADCX` in one place and with `ADOX` in another
+  gives the expected results: the carry of the `ADCX` chain reaches the
+  next `ADCX`, the carry of the `ADOX` chain reaches the next `ADOX`,
+  and neither disturbs the other.  Neither instruction takes an
+  immediate: the zero to add has to be in a register.
+
+* **`MULX` does not multiply.**  SBCL assembles `MULX` with
+  `emit-avx2-inst`, which puts a VEX prefix in front of it, so the
+  bytes are `VEX.F2.0F38.W1.F6`.  That is not `MULX`: `MULX` has only
+  the legacy encoding `F2 0F 38 F6`, and the VEX encoding of the same
+  opcode is `VPMADD52LUQ`, an instruction of the AVX-512 IFMA
+  extension, which computes something else entirely.  The result of a
+  VOP that uses `MULX` is the result of `VPMADD52LUQ`, and it
+  depends on the value that happens to be in the register that holds
+  the fourth operand.  The operand order of SBCL's `MULX` is
+  `(mulx hi lo src)`, with RAX the multiplicand, which is the order of
+  the instruction as documented, so the operand order is not the
+  problem: the encoding is.
+
+  The product therefore has to be made with `MUL`, which fixes RAX and
+  RDX and clears the flags, so the two carry chains of `ADCX` and
+  `ADOX` cannot be used with it.  The product can still be accumulated
+  in one cycle per limb: the low halves of the products are summed in
+  one register and the number of carries out of it is counted in
+  another, with `SBB`, which is a chain of its own.  The carry of the
+  `MUL` is of no use, since the flags are cleared anyway.
+
+* **The generator of a VOP does not know the implicit registers of an
+  instruction.**  The load of the multiplicand into RAX was removed as
+  dead code, because nothing in the model of the generator reads RAX
+  after the `MULX`, and the result was a product of the multiplier and
+  whatever was in RAX.  An instruction with an implicit input has to
+  be used in a way that the generator cannot see through, or the
+  implicit register has to be read after the instruction.
 
 ### Constraints to keep in mind
 
@@ -146,6 +196,7 @@ AVX-512 instruction set.
   `ironclad-instruction-known-p` checks for an instruction, and
   looks it up in the `SB-X86-64-ASM` package, where SBCL creates
   the structure for an instruction when it defines it.
+  **But the `MULX` of SBCL is assembled wrongly, see above.**
 * A VOP must not use an instruction that the CPU of the machine it
   runs on does not have.  The features of the machine are detected
   once, when the system is loaded, and cached; the assembly code
