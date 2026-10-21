@@ -55,12 +55,20 @@ by rewriting field arithmetic with limb-based representations and assembly VOPs.
   follows it.
 - To do: the reduction of the sum or the difference of two field
   elements is still done in Lisp, and is the largest part of their
-  cost; it needs a VOP of its own, or the VOP of the product, which
-  would do, if the high half of the product were zero.  And the point
-  arithmetic of ed448 and curve448 has to be moved from bignums to
-  limbs, which is the last step, and the one that makes the field
-  layer pay off.  `MULX` is not usable, see the notes below, so the
-  product is made with `MUL`.
+  cost.  The VOP of the product would do, if the high half of the
+  product were zero; a VOP for eight limbs was written, but the
+  subtraction of the prime, which needs a chain of borrows, gave the
+  wrong answer and was dropped.  The subtraction of the product does
+  not need a chain of borrows: the check for the prime adds 2^224 + 1
+  to the value in the high half of the product, and the answer is
+  that sum, less 2^448, which is a copy of the high half.  A VOP for
+  eight limbs could do the same with a scratch of eight limbs, or
+  the field elements could be held in sixteen limbs, with the high
+  half for the scratch.
+- And the point arithmetic of ed448 and curve448 has to be moved from
+  bignums to limbs, which is the last step, and the one that makes
+  the field layer pay off.  `MULX` is not usable, see the notes
+  below, so the product is made with `MUL`.
 
 ### Phase 5 — Falcon (FFT/NTT)
 - Replace recursive complex-double FFT with iterative, cache-friendly version.
