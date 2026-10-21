@@ -189,14 +189,26 @@ and the differences are of reduced residues, so a single conditional
 subtraction would do.
 
 The transform has therefore been rewritten in place, with a pool of
-two buffers per level of the recursion, and with the sums and the
+two buffers per level of the recursion, with the sums and the
 differences done by a conditional subtraction and a conditional
-addition.  The rewrite is not landed yet: it changes the transform
-and it has to agree with the old one on every polynomial, and the
-agreement is not yet established.  The shape of the work is
-settled, though; the old and the new transform have to be run
-against each other over random polynomials, and the difference has
-to be empty.
+addition, and with the product reduced by a multiplication by the
+reciprocal of the prime instead of by a division.  The new transform
+has been run against the old one over random polynomials of every
+size from two to five hundred and twelve coefficients, and the two
+agree; the reciprocal has been run against the division over two
+hundred thousand random pairs, and the two agree.
+
+The rewrite did not make the verify faster, and that is worth
+recording, because the reason it was written for was wrong.  The
+fifteen hundred arrays of a transform are not what they look like:
+SBCL allocates them out of the young generation with a bump
+pointer, so the allocation itself is a few nanoseconds each, and the
+whole lot costs less than the arithmetic.  What the rewrite does
+remove is the garbage: a transform no longer leaves fifteen hundred
+arrays behind for the collector.  The arithmetic is what the time
+goes on, and one butterfly of the transform is a multiply, two sums
+or differences, and four array accesses, and the C reference does
+the same work in a fraction of the time.
 
 The field of P-224 is now in the tree, in limbs of 32 bits, with
 the product of two elements, their sum and their difference, all
