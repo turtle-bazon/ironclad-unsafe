@@ -219,6 +219,49 @@ covering the rate at which the defect actually occurs."
     ok)
   t)
 
+(defun check-goldilocks-pair (a b)
+  "Check the sum, the difference and the product of the field
+elements A and B against the integer arithmetic."
+  (let* ((q ironclad::+goldilocks-q+)
+         (ai (ironclad::goldilocks-fe-to-int a))
+         (bi (ironclad::goldilocks-fe-to-int b)))
+    (and (= (ironclad::goldilocks-fe-to-int (ironclad::goldilocks-fe-add a b))
+            (mod (+ ai bi) q))
+         (= (ironclad::goldilocks-fe-to-int (ironclad::goldilocks-fe-sub a b))
+            (mod (- ai bi) q))
+         (= (ironclad::goldilocks-fe-to-int (ironclad::goldilocks-fe-mul a b))
+            (mod (* ai bi) q)))))
+
+(rtest:deftest :goldilocks-field
+  ;; The field of Ed448 and Curve448 in limbs of 56 bits.  Check the
+  ;; sum, the difference and the product of two elements against the
+  ;; integer arithmetic.
+  (let ((q ironclad::+goldilocks-q+)
+        (ok t))
+    ;; The edges of the field.
+    (dolist (v (list 0 1 2 (1- q) (- q 2) (ash 1 447) (1- (ash 1 447))
+                   (- (ash 1 447)) (1+ (ash 1 223))))
+      (let ((a (ironclad::goldilocks-fe-from-int (mod v q))))
+        (unless (= (mod v q) (ironclad::goldilocks-fe-to-int a))
+          (setf ok nil))
+        (unless (and (check-goldilocks-pair a a)
+                     (check-goldilocks-pair a
+                                           (ironclad::goldilocks-fe-one)))
+          (setf ok nil))))
+    ;; And elements of random size.
+    (loop repeat 500 do
+      (let ((a (ironclad::goldilocks-fe-from-int (random q)))
+            (b (ironclad::goldilocks-fe-from-int
+                    (loop with acc = 0
+                          repeat (random 8)
+                          do (setf acc (+ (ash acc 64) (random (expt 2 64))))
+                          finally (return acc)))))
+        (unless (and (check-goldilocks-pair a b)
+                     (check-goldilocks-pair a a))
+          (setf ok nil))))
+    ok)
+  t)
+
 (rtest:deftest :ecdsa-reject-degenerate-signatures
   (multiple-value-bind (priv pub) (ironclad:generate-key-pair :ecdsa)
     (let* ((msg (ironclad:random-data 32))
