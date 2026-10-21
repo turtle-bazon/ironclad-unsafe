@@ -54,6 +54,10 @@
   (goldilocks-fe-from-int (+ +ed448-q+ +ed448-d+))
   "The constant d of the Ed448 curve, in limbs.")
 
+(defvar +ed448-q-limbs+
+  (goldilocks-fe-from-int +ed448-q+)
+  "The prime of the Ed448 curve, in limbs.")
+
 (defun ed448-point-double-limbs (x1 y1 z1)
   "The double of the point (X1 : Y1 : Z1), in limbs.
 The three coordinates are returned as multiple values."
@@ -220,18 +224,24 @@ X, Y and Z are bignums, and the result is a point."
   "Recover the X coordinate of a point on ed448 curve from the Y coordinate."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer y))
-  (let* ((u (goldilocks-reduce (1- (* y y))))
-         (v (goldilocks-reduce (1- (* +ed448-d+ (1+ u)))))
-         (uv (goldilocks-reduce (* u v)))
-         (u3v (goldilocks-reduce (* u u uv)))
-         (u5v3 (goldilocks-reduce (* u3v uv uv)))
+  (let* ((yl (goldilocks-fe-from-int y))
+         (u (goldilocks-fe-sub (goldilocks-fe-mul yl yl) (goldilocks-fe-one)))
+         (v (goldilocks-fe-sub
+             (goldilocks-fe-mul +ed448-d-limbs+
+                               (goldilocks-fe-add u (goldilocks-fe-one)))
+             (goldilocks-fe-one)))
+         (uv (goldilocks-fe-mul u v))
+         (u3v (goldilocks-fe-mul (goldilocks-fe-mul u u) uv))
+         (u5v3 (goldilocks-fe-mul u3v (goldilocks-fe-mul uv uv)))
          ;; The value recovered here depends only on the public key, so
          ;; the variable-time sliding-window exponentiation is safe.
-         (x (goldilocks-reduce (* u3v (expt-mod/unsafe u5v3 (/ (- +ed448-q+ 3) 4) +ed448-q+)))))
-    (declare (type integer u v uv u3v u5v3 x))
-    (unless (evenp x)
-      (setf x (- +ed448-q+ x)))
-    x))
+         (x (goldilocks-fe-mul
+             u3v (goldilocks-fe-expt u5v3 (/ (- +ed448-q+ 3) 4)))))
+    (declare (type goldilocks-fe u v uv u3v u5v3 x))
+    ;; The X coordinate is the one with the even parity.
+    (if (evenp (goldilocks-fe-to-int x))
+        x
+        (goldilocks-fe-sub +ed448-q-limbs+ x))))
 
 (defmethod ec-add ((p ed448-point) (q ed448-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
@@ -440,10 +450,13 @@ X, Y and Z are bignums, and the result is a point."
 (defmethod ec-destructure-point ((p ed448-point))
   (with-slots (x y z) p
     (declare (type integer x y z))
-    (let* ((invz (ec-scalar-inv :ed448 z))
-           (x (goldilocks-reduce (* x invz)))
-           (y (goldilocks-reduce (* y invz))))
-      (list :x x :y y))))
+    (let* ((xl (goldilocks-fe-from-int x))
+           (yl (goldilocks-fe-from-int y))
+           (zl (goldilocks-fe-from-int z))
+           (invz (goldilocks-fe-expt zl (- +ed448-q+ 2)))
+           (x (goldilocks-fe-mul xl invz))
+           (y (goldilocks-fe-mul yl invz)))
+      (list :x (goldilocks-fe-to-int x) :y (goldilocks-fe-to-int y)))))
 
 (defmethod ec-encode-scalar ((kind (eql :ed448)) n)
   (integer-to-octets n :n-bits +ed448-bits+ :big-endian nil))
@@ -464,10 +477,10 @@ X, Y and Z are bignums, and the result is a point."
          (b (ldb (byte 1 (- +ed448-bits+ 1)) y)))
     (setf (ldb (byte 1 (- +ed448-bits+ 1)) y) 0)
     (let ((x (ed448-recover-x y)))
-      (declare (type integer x))
-      (unless (= (ldb (byte 1 0) x) b)
-        (setf x (- +ed448-q+ x)))
-      (ec-make-point :ed448 :x x :y y))))
+      (declare (type goldilocks-fe x))
+      (unless (= (ldb (byte 1 0) (goldilocks-fe-to-int x)) b)
+        (setf x (goldilocks-fe-sub +ed448-q-limbs+ x)))
+      (ec-make-point :ed448 :x (goldilocks-fe-to-int x) :y y))))
 
 (defun ed448-hash (&rest messages)
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))

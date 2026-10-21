@@ -140,8 +140,11 @@ X is a bignum, and the result is a point."
 (defmethod ec-destructure-point ((p curve448-point))
   (with-slots (x z) p
     (declare (type integer x z))
-    (let ((x (goldilocks-reduce (* x (ec-scalar-inv :curve448 z)))))
-      (list :x x))))
+    (let* ((xl (goldilocks-fe-from-int x))
+           (zl (goldilocks-fe-from-int z))
+           (invz (goldilocks-fe-expt zl (- +goldilocks-q+ 2)))
+           (x (goldilocks-fe-mul xl invz)))
+      (list :x (goldilocks-fe-to-int x)))))
 
 (defmethod ec-encode-scalar ((kind (eql :curve448)) n)
   (integer-to-octets n :n-bits +curve448-bits+ :big-endian nil))

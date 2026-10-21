@@ -215,6 +215,22 @@ The result is in the low eight limbs of C; the others are clobbered."
       (dotimes (i 8) (setf (aref r i) (aref prod i)))
       r)))
 
+(defun goldilocks-fe-expt (base e)
+  "BASE raised to the power E, in the limb field.
+The exponent is public, so the time of the exponentiation may
+depend on it."
+  (declare (type goldilocks-fe base)
+           (type integer e)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((result (goldilocks-fe-one))
+        (b base))
+    (loop while (plusp e) do
+      (when (logbitp 0 e)
+        (setf result (goldilocks-fe-mul result b)))
+      (setf b (goldilocks-fe-mul b b))
+      (setf e (ash e -1)))
+    result))
+
 (defun goldilocks-fe-add (a b)
   "The sum of the field elements A and B, reduced."
   (declare (type goldilocks-fe a b))
