@@ -414,7 +414,11 @@
   (declare (type secp224r1-fe a b)
            (type (simple-array (unsigned-byte 64) (14)) c)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (dotimes (k 14) (setf (aref c k) 0))
+  #+(and sbcl x86-64 ironclad-assembly)
+  (secp224r1-fe-mul-raw-asm c a b)
+  #-(and sbcl x86-64 ironclad-assembly)
+  (progn
+    (dotimes (k 14) (setf (aref c k) 0))
   (dotimes (i 7)
     (let ((carry 0))
       (declare (type integer carry))
@@ -431,7 +435,7 @@
             while (plusp carry)
             do (let ((s (+ (aref c k) carry)))
                  (setf (aref c k) (logand s #xffffffff)
-                       carry (ash s -32))))))
+                       carry (ash s -32)))))))
   c)
 
 (defun secp224r1-fe-add (a b)

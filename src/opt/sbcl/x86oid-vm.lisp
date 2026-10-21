@@ -1562,6 +1562,52 @@
 
 
 #+x86-64
+(define-vop (secp224r1-mul-raw-asm)
+  (:translate ironclad::secp224r1-fe-mul-raw-asm)
+  (:policy :fast-safe)
+  (:args (c :scs (descriptor-reg))
+         (a :scs (descriptor-reg))
+         (b :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32)
+  (:temporary (:sc unsigned-reg) lo hi carry tmp)
+  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+  (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (flet ((a32 (i) (dword-ea (+ data-offset (* 4 i)) a))
+             (b32 (i) (dword-ea (+ data-offset (* 4 i)) b))
+             (c64 (k) (ea (+ data-offset (* 8 k)) c)))
+        ;; Comba columns: the same shape as the P-256 multiply, with
+        ;; seven limbs instead of eight, so the product has fourteen
+        ;; columns.  CARRY holds under 2^36 across columns.  Each
+        ;; column sums at most seven 32x32-bit products plus the
+        ;; carry, under 2^67, accumulated in (HI, LO).
+        (inst mov carry 0)
+        (dotimes (k 14)
+          (inst mov lo carry)
+          (inst mov hi 0)
+          (dolist (i (loop for x from (max 0 (- k 6)) to (min 6 k)
+                           collect x))
+            (let ((j (- k i)))
+              (dword-inst mov rax-tmp (a32 i))
+              (dword-inst mov tmp (b32 j))
+              (inst mul tmp)
+              (inst add lo rax-tmp)
+              (inst adc hi rdx-tmp)))
+          ;; Store the canonical 32-bit word as a full 64-bit element.
+          (dword-inst mov tmp lo)
+          (inst mov (c64 k) tmp)
+          (inst mov carry hi)
+          (inst shl carry 32)
+          (inst mov tmp lo)
+          (inst shr tmp 32)
+          (inst or carry tmp))))))
+
+
+#+x86-64
 (define-vop (ed25519-mul-raw-asm)
   (:translate ironclad::ed25519-fe-mul-raw-asm)
   (:policy :fast-safe)

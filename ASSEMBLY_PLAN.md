@@ -149,6 +149,31 @@ fourth limb and up, and taken back at the bottom, and the borrow of
 the second has to be carried on to the words above the third, which
 the first has already changed.
 
+The multiply of P-224 is now in assembly, the same shape as the
+P-256 one with seven limbs instead of eight, so the product has
+fourteen columns.  The reduction is still in Lisp, and it is what the
+multiply now costs: the assembly multiply is some tens of
+nanoseconds, the Lisp reduction several hundred, and the whole
+multiply five times the bignum one.  The reduction is what has to
+come next; the prime is B^7 - B^3 + 1, so B^7 is congruent to B^3
+minus one, and the excess of a value is folded back in at the fourth
+limb.  The P-256 reduction shows the shape of the work: it sums the
+words of the shifted lists into accumulators without carries, and
+propagates the carries once at the end.
+
+The P-256 field is worth a note, because the same shape of work
+applies there.  A multiply of the P-256 field costs about eighty
+nanoseconds, of which the reduction is the larger part, and a
+multiply that returns a fresh vector costs about a hundred and
+sixty, the difference being the two arrays it allocates.  The point
+operations make about a dozen multiplies each, so the allocations
+are a good fraction of the cost of a scalar multiplication: the
+verify of a P-256 signature spends most of its time in the field
+multiplies, not in the digest or the inversion.  The way out is to
+keep the product buffer and the reduction scratch in the scratch
+pool that the point operations already carry, and to multiply into
+the pool rather than into fresh vectors.
+
 The field of P-224 is now in the tree, in limbs of 32 bits, with
 the product of two elements, their sum and their difference, all
 reduced, and the new test :secp224r1-field checks them against the
