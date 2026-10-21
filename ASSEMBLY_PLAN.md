@@ -248,6 +248,43 @@ The transform is to be checked against the one it replaces over
 random polynomials of every size, as the rewrite of the transform
 above was, and the check is to be kept.
 
+Two things about the shape of the merge were found after the plan
+was written, and one of them corrects it.
+
+The first is that the residues are best kept in thirty-two bit
+arrays, not in the machine words of a general array.  The four
+elements of a group are then the four lanes of a vector, and the
+unpacking that interleaves the sums and the differences puts them
+where the recursion wants them.  With the residues in machine words
+the interleave cannot be done at all, because the unpacking of the
+vectors puts the two values of a pair in the two halves of one
+machine word rather than in two machine words.  So the buffers of
+the recursion are thirty-two bit arrays, and the transform takes
+and returns arrays of fixnums and converts at its ends.
+
+The second is that the multiply of four thirty-two bit lanes is not
+an instruction of the older set.  The older PMULLD takes two
+operands and multiplies the destination by one source, and the form
+that multiplies two sources into a destination of its own is the
+vector one, VPMULLD, which needs a machine with AVX.  The multiply
+of the even thirty-two bit lanes into sixty-four bit lanes, which
+the reduction needs for the product of the reciprocal, is the same:
+the older PMULUDQ takes two operands and the vector one takes
+three.  The instructions of the older set take two operands, the
+destination and one source, and the destination is also the first
+source: PADDD X0 X1 adds X1 to X0.  The shifts by a constant are
+named with an -IMM suffix, PSRLQ-IMM and the like, and the shuffle
+of the thirty-two bit lanes takes three operands in the older form,
+PSHUFD X0 X1 #xB1.  So the merge needs VPMULLD and VPMULUDQ and
+nothing else of the vector set.
+
+The machine is to be asked at run time, not at build time, because
+the library is built on one machine and run on another, and the file
+for the processor features has what is wanted: IRONCLAD-CPU-FEATURE-P
+with the keyword :AVX2, which is the conservative probe, because a
+machine with AVX2 has AVX, and which also asks whether the operating
+system has enabled the extended processor state.
+
 The field of P-224 is now in the tree, in limbs of 32 bits, with
 the product of two elements, their sum and their difference, all
 reduced, and the new test :secp224r1-field checks them against the
