@@ -174,6 +174,30 @@ keep the product buffer and the reduction scratch in the scratch
 pool that the point operations already carry, and to multiply into
 the pool rather than into fresh vectors.
 
+The falcon verify is worth a note, because it is not the field that
+costs there.  The prime of this implementation is 12289, a small
+one, so the modular arithmetic is cheap; what costs is the shape of
+the number theoretic transform.  The transform of a polynomial of
+512 coefficients takes eighty microseconds, the verify needs about
+six of them, and the whole verify takes five hundred and eighty
+microseconds.  The transform is a recursive split into the even and
+the odd coefficients, and every node of the recursion allocates
+three arrays: about fifteen hundred of them for one transform, at
+the cost of some sixty microseconds.  The rest is the generic MOD,
+which needs a division for every sum and every difference; the sums
+and the differences are of reduced residues, so a single conditional
+subtraction would do.
+
+The transform has therefore been rewritten in place, with a pool of
+two buffers per level of the recursion, and with the sums and the
+differences done by a conditional subtraction and a conditional
+addition.  The rewrite is not landed yet: it changes the transform
+and it has to agree with the old one on every polynomial, and the
+agreement is not yet established.  The shape of the work is
+settled, though; the old and the new transform have to be run
+against each other over random polynomials, and the difference has
+to be empty.
+
 The field of P-224 is now in the tree, in limbs of 32 bits, with
 the product of two elements, their sum and their difference, all
 reduced, and the new test :secp224r1-field checks them against the
