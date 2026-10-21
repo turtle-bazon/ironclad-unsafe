@@ -434,6 +434,52 @@
                        carry (ash s -32))))))
   c)
 
+(defun secp224r1-fe-add (a b)
+  "The sum of the field elements A and B, reduced."
+  (declare (type secp224r1-fe a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  ;; The reduction of a product takes the low half and the high half
+  ;; of the value; a sum has no high half, so the words above the
+  ;; seventh are zero, and the reduction folds the value back in.
+  (let ((c (make-array 14 :element-type '(unsigned-byte 64) :initial-element 0))
+        (r (secp224r1-fe-zero)))
+    (dotimes (i 7)
+      (setf (aref c i) (+ (aref a i) (aref b i))))
+    (secp224r1-fe-reduce r c)
+    r))
+(defun secp224r1-fe-sub (a b)
+  "The difference of the field elements A and B, reduced."
+  (declare (type secp224r1-fe a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((c (make-array 14 :element-type '(unsigned-byte 64) :initial-element 0))
+        (r (secp224r1-fe-zero))
+        (borrow 0) (carry 0))
+    ;; The borrow is subtracted: it is a whole B^7 when it is not
+    ;; zero, and the borrow out is its magnitude.
+    (dotimes (i 7)
+      (let ((v (- (- (aref a i) (aref b i)) borrow)))
+        (setf (aref c i) (logand v #xffffffff)
+              borrow (if (minusp v) 1 0))))
+    ;; The difference is negative when there was a borrow, and the
+    ;; prime is added to it.
+    (when (= borrow 1)
+      (setf carry 0)
+      (dotimes (i 7)
+        (let ((v (+ (aref c i) (aref +secp224r1-p-limbs+ i) carry)))
+          (setf (aref c i) (logand v #xffffffff)
+                carry (ash v -32)))))
+    (secp224r1-fe-reduce r c)
+    r))
+(defun secp224r1-fe-mul (a b)
+  "The product of the field elements A and B, reduced."
+  (declare (type secp224r1-fe a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((c (make-array 14 :element-type '(unsigned-byte 64) :initial-element 0))
+        (r (secp224r1-fe-zero)))
+    (secp224r1-fe-mul-raw c a b)
+    (secp224r1-fe-reduce r c)
+    r))
+
 (defun secp224r1-fe-reduce (r c)
   "R := C mod P, the Solinas form of the P-224 prime.
 C holds fourteen limbs of 32 bits, in words of 64 bits, and R holds

@@ -150,13 +150,14 @@ the second has to be carried on to the words above the third, which
 the first has already changed.
 
 The field of P-224 is now in the tree, in limbs of 32 bits, with
-the product of two elements and the reduction of a product, and the
-new test :secp224r1-field checks them against the integer
-arithmetic.  The sum and the difference, and the point arithmetic that
-uses them, are still to come; what is missing is the reduction of
-eight limbs, which the eight-limb part of the product reduction can
-do, the excess of a value that fits in eight limbs being the top of
-the last limb.
+the product of two elements, their sum and their difference, all
+reduced, and the new test :secp224r1-field checks them against the
+integer arithmetic.  The point arithmetic that uses them is still to
+come.  Two things were worth knowing: the reduction of a product
+takes the low half and the high half of the value, so a sum, which
+has no high half, is reduced by the same code with the words above
+the seventh zero; and the borrow of a subtraction is subtracted, not
+added, which is the same sign as the borrow in the reduction.
 
 The field of P-224 was measured with bignums: the product of two
 elements is 42 nanoseconds and the division that follows it 187, so
