@@ -68,23 +68,26 @@ V may be of any size, and may be negative."
 (defconstant +goldilocks-limb-mask+ (1- (ash 1 56)))
 (defconstant +goldilocks-limbs+ 8)
 
-(deftype goldilocks-fe () '(simple-array (unsigned-byte 64) (8)))
+;; A field element is sixteen limbs: the low eight hold the value, and
+;; the high eight are the scratch of the reduction, which needs eight
+;; limbs of its own.
+(deftype goldilocks-fe () '(simple-array (unsigned-byte 64) (16)))
 (deftype goldilocks-product () '(simple-array (unsigned-byte 64) (16)))
 
 (defun goldilocks-fe-zero ()
   "The field element zero."
-  (make-array 8 :element-type '(unsigned-byte 64) :initial-element 0))
+  (make-array 16 :element-type '(unsigned-byte 64) :initial-element 0))
 
 (defun goldilocks-fe-one ()
   "The field element one."
-  (let ((a (make-array 8 :element-type '(unsigned-byte 64) :initial-element 0)))
+  (let ((a (make-array 16 :element-type '(unsigned-byte 64) :initial-element 0)))
     (setf (aref a 0) 1)
     a))
 
 (defun goldilocks-fe-from-int (n)
   "The field element N, which must not be negative."
   (declare (type integer n))
-  (let ((a (make-array 8 :element-type '(unsigned-byte 64) :initial-element 0)))
+  (let ((a (make-array 16 :element-type '(unsigned-byte 64) :initial-element 0)))
     (dotimes (i 8 n)
       (setf (aref a i) (logand n +goldilocks-limb-mask+))
       (setf n (ash n -56)))
@@ -130,7 +133,8 @@ This is the portable version; the assembly version is faster."
 
 (defun goldilocks-fe-reduce8 (c)
   "Reduce the eight limbs of C, which may be loose, modulo the prime.
-The result is in C, and is below the prime."
+The result is in the low eight limbs of C, and is below the prime.
+The high eight limbs are the scratch, and are clobbered."
   (declare (type goldilocks-fe c)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   ;; Bring the limbs back into range.  While the value is above 2^448
@@ -197,11 +201,8 @@ The result is in the low eight limbs of C; the others are clobbered."
   (dotimes (i 4)
     (setf (aref c i) (+ (aref c i) (aref c (+ 8 i)))
           (aref c (+ 4 i)) (+ (aref c (+ 4 i)) (aref c (+ 8 i)))))
-  (let ((r (make-array 8 :element-type '(unsigned-byte 64) :initial-element 0)))
-    (dotimes (i 8) (setf (aref r i) (aref c i)))
-    (goldilocks-fe-reduce8 r)
-    (dotimes (i 8) (setf (aref c i) (aref r i)))
-    c)))
+  (goldilocks-fe-reduce8 c)
+  c))
 
 (defun goldilocks-fe-mul (a b)
   "The product of the field elements A and B, reduced."
@@ -210,22 +211,22 @@ The result is in the low eight limbs of C; the others are clobbered."
     (declare (type goldilocks-product prod))
     (goldilocks-fe-mul-raw prod a b)
     (goldilocks-fe-reduce16 prod)
-    (let ((r (make-array 8 :element-type '(unsigned-byte 64) :initial-element 0)))
+    (let ((r (make-array 16 :element-type '(unsigned-byte 64) :initial-element 0)))
       (dotimes (i 8) (setf (aref r i) (aref prod i)))
       r)))
 
 (defun goldilocks-fe-add (a b)
   "The sum of the field elements A and B, reduced."
   (declare (type goldilocks-fe a b))
-  (let ((r (make-array 8 :element-type '(unsigned-byte 64) :initial-element 0)))
+  (let ((r (make-array 16 :element-type '(unsigned-byte 64) :initial-element 0)))
     (dotimes (i 8) (setf (aref r i) (+ (aref a i) (aref b i))))
-    (goldilocks-fe-reduce8 r)
+    (goldilocks-fe-reduce16 r)
     r))
 
 (defun goldilocks-fe-sub (a b)
   "The difference of the field elements A and B, reduced."
   (declare (type goldilocks-fe a b))
-  (let ((r (make-array 8 :element-type '(unsigned-byte 64) :initial-element 0)))
+  (let ((r (make-array 16 :element-type '(unsigned-byte 64) :initial-element 0)))
     (let ((borrow 0))
       (dotimes (i 8)
         (let* ((v (- (aref a i) (aref b i) borrow))
@@ -243,5 +244,5 @@ The result is in the low eight limbs of C; the others are clobbered."
                  (v (- (aref r i) sub borrow)))
             (setf (aref r i) (logand v +goldilocks-limb-mask+)
                   borrow (if (minusp v) 1 0)))))))
-    (goldilocks-fe-reduce8 r)
+    (goldilocks-fe-reduce16 r)
     r))
