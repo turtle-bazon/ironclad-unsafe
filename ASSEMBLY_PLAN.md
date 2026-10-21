@@ -65,7 +65,41 @@ by rewriting field arithmetic with limb-based representations and assembly VOPs.
   point arithmetic to limbs.  What is left is the same for the other
   curves, which have primes of another shape: secp224r1, whose prime
   is 2^224 - 2^96 + 1, and secp521r1, whose prime is 2^521 - 1.
-  Both would want limbs of 32 or 64 bits, and their reductions are
-  of another shape than the fold of Goldilocks.
   `MULX` is not usable, see the notes below, so the product is made
   with `MUL`.
+
+#### The field of secp224r1
+
+The prime of P-224 is B^7 - B^3 + 1 with B = 2^32, so it wants
+seven limbs of 32 bits, and B^7 is congruent to B^3 - 1: the high
+half of a product, H, is folded back in by adding it, shifted up by
+three limbs, and by subtracting it.  The product of two elements is
+fourteen limbs, and the Comba is the one of Ed25519 with seven limbs
+instead of eight.
+
+The fold is where the care is needed, and where a first attempt
+failed.  Three things have to be right at once:
+
+* the subtraction of H from the low seven limbs borrows, and the
+  borrow is a whole B^7, which is congruent to B^3 - 1, so it has to
+  be compensated by one less at the bottom and one more at the
+  fourth limb;
+* the subtraction and the addition meet at the fourth limb, where
+  the borrow and the carry have to be added together, and the sum
+  can be negative, so the carry out of that limb can be -1;
+* what is left above B^7 is folded in again, and the excess of that
+  fold can be 1, and folding it again can give an excess of 1
+  again, so the fold has to be a loop and not a fixed number of
+  rounds.
+
+The same shape of the reduction is in the field of P-256, in
+`src/public-key/secp256r1.lisp`, and its assembly version is the
+VOP `secp256r1-reduce-fast-asm`, which sums the shifted pieces of
+the product into 64-bit accumulators and propagates the carries
+once, at the end.  That is the shape to copy.
+
+The field of P-224 was measured with bignums: the product of two
+elements is 42 nanoseconds and the division that follows it 187, so
+the division is four fifths of the cost of a multiplication, and
+replacing it with a fold in bignums is no use: the fold was
+measured at 266 nanoseconds, because every step of it allocates.
