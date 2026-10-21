@@ -272,6 +272,22 @@ reciprocal of the prime are in the tree now, and the transform that
 uses them agrees with the one it replaces over random polynomials of
 every size, in both directions.
 
+What the assembler of SBCL does with the instructions of the merge
+has been found out by trying them, one at a time, and it is worth
+writing down.  The address of an element is given as a displacement,
+a base, an index and a scale, and the index has to be a register or
+nothing; a literal there is an error.  The vector multiply of four
+thirty-two bit lanes gives the exact products, and the vector
+multiply of the even thirty-two bit lanes into sixty-four bit ones
+gives the sixty-four bit products, and it is the wider form of that
+one, so the lanes above the first two are rubbish and are not to be
+read.  The shift of the sixty-four bit lanes by a constant takes the
+count in bits, and the counts above thirty-two do not work: the
+count of forty gives nothing at all, and the count of thirty-two
+works.  The reduction wants a shift of thirty-two, and the reciprocal
+of the prime for it is 349525, which is also what the Lisp
+reduction has to use, so that the two agree.
+
 The vector merge itself is written and does not work yet, and what
 is known about it is worth writing down.  A VOP that only loads four
 words from one array and stores them to another, with an index, is
