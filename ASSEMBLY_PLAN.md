@@ -246,7 +246,19 @@ elements one at a time.
 
 The transform is to be checked against the one it replaces over
 random polynomials of every size, as the rewrite of the transform
-above was, and the check is to be kept.
+above was, and the check is to be kept.  The check has to use
+coefficients that are not below the prime, because the polynomials
+of the NTRU have coefficients that may be negative, and the
+reduction of a product below assumes that the residues are below the
+prime.  The transform reduces its coefficients first, and the check
+of the transform against the one it replaces has to do the same, or
+it will not notice the difference.
+
+The twiddle tables, the thirty-two bit buffers of the recursion, the
+merge split out as its own function, and the reduction by the
+reciprocal of the prime are in the tree now, and the transform that
+uses them agrees with the one it replaces over random polynomials of
+every size, in both directions.
 
 Two things about the shape of the merge were found after the plan
 was written, and one of them corrects it.

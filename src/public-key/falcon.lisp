@@ -81,9 +81,6 @@ A and B are reduced residues, so the difference needs one addition."
   (let ((d (- a b)))
     (if (< d 0) (+ d +falcon-q+) d)))
 
-(defconstant +falcon-mu+ (floor (ash 1 45) +falcon-q+)
-  "The reciprocal of the prime, for the reduction of a product.")
-
 (defun falcon-mulmod (a b)
   "The product of A and B modulo the falcon prime.
 The product of two reduced residues is below 2^28, so it is reduced
@@ -93,9 +90,56 @@ never more than one below the true quotient, so the remainder is
 below twice the prime."
   (declare (type fixnum a b))
   (let* ((p (* a b))
-         (qh (ash (* p +falcon-mu+) -45))
+         (qh (ash (* p +falcon-mu+) -44))
          (r (- p (* qh +falcon-q+))))
     (if (>= r +falcon-q+) (- r +falcon-q+) r)))
+
+(defconstant +falcon-mu+ 1431539266
+  "The reciprocal of the prime, for the reduction of a product.
+The product of two residues is below 2^28, and this is 2^44
+divided by the prime, so the quotient that the reciprocal gives is
+never more than one below the true quotient, and one subtraction of
+the prime at most brings the remainder back.")
+
+(defun falcon-make-twiddles (n)
+  "The twiddles of the merge of a transform of size N.
+The merge multiplies the element I by the entry 2I of the roots
+table, so the table of the twiddles is the even-indexed entries of
+the roots table, in order."
+  (let ((w (falcon-ntt-roots n))
+        (tw (make-array (ash n -1) :element-type '(unsigned-byte 32)
+                          :initial-element 0)))
+    (dotimes (i (ash n -1) tw)
+      (setf (aref tw i) (aref w (* 2 i))))))
+
+(defvar +falcon-ntt-twiddles+
+  (let ((v (make-array 10)))
+    (dotimes (i 10 v)
+      (setf (aref v i) (falcon-make-twiddles (ash 1 (1+ i))))))
+  "The twiddles of the merges, by the size of the transform.
+The entry for the size 2^k is at the index k-1.")
+
+(defun falcon-ntt-twiddles (n)
+  "The twiddles of the merge of a transform of size N."
+  (aref +falcon-ntt-twiddles+ (- (integer-length n) 2)))
+
+(defun falcon-ntt-merge-scalar (out f0 f1 tw)
+  "The merge of the transform, one element at a time.
+OUT[2I] = F0[I] + TW[I]*F1[I] and OUT[2I+1] = F0[I] - TW[I]*F1[I]."
+  (declare (type (simple-array (unsigned-byte 32) (*)) out f0 f1 tw)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((h (length f0)))
+    (dotimes (i h)
+      (let ((p (falcon-mulmod (aref tw i) (aref f1 i)))
+            (u (aref f0 i)))
+        (setf (aref out (* 2 i)) (falcon-addmod u p)
+              (aref out (+ (* 2 i) 1)) (falcon-submod u p))))))
+
+(defun falcon-ntt-merge (out f0 f1 tw)
+  "The merge of the transform."
+  (declare (type (simple-array (unsigned-byte 32) (*)) out f0 f1 tw)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (falcon-ntt-merge-scalar out f0 f1 tw))
 
 (defun falcon-ntt-level (f pool level)
   "The forward NTT of F, in place, using the buffer pool POOL.
@@ -114,8 +158,10 @@ transform makes."
                 (aref f 1) (falcon-submod a tw)))
         (let* ((bufs (or (aref pool level)
                          (setf (aref pool level)
-                               (vector (make-array h :element-type 'fixnum)
-                                       (make-array h :element-type 'fixnum)))))
+                               (vector (make-array h :element-type
+                                                    '(unsigned-byte 32))
+                                       (make-array h :element-type
+                                                    '(unsigned-byte 32))))))
                (f0 (aref bufs 0))
                (f1 (aref bufs 1)))
           (dotimes (i h)
@@ -123,22 +169,23 @@ transform makes."
                   (aref f1 i) (aref f (+ (* 2 i) 1))))
           (falcon-ntt-level f0 pool (1+ level))
           (falcon-ntt-level f1 pool (1+ level))
-          (let ((w (falcon-ntt-roots n)))
-            (dotimes (i h)
-              (let ((tw (falcon-mulmod (aref w (* 2 i)) (aref f1 i)))
-                    (u (aref f0 i)))
-                (setf (aref f (* 2 i)) (falcon-addmod u tw)
-                      (aref f (+ (* 2 i) 1)) (falcon-submod u tw)))))))))
+          (falcon-ntt-merge f f0 f1 (falcon-ntt-twiddles n))))))
 
 (defun falcon-ntt (f)
   "Forward NTT: coefficients -> NTT domain."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length f))
          (pool (make-array 11 :initial-element nil)))
-    (let ((g (make-array n :element-type 'fixnum)))
-      (dotimes (i n) (setf (aref g i) (aref f i)))
+    (let ((g (make-array n :element-type '(unsigned-byte 32)
+                           :initial-element 0)))
+      ;; The coefficients are reduced first: the polynomials of the
+      ;; NTRU have coefficients that may be negative, and the
+      ;; reduction of a product below assumes that the residues are
+      ;; below the prime.
+      (dotimes (i n) (setf (aref g i) (mod (aref f i) +falcon-q+)))
       (falcon-ntt-level g pool 0)
-      g)))
+      (let ((r (make-array n :element-type 'fixnum)))
+        (dotimes (i n r) (setf (aref r i) (aref g i)))))))
 
 (defun falcon-intt-level (f pool level)
   "The inverse NTT of F, in place, using the buffer pool POOL.
@@ -160,8 +207,10 @@ so it needs two buffers per level of the recursion."
                             (falcon-submod a b))))
         (let* ((bufs (or (aref pool level)
                          (setf (aref pool level)
-                               (vector (make-array h :element-type 'fixnum)
-                                       (make-array h :element-type 'fixnum)))))
+                               (vector (make-array h :element-type
+                                                    '(unsigned-byte 32))
+                                       (make-array h :element-type
+                                                    '(unsigned-byte 32))))))
                (f0 (aref bufs 0))
                (f1 (aref bufs 1))
                (w (falcon-ntt-roots n)))
@@ -186,10 +235,12 @@ so it needs two buffers per level of the recursion."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length f-ntt))
          (pool (make-array 11 :initial-element nil)))
-    (let ((g (make-array n :element-type 'fixnum)))
+    (let ((g (make-array n :element-type '(unsigned-byte 32)
+                           :initial-element 0)))
       (dotimes (i n) (setf (aref g i) (aref f-ntt i)))
       (falcon-intt-level g pool 0)
-      g)))
+      (let ((r (make-array n :element-type 'fixnum)))
+        (dotimes (i n r) (setf (aref r i) (aref g i)))))))
 
 (defun falcon-mul-ntt (a b)
   (let* ((n (length a))
