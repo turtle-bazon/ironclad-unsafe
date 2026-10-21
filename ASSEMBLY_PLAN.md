@@ -118,6 +118,17 @@ VOP `secp256r1-reduce-fast-asm`, which sums the shifted pieces of
 the product into 64-bit accumulators and propagates the carries
 once, at the end.  That is the shape to copy.
 
+The reduction has been written in Lisp and now runs: the product, the
+construction of H*B^3 - H and the borrow all behave as designed, and
+the small cases reduce correctly.  The extreme case, (p-1)^2, still
+comes out wrong, and the fault is in the excess: it is the high part
+of the value above B^7, and it is the whole of it, the words seven to
+nine together with the carry of the addition of L and the borrow of
+the subtraction of H.  The borrow is a whole B^7, so it counts as
+minus one in the excess, and the carry of the addition of L counts as
+plus one.  What is left to find is how those two and the three high
+words have to be put together for the excess to be the high part.
+
 The field of P-224 was measured with bignums: the product of two
 elements is 42 nanoseconds and the division that follows it 187, so
 the division is four fifths of the cost of a multiplication, and
