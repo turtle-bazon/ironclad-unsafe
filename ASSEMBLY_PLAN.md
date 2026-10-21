@@ -210,6 +210,44 @@ goes on, and one butterfly of the transform is a multiply, two sums
 or differences, and four array accesses, and the C reference does
 the same work in a fraction of the time.
 
+The transform of the falcon is to be done in SIMD, and the shape of
+the work is settled.  A butterfly of the transform is a multiply of
+the residue by a twiddle, a reduction of the product, and a sum and a
+difference; the multiply and the reduction are the arithmetic, and
+the arrays are the memory.  The VOP does the whole merge of the
+recursion, four elements at a time, and the whole split of the
+inverse, and the arrays stay as they are.
+
+Four things make that possible.  The first is the interleave: the
+merge writes the sum and the difference of a pair of elements to the
+two places that follow each other, and the unpacking of the two
+vectors of sums and the two vectors of differences puts them there
+in the right order, with two instructions.  The second is the
+layout: the elements of an array of residues are machine words with
+the residue in the low half, so a load of two of them is a vector
+of two residues in the even thirty-two bit lanes, and the multiply
+that only reads the even lanes is exactly the multiply that is
+wanted.  The third is the reduction: the reciprocal of the prime
+times the product is a sixty-bit number, and the sixty-four bit
+lanes hold it, so the quotient estimate and the remainder are both
+computed without ever leaving the lane.  The fourth is the table:
+the twiddles of a merge are the even-indexed entries of the roots
+table, and they are wanted four at a time, so the table of the
+twiddles is made once per size.
+
+The instructions of a merge of four elements are then: two loads of
+the operands, one load of the twiddles, the multiply, the reduction
+(the product times the reciprocal, the shift that gives the quotient
+estimate, the estimate times the prime, the difference, and the
+conditional subtraction of the prime), the sum and the difference,
+the two unpacks, and the two stores.  That is about thirty
+instructions for four elements, against perhaps eighty for the four
+elements one at a time.
+
+The transform is to be checked against the one it replaces over
+random polynomials of every size, as the rewrite of the transform
+above was, and the check is to be kept.
+
 The field of P-224 is now in the tree, in limbs of 32 bits, with
 the product of two elements, their sum and their difference, all
 reduced, and the new test :secp224r1-field checks them against the
