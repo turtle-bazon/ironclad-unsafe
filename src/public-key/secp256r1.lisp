@@ -54,11 +54,15 @@
 
 ;;; The prime's limbs, little endian.  Keeping them in a vector avoids
 ;;; extracting them from the bignum constant on every add and subtract.
-(defconstant +secp256r1-p-limbs+ (make-array 8 :element-type '(unsigned-byte 32)
-                                                    :initial-contents
-                                                    '(4294967295 4294967295
-                                                      4294967295 0 0 0 1
-                                                      4294967295)))
+;;;
+;;; This is a DEFVAR and not a DEFCONSTANT: SBCL compares the value of
+;;; a DEFCONSTANT with EQL, and the vector built at compile time is
+;;; never EQL to the one built at load time, so a DEFCONSTANT with a
+;;; vector value makes every recompilation of this file fail with
+;;; DEFCONSTANT-UNEQL.  The value is a literal, so the same vector is
+;;; used every time the file is loaded.
+(defvar +secp256r1-p-limbs+ '#(4294967295 4294967295 4294967295
+                               0 0 0 1 4294967295))
 
 ;;; P-256 field arithmetic on 32-bit limbs.
 ;;;

@@ -1,142 +1,97 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
+;;;; cpu-features.lisp -- detection of the CPU features Ironclad can use
+;;;;
+;;;; The CPU is probed exactly once, when the system is loaded, and the
+;;;; result is cached in *IRONCLAD-CPU-FEATURES*.  Every consumer asks
+;;;; that cache instead of running its own probe, so that:
+;;;;
+;;;;  * the answer is consistent for the whole life of the image;
+;;;;  * the (relatively expensive) CPUID leaves and the /proc/cpuinfo
+;;;;    parsing happen once rather than once per call site;
+;;;;  * a build that runs on several machines does not have to be
+;;;;    recompiled for each of them -- the library is "re-instructed"
+;;;;    for the machine it is loaded on.
+;;;;
+;;;; The Linux detection reads /proc/cpuinfo, which is the reference for
+;;;; "what can this kernel actually let the process do": the kernel only
+;;;; advertises a flag in the "flags" line if the CPU implements it *and*
+;;;; the OS has enabled the corresponding state (XCR0).  The CPUID
+;;;; probes are kept as a fallback for the systems where /proc/cpuinfo is
+;;;; not available, and for the checks that the kernel does not report.
 
 (in-package :crypto)
 
-;;; Check what features are supported by the CPU
+;;; ------------------------------------------------------------------
+;;; The cache
+;;; ------------------------------------------------------------------
 
-#+(and sbcl x86-64)
-(sb-ext:defglobal aes-ni-support-known-p nil)
-#+(and sbcl x86-64)
-(sb-ext:defglobal aes-ni-supported-p nil)
-#+(and sbcl x86-64)
-(declaim (inline aes-ni-supported-p))
-#+(and sbcl x86-64)
-(defun aes-ni-supported-p ()
-  (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
-  #+ironclad-assembly (if aes-ni-support-known-p
-                          aes-ni-supported-p
-                          (setf aes-ni-support-known-p t
-                                aes-ni-supported-p (aes-ni-support-p)))
-  #-ironclad-assembly nil)
+(defvar *ironclad-cpu-features* nil
+  "The list of CPU features available on this machine, as keywords.
+Filled in by IRONCLAD-INITIALIZE-CPU-FEATURES when the system is loaded.")
 
-;;; CPU vendor detection (also defined in x86oid-vm.lisp for compile-time use).
+(defvar *ironclad-cpu-features-ready-p* nil
+  "True once the CPU has been probed.")
 
-#+(and sbcl x86-64)
-(sb-ext:defglobal *amd-cpu-p* nil)
-#+(and sbcl x86-64)
-(sb-ext:defglobal *amd-cpu-p-known-p* nil)
-#+(and sbcl x86-64)
-(defun amd-cpu-p ()
-  (if *amd-cpu-p-known-p*
-      *amd-cpu-p*
-      (setf *amd-cpu-p-known-p* t
-            *amd-cpu-p* (with-open-file (stream "/proc/cpuinfo" :if-does-not-exist nil)
-                          (when stream
-                            (loop for line = (read-line stream nil nil)
-                                  while line
-                                  when (search "vendor_id" line)
-                                  return (not (null (search "AuthenticAMD" line)))))))))
+(defun ironclad-cpu-features ()
+  "Return the list of CPU features available on this machine."
+  (unless *ironclad-cpu-features-ready-p*
+    (ironclad-initialize-cpu-features))
+  *ironclad-cpu-features*)
 
-;;; SHA-NI support probe.
-;;;;
-;;; Deliberately NOT inlined.  Inlining this drags the CPUID VOP into every
-;;; caller; when that happens inside the SHA-256 block compressor the
-;;; surrounding register state is corrupted and the process takes a memory
-;;; fault (observed as a fault at a fixed static-space address, reproducible
-;;; with the ETM test vectors).  Keeping the probe behind a real call keeps
-;;; CPUID confined to its own tiny function.
+(defun ironclad-cpu-feature-p (feature)
+  "True when FEATURE is available on this machine.
+FEATURE is a keyword, e.g. :BMI2 or :AVX2."
+  (declare (type keyword feature))
+  (and (member feature (ironclad-cpu-features) :test #'eq) t))
 
-#+(and sbcl x86-64)
-(sb-ext:defglobal sha-ni-support-known-p nil)
-#+(and sbcl x86-64)
-(sb-ext:defglobal sha-ni-supported-p nil)
-#+(and sbcl x86-64)
-(declaim (notinline sha-ni-supported-p))
-#+(and sbcl x86-64)
-(defun sha-ni-os-supported-p ()
-  "Cross-platform SHA-NI detection.
+;;; ------------------------------------------------------------------
+;;; Detection
+;;; ------------------------------------------------------------------
 
-Linux:   check /proc/cpuinfo for the 'sha_ni' flag (most reliable).
-macOS:   sysctl hw.optional.sha256 (or hw.optional.sha).
-FreeBSD: sysctl hw.instruction_sse or cpu features.
-Other:   disabled (no reliable cross-platform detection available)."
-  #+linux
-  (with-open-file (stream "/proc/cpuinfo" :if-does-not-exist nil)
-    (when stream
-      (loop for line = (read-line stream nil nil)
-            while line
-            thereis (and (search "flags" line)
-                         (search "sha_ni" line)))))
-  #+darwin
-  (handler-case
-      (let ((output (uiop:run-program '("sysctl" "-n" "hw.optional.sha256")
-                                      :ignore-error-status t :output :string)))
-        (and output (string/= (string-trim '(#\Space #\Newline) output) "")
-             (not (string= (string-trim '(#\Space #\Newline) output) "0"))))
-    (error () nil))
-  #+freebsd
-  (handler-case
-      (let ((output (uiop:run-program '("sysctl" "-n" "hw.instruction_sse")
-                                      :ignore-error-status t :output :string)))
-        (and output (search "SHA" output :test #'char-equal)))
-    (error () nil))
-  #-(or linux darwin freebsd)
-  nil)
+(defvar *ironclad-aes-ni-p* nil)
+(defvar *ironclad-pclmulqdq-p* nil)
+(defvar *ironclad-sha-ni-p* nil)
+(defvar *ironclad-bmi2-p* nil)
+(defvar *ironclad-adx-p* nil)
+(defvar *ironclad-avx2-p* nil)
+(defvar *ironclad-avx512-p* nil)
 
-#+(and sbcl x86-64)
-(defun sha-ni-supported-p ()
-  (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
-  #+ironclad-assembly
-  (if sha-ni-support-known-p
-      sha-ni-supported-p
-      (setf sha-ni-support-known-p t
-            sha-ni-supported-p (sha-ni-os-supported-p)))
-  #-ironclad-assembly nil)
+(defun ironclad-initialize-cpu-features ()
+  "Probe the CPU and cache the result.  Called once, at load time."
+  (let ((features (ironclad-detect-cpu-features)))
+    (setf *ironclad-cpu-features* features
+          *ironclad-cpu-features-ready-p* t
+          *ironclad-aes-ni-p* (and (member :aes features :test #'eq) t)
+          *ironclad-pclmulqdq-p* (and (member :pclmulqdq features :test #'eq) t)
+          *ironclad-sha-ni-p* (and (member :sha-ni features :test #'eq) t)
+          *ironclad-bmi2-p* (and (member :bmi2 features :test #'eq) t)
+          *ironclad-adx-p* (and (member :adx features :test #'eq) t)
+          *ironclad-avx2-p* (and (member :avx2 features :test #'eq) t)
+          *ironclad-avx512-p* (and (member :avx512f features :test #'eq) t)))
+  *ironclad-cpu-features*)
 
-#+(and sbcl x86-64)
-(sb-ext:defglobal pclmulqdq-support-known-p nil)
-#+(and sbcl x86-64)
-(sb-ext:defglobal pclmulqdq-supported-p nil)
-#+(and sbcl x86-64)
-(declaim (inline pclmulqdq-supported-p))
-#+(and sbcl x86-64)
-(defun pclmulqdq-supported-p ()
-  (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
-  #+ironclad-assembly (if pclmulqdq-support-known-p
-                          pclmulqdq-supported-p
-                          (setf pclmulqdq-support-known-p t
-                                pclmulqdq-supported-p (pclmulqdq-support-p)))
-  #-ironclad-assembly nil)
+(defun ironclad-detect-cpu-features ()
+  "Return the list of features of the CPU we are running on, as keywords."
+  (let ((flags (ironclad-linux-cpu-flags)))
+    (if flags
+        (ironclad-features-from-flags flags)
+        (ironclad-features-from-cpuid))))
 
-;;; CPUID leaf 7 feature bits: AVX2 (EBX bit 5), BMI2 (EBX bit 8) and
-;;; ADX (EBX bit 19).
-;;;
-;;; BMI2 and ADX only add general purpose instructions, so the CPUID
-;;; bit is all that has to be checked.  AVX2 additionally needs the
-;;; operating system to preserve the YMM register state, which is
-;;; checked separately below.
+(defun ironclad-features-from-flags (flags)
+  "Return the features of FLAGS, a list of keywords as found in the
+\"flags\" line of /proc/cpuinfo."
+  (let ((features nil))
+    (dolist (feature '(:aes :pclmulqdq :sha-ni :bmi1 :bmi2 :adx
+                        :avx :avx2 :avx512f :avx512dq :avx512cd
+                        :avx512bw :avx512vl :vaes :gfni :avx512vnni))
+      (when (member feature flags :test #'eq)
+        (push feature features)))
+    (nreverse features)))
 
-#+(and sbcl x86-64)
-(defun bmi2-supported-p ()
-  "True when the CPU implements the BMI2 instruction set."
-  (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
-  #+ironclad-assembly (not (null (bmi2-support-p)))
-  #-ironclad-assembly nil)
-
-#+(and sbcl x86-64)
-(defun adx-supported-p ()
-  "True when the CPU implements the ADX instruction set."
-  (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
-  #+ironclad-assembly (not (null (adx-support-p)))
-  #-ironclad-assembly nil)
-
-;;; AVX2 detection.  The kernel only reports the AVX2 flag when the
-;;; operating system also saves the YMM register state, so the CPUID
-;;; bit alone is not enough.
-
-#+(and sbcl x86-64)
-(defun avx2-os-supported-p ()
-  "True when the OS enables the AVX2 register state."
+;;; The OS check for the YMM state, needed on the systems where the
+;;; CPUID probe is the only source of information.
+(defun ironclad-avx2-os-supported-p ()
+  "True when the OS enables the YMM register state."
   #+linux
   (let ((flags nil))
     (with-open-file (stream "/proc/cpuinfo" :if-does-not-exist nil)
@@ -156,24 +111,148 @@ Other:   disabled (no reliable cross-platform detection available)."
   #-(or linux darwin)
   nil)
 
-#+(and sbcl x86-64)
+(defun ironclad-features-from-cpuid ()
+  "Return the features of the CPU, as reported by the CPUID probes.
+This is the fallback for the systems without a usable /proc/cpuinfo.
+Note that the CPUID probes do not know whether the OS enables the
+extended processor state, so on those systems the AVX2 check has to be
+supplemented by IRONCLAD-AVX2-OS-SUPPORTED-P."
+  #+ironclad-assembly
+  (progn
+    (let ((features nil))
+      (dolist (probe '((:aes . aes-ni-support-p)
+                        (:pclmulqdq . pclmulqdq-support-p)
+                        (:sha-ni . sha-ni-support-p)
+                        (:bmi2 . bmi2-support-p)
+                        (:adx . adx-support-p)
+                        (:avx2 . avx2-cpu-support-p)))
+        (when (funcall (cdr probe))
+          (push (car probe) features)))
+      (when (and (member :avx2 features :test #'eq)
+                 (not (ironclad-avx2-os-supported-p)))
+        (setf features (remove :avx2 features :test #'eq)))
+      (nreverse features)))
+  #-ironclad-assembly
+  (progn
+    nil))
+
+;;; The features listed in the "flags" (or "Features") line of
+;;; /proc/cpuinfo, as a list of keywords.  NIL when the file cannot be
+;;; read or does not contain such a line.
+(defun ironclad-linux-cpu-flags ()
+  "Return the CPU flags reported by /proc/cpuinfo as a list of keywords,
+or NIL when the file is unavailable."
+  (let ((result nil))
+    (with-open-file (stream "/proc/cpuinfo" :if-does-not-exist nil)
+      (when stream
+        (loop for line = (read-line stream nil nil)
+              while (and line (not result))
+              when (or (search "flags" line) (search "Features" line))
+              do (setf result (ironclad-parse-cpu-flags line)))))
+    result))
+
+(defun ironclad-parse-cpu-flags (line)
+  "Split LINE into its whitespace separated words and return them as
+keywords, with underscores turned into hyphens."
+  (let ((words nil)
+        (length (length line))
+        (i 0))
+    (loop while (< i length)
+          do (if (or (char= (char line i) #\Space) (char= (char line i) #\Tab))
+                 (incf i)
+                 (let ((start i))
+                   (loop while (and (< i length)
+                                    (not (or (char= (char line i) #\Space)
+                                             (char= (char line i) #\Tab))))
+                         do (incf i))
+                   (push (intern (substitute #\- #\_ (string-upcase
+                                                      (subseq line start i)))
+                                  :keyword)
+                         words))))
+    (nreverse words)))
+
+;;; ------------------------------------------------------------------
+;;; The individual feature predicates read the cached answer, so they
+;;; are cheap enough to be called from the inner loops.
+
+(defun aes-ni-supported-p ()
+  "True when the CPU implements the AES-NI instruction set."
+  (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
+  *ironclad-aes-ni-p*)
+
+(defun pclmulqdq-supported-p ()
+  "True when the CPU implements the PCLMULQDQ instruction."
+  (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
+  *ironclad-pclmulqdq-p*)
+
+(defun sha-ni-supported-p ()
+  "True when the CPU implements the SHA-NI instruction set."
+  (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
+  *ironclad-sha-ni-p*)
+
+(defun bmi2-supported-p ()
+  "True when the CPU implements the BMI2 instruction set."
+  (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
+  *ironclad-bmi2-p*)
+
+(defun adx-supported-p ()
+  "True when the CPU implements the ADX instruction set."
+  (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
+  *ironclad-adx-p*)
+
 (defun avx2-supported-p ()
   "True when the CPU implements AVX2 and the OS enables its state."
   (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
-  #+ironclad-assembly (and (not (null (avx2-cpu-support-p)))
-                            (avx2-os-supported-p))
-  #-ironclad-assembly nil)
+  *ironclad-avx2-p*)
 
-;;; Whether the assembler of this SBCL knows an instruction.  MULX,
-;;; ADCX and ADOX are only in the assembler of an SBCL that was built
-;;; on a machine with AVX2.
+(defun avx512-supported-p ()
+  "True when the CPU implements AVX-512F and the OS enables its state."
+  (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
+  *ironclad-avx512-p*)
 
-#+(and sbcl x86-64)
+;;; ------------------------------------------------------------------
+;;; Vendor
+;;; ------------------------------------------------------------------
+
+(defvar *amd-cpu-p* nil)
+(defvar *amd-cpu-p-known-p* nil)
+
+(defun amd-cpu-p ()
+  "True when the CPU is made by AMD."
+  (if *amd-cpu-p-known-p*
+      *amd-cpu-p*
+      (setf *amd-cpu-p-known-p* t
+            *amd-cpu-p* (with-open-file (stream "/proc/cpuinfo" :if-does-not-exist nil)
+                          (when stream
+                            (loop for line = (read-line stream nil nil)
+                                  while line
+                                  when (search "vendor_id" line)
+                                  return (not (null (search "AuthenticAMD" line)))))))))
+
+;;; ------------------------------------------------------------------
+;;; Assembler support
+;;; ------------------------------------------------------------------
+
 (defun ironclad-instruction-known-p (name)
-  "True when the assembler knows the instruction NAME."
+  "True when the assembler of this SBCL knows the instruction NAME.
+NAME is a string, e.g. \"MULX\" or \"VPADDQ\"."
   (declare (type string name))
   (handler-case
-      (let* ((table (symbol-value (find-symbol "*INST-ENCODER*" "SB-ASSEM")))
-             (sym (find-symbol name "SB-ASSEM")))
-        (and table sym (gethash sym table)))
+      ;; The instruction structures live in SB-X86-64-ASM; SBCL creates
+      ;; one and registers its encoder when it defines the instruction,
+      ;; so the presence of the symbol is what we are after.  (The
+      ;; encoder table itself moved between SBCL versions, so it is not
+      ;; a reliable place to look.)
+      (not (null (find-symbol name "SB-X86-64-ASM")))
     (error () nil)))
+
+;;; ------------------------------------------------------------------
+;;; Load-time initialization
+;;;
+;;; The library is "re-instructed" for the machine it is loaded on: the
+;;; feature cache is filled in here, and every implementation that has
+;;; an assembly variant selects it from the cached answer.
+;;; ------------------------------------------------------------------
+
+(eval-when (:load-toplevel)
+  (ironclad-initialize-cpu-features))

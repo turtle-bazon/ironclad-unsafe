@@ -170,6 +170,26 @@ covering the rate at which the defect actually occurs."
           (ironclad:ironclad-error () t)))))
   t)
 
+(rtest:deftest :curve25519-point-encoding
+  ;; CURVE25519-PUBLIC-KEY goes through EC-DESTRUCTURE-POINT, which
+  ;; converts the projective point to its affine form with a field
+  ;; inversion.  That path used to call the field multiply with one
+  ;; argument too few, which the (safety 0) field layer did not
+  ;; diagnose, and the assembly multiply then dereferenced whatever
+  ;; happened to be in the argument register.  Check the public key
+  ;; against the value from the test vectors, which is computed with
+  ;; the same scalar multiplication but a different encoding path.
+  (let* ((sk (ironclad:hex-string-to-byte-array
+              "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c6a"))
+         (expected (ironclad:hex-string-to-byte-array
+                    "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a"))
+         (actual (ironclad:curve25519-public-key sk)))
+    (and (= 32 (length actual))
+         (equalp expected actual)
+         ;; Encoding the same point twice must give the same answer.
+         (equalp actual (ironclad:curve25519-public-key sk))))
+  t)
+
 (rtest:deftest :ecdsa-reject-degenerate-signatures
   (multiple-value-bind (priv pub) (ironclad:generate-key-pair :ecdsa)
     (let* ((msg (ironclad:random-data 32))
