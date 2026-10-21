@@ -272,6 +272,25 @@ reciprocal of the prime are in the tree now, and the transform that
 uses them agrees with the one it replaces over random polynomials of
 every size, in both directions.
 
+The vector merge itself is written and does not work yet, and what
+is known about it is worth writing down.  A VOP that only loads four
+words from one array and stores them to another, with an index, is
+right: the form of the address with an index and a scale, the loop
+with a countdown and a conditional jump, and the arguments as
+descriptors all work.  The merge adds to that the vector multiply of
+four thirty-two bit lanes, the vector multiply of the even lanes
+into sixty-four bit ones, the shift of the sixty-four bit lanes by a
+constant, and the unpacking of the sums and the differences, and
+that VOP assembles and then faults with a bad address, so one of
+those four is not doing what it should.  The instructions of the
+assembler are all there: the vector forms of the multiply and of the
+shift are known to it, and the shift by a constant is the same
+instruction with an immediate, which the assembler's names do not
+show.  One thing the constants need is that they fit a signed
+thirty-two bit immediate, so the reciprocal of the prime has to be
+the one of 2^43 rather than the one of 2^44, which is a little
+smaller and works the same.
+
 Two things about the shape of the merge were found after the plan
 was written, and one of them corrects it.
 
