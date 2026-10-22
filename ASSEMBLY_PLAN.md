@@ -1339,3 +1339,9 @@ more instructions than a reduction on words would be, and it is the
 one that is known to be right, for it is the one that was checked
 against the integer arithmetic for three hundred pairs of random
 values and for the corners.
+
+The field element of P-224 is four words of sixty-four bits now,
+each holding a limb of fifty-six bits, as the reference has it, and
+the functions of the field are on those words.  The field, its sums
+and its differences, and the point arithmetic on it, still agree with
+the integer arithmetic, and with the big numbers.

@@ -403,14 +403,14 @@
 (defconstant +secp224r1-limb-mask+ (1- (ash 1 56)))
 (defconstant +secp224r1-limb-bits-wide+ 128)
 
-(deftype secp224r1-felem () '(simple-array integer (4)))
+(deftype secp224r1-felem () '(simple-array (unsigned-byte 64) (4)))
 (deftype secp224r1-widefelem () '(simple-array integer (7)))
 
 (defun secp224r1-felem-from-int (n)
   "The field element N, in four limbs of fifty-six bits."
   (declare (type integer n)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((a (make-array 4 :element-type 'integer :initial-element 0)))
+  (let ((a (make-array 4 :element-type '(unsigned-byte 64) :initial-element 0)))
     (dotimes (i 4 a)
       (setf (aref a i) (logand n +secp224r1-limb-mask+))
       (setf n (ash n -56)))))
@@ -532,7 +532,7 @@ does, and the contract brings it below the prime."
 (defvar +secp224r1-p-limbs+ '#(1 0 0 4294967295 4294967295 4294967295
                               4294967295))
 
-(deftype secp224r1-fe () '(simple-array integer (4)))
+(deftype secp224r1-fe () '(simple-array (unsigned-byte 64) (4)))
 (deftype secp224r1-wide () '(simple-array integer (7)))
 
 (declaim (inline secp224r1-fe-zero secp224r1-fe-from-int
@@ -540,7 +540,7 @@ does, and the contract brings it below the prime."
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun secp224r1-fe-zero ()
-    (make-array 4 :element-type 'integer :initial-element 0)))
+    (make-array 4 :element-type '(unsigned-byte 64) :initial-element 0)))
 
 (defun secp224r1-fe-from-int (n)
   "The field element N, in four limbs of fifty-six bits."
