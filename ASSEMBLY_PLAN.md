@@ -561,3 +561,27 @@ two microseconds, because the product of two limbs of the field of
 P-224 takes two hundred nanoseconds and the bignum product takes a
 hundred and eighty: the field of P-224 is too small for the limbs to
 win, and the assembly of the reduction is what will make them win.
+
+The signature of P-224 now works on the limbs: the field of the
+curve is in limbs with the product in the assembly, the point
+arithmetic takes its temporaries from a pool of field elements and
+writes into destinations it is given, and the comb for the generator
+and the ladder are in limbs as well.  The comb and the ladder were
+checked against the bignum ones, over the affines of the points they
+give, for a dozen scalars each, and they agree.
+
+Three traps were in the way, and they are worth writing down.  A
+reduction that takes the scratch of its own as an argument has to
+clear the words that it does not write: the first three words of the
+scratch are read and never written, which is harmless when the
+scratch is fresh and zeroes and fatal when it is reused.  The sum of
+two points has a factor of two in it, in the difference of the two
+ordinates that is squared, and the version of the sum in limbs that
+was in the tree had it and the version that replaced it had not, so
+the two did not agree; the test of the point arithmetic in limbs
+compares with the bignum arithmetic and did not see it, because the
+test only sees the version that is in the tree.  And the swap of two
+triples of coordinates has to be a macro: a function that sets its
+parameters sets its own parameters and leaves the caller's variables
+alone, so the accumulator of the comb never moved and the comb
+returned the point at infinity.

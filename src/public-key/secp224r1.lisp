@@ -160,10 +160,13 @@
   ;; Secret scalars use the fixed-schedule ladder.  The generator G uses
   ;; the faster fixed-base comb.  Public-only callers can keep using
   ;; %EC-WINDOW-MULT or %EC-SHAMIR-MULT directly.
+  ;; The field of the curve is in limbs, and so is the arithmetic of
+  ;; the ladder and of the comb.
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (if (and (eq p +secp224r1-g+) (not (minusp e)))
-      (secp224r1-base-mult e)
-      (%ec-ladder-mult p e :bits +secp224r1-bits+)))
+      (secp224r1-base-mult-limbs e)
+      (secp224r1-ladder-mult-limbs (slot-value p 'x) (slot-value p 'y)
+                                   (slot-value p 'z) e)))
 
 (defmethod ec-point-on-curve-p ((p secp224r1-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
@@ -438,25 +441,31 @@
                        carry (ash s -32)))))))
   c)
 
-(defun secp224r1-fe-add (a b)
-  "The sum of the field elements A and B, reduced."
-  (declare (type secp224r1-fe a b)
+(defun secp224r1-fe-add! (r a b)
+  "R := A + B, reduced.  R may be the same array as A or B."
+  (declare (type secp224r1-fe r a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   ;; The reduction of a product takes the low half and the high half
   ;; of the value; a sum has no high half, so the words above the
   ;; seventh are zero, and the reduction folds the value back in.
   (let ((c (make-array 14 :element-type '(unsigned-byte 64) :initial-element 0))
-        (r (secp224r1-fe-zero)))
+        (q (make-array 11 :element-type '(unsigned-byte 64) :initial-element 0)))
     (dotimes (i 7)
       (setf (aref c i) (+ (aref a i) (aref b i))))
-    (secp224r1-fe-reduce r c)
+    (secp224r1-fe-reduce r c q)
     r))
-(defun secp224r1-fe-sub (a b)
-  "The difference of the field elements A and B, reduced."
+
+(defun secp224r1-fe-add (a b)
+  "The sum of the field elements A and B, reduced."
   (declare (type secp224r1-fe a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (secp224r1-fe-add! (secp224r1-fe-zero) a b))
+(defun secp224r1-fe-sub! (r a b)
+  "R := A - B, reduced.  R may be the same array as A or B."
+  (declare (type secp224r1-fe r a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((c (make-array 14 :element-type '(unsigned-byte 64) :initial-element 0))
-        (r (secp224r1-fe-zero))
+        (q (make-array 11 :element-type '(unsigned-byte 64) :initial-element 0))
         (borrow 0) (carry 0))
     ;; The borrow is subtracted: it is a whole B^7 when it is not
     ;; zero, and the borrow out is its magnitude.
@@ -472,8 +481,15 @@
         (let ((v (+ (aref c i) (aref +secp224r1-p-limbs+ i) carry)))
           (setf (aref c i) (logand v #xffffffff)
                 carry (ash v -32)))))
-    (secp224r1-fe-reduce r c)
+    (secp224r1-fe-reduce r c q)
     r))
+
+(defun secp224r1-fe-sub (a b)
+  "The difference of the field elements A and B, reduced."
+  (declare (type secp224r1-fe a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (secp224r1-fe-sub! (secp224r1-fe-zero) a b))
+
 (defvar +secp224r1-one+ (secp224r1-fe-from-int 1)
   "The constant one, in limbs.")
 (defvar +secp224r1-two+ (secp224r1-fe-from-int 2)
@@ -484,6 +500,33 @@
   "The constant four, in limbs.")
 (defvar +secp224r1-eight+ (secp224r1-fe-from-int 8)
   "The constant eight, in limbs.")
+
+(defun secp224r1-fe-copy! (r a)
+  "R := A.  R may be the same array as A."
+  (declare (type secp224r1-fe r a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (dotimes (i 7 r)
+    (setf (aref r i) (aref a i))))
+
+(defun secp224r1-fe-is-zero (a)
+  "True when the field element A is zero."
+  (declare (type secp224r1-fe a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (and (zerop (aref a 0)) (zerop (aref a 1)) (zerop (aref a 2))
+       (zerop (aref a 3)) (zerop (aref a 4)) (zerop (aref a 5))
+       (zerop (aref a 6))))
+
+(defun secp224r1-fe-mul-buf (r a b c q)
+  "R := (A * B) mod P, using the product buffer C and the scratch Q
+of the reduction.  The caller reuses both, so that a multiply
+inside a point operation allocates nothing."
+  (declare (type secp224r1-fe r a b)
+           (type (simple-array (unsigned-byte 64) (14)) c)
+           (type (simple-array (unsigned-byte 64) (11)) q)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (secp224r1-fe-mul-raw c a b)
+  (secp224r1-fe-reduce r c q)
+  r)
 
 (defun secp224r1-fe-equal (a b)
   "True when the field elements A and B are the same."
@@ -497,91 +540,284 @@
        (= (aref a 5) (aref b 5))
        (= (aref a 6) (aref b 6))))
 
+(defun secp224r1-make-scratch ()
+  "A fresh scratch pool for the point operations.
+The twenty one first slots are field elements, the twenty second is
+the product buffer of a field multiply and the twenty third is the
+scratch of its reduction, so that a point operation allocates
+nothing per multiply."
+  (let ((s (make-array 23)))
+    (dotimes (i 21 s)
+      (setf (svref s i) (secp224r1-fe-zero)))
+    (setf (svref s 21)
+          (make-array 14 :element-type '(unsigned-byte 64)
+                          :initial-element 0))
+    (setf (svref s 22)
+          (make-array 11 :element-type '(unsigned-byte 64)
+                          :initial-element 0))
+    s))
+
+(defun secp224r1-double! (dx dy dz x1 y1 z1 s)
+  "The double of the point (X1 : Y1 : Z1), into (DX : DY : DZ).
+S is the scratch pool.  The three destinations must differ from the
+three sources."
+  (declare (type secp224r1-fe dx dy dz x1 y1 z1)
+           (type simple-vector s)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((xx (svref s 0)) (yy (svref s 1)) (yyyy (svref s 2)) (zz (svref s 3))
+         (x1+yy (svref s 4)) (y1+z1 (svref s 5)) (w (svref s 6))
+         (ss (svref s 7)) (m (svref s 8)) (tw (svref s 9)) (u (svref s 10))
+         (cbuf (svref s 21)) (qbuf (svref s 22)))
+    (declare (type secp224r1-fe xx yy yyyy zz x1+yy y1+z1 w ss m tw u))
+    (secp224r1-fe-mul-buf xx x1 x1 cbuf qbuf)
+    (secp224r1-fe-mul-buf yy y1 y1 cbuf qbuf)
+    (secp224r1-fe-mul-buf yyyy yy yy cbuf qbuf)
+    (secp224r1-fe-mul-buf zz z1 z1 cbuf qbuf)
+    (secp224r1-fe-add! x1+yy x1 yy)
+    (secp224r1-fe-add! y1+z1 y1 z1)
+    ;; s = 2*((x1+yy)^2 - xx - yyyy)
+    (secp224r1-fe-mul-buf w x1+yy x1+yy cbuf qbuf)
+    (secp224r1-fe-sub! u w xx)
+    (secp224r1-fe-sub! u u yyyy)
+    (secp224r1-fe-mul-buf ss +secp224r1-two+ u cbuf qbuf)
+    ;; m = 3*(xx - zz^2), for the curve whose a is -3
+    (secp224r1-fe-mul-buf w zz zz cbuf qbuf)
+    (secp224r1-fe-sub! u xx w)
+    (secp224r1-fe-mul-buf m +secp224r1-three+ u cbuf qbuf)
+    ;; u = m^2 - 2s
+    (secp224r1-fe-mul-buf u m m cbuf qbuf)
+    (secp224r1-fe-mul-buf tw +secp224r1-two+ ss cbuf qbuf)
+    (secp224r1-fe-sub! u u tw)
+    ;; y2 = m*(s - u) - 8*yyyy
+    (secp224r1-fe-sub! tw ss u)
+    (secp224r1-fe-mul-buf w m tw cbuf qbuf)
+    (secp224r1-fe-mul-buf tw +secp224r1-eight+ yyyy cbuf qbuf)
+    (secp224r1-fe-sub! dy w tw)
+    ;; z2 = (y1+z1)^2 - yy - zz
+    (secp224r1-fe-mul-buf w y1+z1 y1+z1 cbuf qbuf)
+    (secp224r1-fe-sub! tw w yy)
+    (secp224r1-fe-sub! dz tw zz)
+    (secp224r1-fe-copy! dx u)
+    dz))
+
+(defun secp224r1-add! (dx dy dz x1 y1 z1 x2 y2 z2 s)
+  "The sum of the points (X1 : Y1 : Z1) and (X2 : Y2 : Z2), into
+(DX : DY : DZ).  S is the scratch pool.  The destinations must differ
+from the sources."
+  (declare (type secp224r1-fe dx dy dz x1 y1 z1 x2 y2 z2)
+           (type simple-vector s)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((z1z1 (svref s 0)) (z2z2 (svref s 1)) (u1 (svref s 2))
+         (u2 (svref s 3)) (s1 (svref s 4)) (s2 (svref s 5)) (h (svref s 6))
+         (i (svref s 7)) (j (svref s 8)) (r (svref s 9)) (v (svref s 10))
+         (tw (svref s 11)) (u (svref s 12)) (w (svref s 13))
+         (cbuf (svref s 21)) (qbuf (svref s 22)))
+    (declare (type secp224r1-fe z1z1 z2z2 u1 u2 s1 s2 h i j r v tw u w))
+    ;; The point at infinity is (1 : 1 : 0), and the formulas of the
+    ;; sum are not complete, so it is taken out first.
+    (when (secp224r1-fe-is-zero z1)
+      (secp224r1-fe-copy! dx x2)
+      (secp224r1-fe-copy! dy y2)
+      (secp224r1-fe-copy! dz z2)
+      (return-from secp224r1-add! dz))
+    (when (secp224r1-fe-is-zero z2)
+      (secp224r1-fe-copy! dx x1)
+      (secp224r1-fe-copy! dy y1)
+      (secp224r1-fe-copy! dz z1)
+      (return-from secp224r1-add! dz))
+    (secp224r1-fe-mul-buf z1z1 z1 z1 cbuf qbuf)
+    (secp224r1-fe-mul-buf z2z2 z2 z2 cbuf qbuf)
+    (secp224r1-fe-mul-buf u1 x1 z2z2 cbuf qbuf)
+    (secp224r1-fe-mul-buf u2 x2 z1z1 cbuf qbuf)
+    (secp224r1-fe-mul-buf tw z2 z2z2 cbuf qbuf)
+    (secp224r1-fe-mul-buf s1 y1 tw cbuf qbuf)
+    (secp224r1-fe-mul-buf tw z1 z1z1 cbuf qbuf)
+    (secp224r1-fe-mul-buf s2 y2 tw cbuf qbuf)
+    (if (secp224r1-fe-equal u1 u2)
+        (if (secp224r1-fe-equal s1 s2)
+            ;; The points are the same, so the sum is the double.
+            (secp224r1-double! dx dy dz x1 y1 z1 s)
+            ;; The points are opposites, so the sum is at infinity.
+            (progn
+              (secp224r1-fe-copy! dx +secp224r1-one+)
+              (secp224r1-fe-copy! dy +secp224r1-one+)
+              (secp224r1-fe-copy! dz (secp224r1-fe-zero))))
+        (progn
+          (secp224r1-fe-sub! h u2 u1)
+          (secp224r1-fe-mul-buf tw +secp224r1-four+ h cbuf qbuf)
+          (secp224r1-fe-mul-buf i tw h cbuf qbuf)
+          (secp224r1-fe-mul-buf j h i cbuf qbuf)
+          (secp224r1-fe-sub! tw s2 s1)
+          (secp224r1-fe-mul-buf r +secp224r1-two+ tw cbuf qbuf)
+          (secp224r1-fe-mul-buf v u1 i cbuf qbuf)
+          ;; x3 = r^2 - j - 2v
+          (secp224r1-fe-mul-buf tw r r cbuf qbuf)
+          (secp224r1-fe-sub! dx tw j)
+          (secp224r1-fe-mul-buf tw +secp224r1-two+ v cbuf qbuf)
+          (secp224r1-fe-sub! dx dx tw)
+          ;; y3 = r*(v - x3) - 2*s1*j
+          (secp224r1-fe-sub! tw v dx)
+          (secp224r1-fe-mul-buf w r tw cbuf qbuf)
+          (secp224r1-fe-mul-buf tw s1 j cbuf qbuf)
+          (secp224r1-fe-mul-buf tw +secp224r1-two+ tw cbuf qbuf)
+          (secp224r1-fe-sub! dy w tw)
+          ;; z3 = ((z1+z2)^2 - z1z1 - z2z2)*h
+          (secp224r1-fe-add! tw z1 z2)
+          (secp224r1-fe-mul-buf u tw tw cbuf qbuf)
+          (secp224r1-fe-sub! u u z1z1)
+          (secp224r1-fe-sub! u u z2z2)
+          (secp224r1-fe-mul-buf dz u h cbuf qbuf)))
+    dz))
+
 (defun secp224r1-point-double-limbs (x1 y1 z1)
   "The double of the point (X1 : Y1 : Z1), in limbs.
 The three coordinates are returned as multiple values."
   (declare (type secp224r1-fe x1 y1 z1)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let* ((xx (secp224r1-fe-mul x1 x1))
-         (yy (secp224r1-fe-mul y1 y1))
-         (yyyy (secp224r1-fe-mul yy yy))
-         (zz (secp224r1-fe-mul z1 z1))
-         (x1+yy (secp224r1-fe-add x1 yy))
-         (y1+z1 (secp224r1-fe-add y1 z1))
-         ;; s = 2*((x1+yy)^2 - xx - yyyy)
-         (w (secp224r1-fe-mul x1+yy x1+yy))
-         (w (secp224r1-fe-sub w xx))
-         (w (secp224r1-fe-sub w yyyy))
-         (s (secp224r1-fe-mul +secp224r1-two+ w))
-         ;; m = 3*(xx - zz^2), for the curve whose a is -3
-         (w (secp224r1-fe-mul zz zz))
-         (w (secp224r1-fe-sub xx w))
-         (m (secp224r1-fe-mul +secp224r1-three+ w))
-         ;; u = m^2 - 2s
-         (u (secp224r1-fe-mul m m))
-         (u (secp224r1-fe-sub u (secp224r1-fe-mul +secp224r1-two+ s)))
-         ;; y2 = m*(s - u) - 8*yyyy
-         (w (secp224r1-fe-sub s u))
-         (w (secp224r1-fe-mul m w))
-         (y2 (secp224r1-fe-sub w (secp224r1-fe-mul +secp224r1-eight+ yyyy)))
-         ;; z2 = (y1+z1)^2 - yy - zz
-         (w (secp224r1-fe-mul y1+z1 y1+z1))
-         (w (secp224r1-fe-sub w yy))
-         (z2 (secp224r1-fe-sub w zz)))
-    (values u y2 z2)))
+  (let ((s (secp224r1-make-scratch))
+        (x (secp224r1-fe-zero)) (y (secp224r1-fe-zero))
+        (z (secp224r1-fe-zero)))
+    (secp224r1-double! x y z x1 y1 z1 s)
+    (values x y z)))
 
 (defun secp224r1-point-add-limbs (x1 y1 z1 x2 y2 z2)
   "The sum of the points (X1 : Y1 : Z1) and (X2 : Y2 : Z2), in limbs.
 The three coordinates are returned as multiple values."
   (declare (type secp224r1-fe x1 y1 z1 x2 y2 z2)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let* ((z1z1 (secp224r1-fe-mul z1 z1))
-         (z2z2 (secp224r1-fe-mul z2 z2))
-         (u1 (secp224r1-fe-mul x1 z2z2))
-         (u2 (secp224r1-fe-mul x2 z1z1))
-         (s1 (secp224r1-fe-mul y1 (secp224r1-fe-mul z2 z2z2)))
-         (s2 (secp224r1-fe-mul y2 (secp224r1-fe-mul z1 z1z1))))
-    (if (secp224r1-fe-equal u1 u2)
-        (if (secp224r1-fe-equal s1 s2)
-            ;; The points are the same, so the sum is the double.
-            (secp224r1-point-double-limbs x1 y1 z1)
-            ;; The points are opposites, so the sum is at infinity.
-            (values +secp224r1-one+ +secp224r1-one+ (secp224r1-fe-zero)))
-        (let* ((h (secp224r1-fe-sub u2 u1))
-               (i (secp224r1-fe-mul (secp224r1-fe-mul +secp224r1-four+ h) h))
-               (j (secp224r1-fe-mul h i))
-               (r (secp224r1-fe-mul +secp224r1-two+
-                                 (secp224r1-fe-sub s2 s1)))
-               (v (secp224r1-fe-mul u1 i))
-               ;; x3 = r^2 - j - 2v
-               (x3 (secp224r1-fe-mul r r))
-               (x3 (secp224r1-fe-sub x3 j))
-               (x3 (secp224r1-fe-sub x3 (secp224r1-fe-mul +secp224r1-two+ v)))
-               ;; y3 = r*(v - x3) - 2*s1*j
-               (w (secp224r1-fe-sub v x3))
-               (w (secp224r1-fe-mul r w))
-               (y3 (secp224r1-fe-sub w
-                              (secp224r1-fe-mul +secp224r1-two+
-                                            (secp224r1-fe-mul s1 j))))
-               ;; z3 = ((z1+z2)^2 - z1z1 - z2z2)*h
-               (z1+z2 (secp224r1-fe-add z1 z2))
-               (w (secp224r1-fe-mul z1+z2 z1+z2))
-               (w (secp224r1-fe-sub w z1z1))
-               (w (secp224r1-fe-sub w z2z2))
-               (z3 (secp224r1-fe-mul w h)))
-          (values x3 y3 z3)))))
+  (let ((s (secp224r1-make-scratch))
+        (x (secp224r1-fe-zero)) (y (secp224r1-fe-zero))
+        (z (secp224r1-fe-zero)))
+    (secp224r1-add! x y z x1 y1 z1 x2 y2 z2 s)
+    (values x y z)))
+
+(defmacro secp224r1-swap3 (a b c x y z)
+  "Swaps the triple (A, B, C) with the triple (X, Y, Z).
+It has to be a macro: a function would set its own parameters and
+leave the caller's variables alone."
+  `(let ((ta ,a) (tb ,b) (tc ,c))
+     (setf ,a ,x)
+     (setf ,b ,y)
+     (setf ,c ,z)
+     (setf ,x ta)
+     (setf ,y tb)
+     (setf ,z tc)))
+
+(defun secp224r1-point-from-limbs (x y z)
+  "The point (X : Y : Z), in limbs, as a point of the curve."
+  (declare (type secp224r1-fe x y z)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (make-instance 'secp224r1-point
+                 :x (secp224r1-fe-to-int x)
+                 :y (secp224r1-fe-to-int y)
+                 :z (secp224r1-fe-to-int z)))
+
+(defvar +secp224r1-base-table-limbs+ nil
+  "Precomputed I * G for I in [0, 16), in limbs.")
+
+(defun secp224r1-ensure-base-table-limbs ()
+  (or +secp224r1-base-table-limbs+
+      (setf +secp224r1-base-table-limbs+
+            (let ((table (make-array 16))
+                  (s (secp224r1-make-scratch)))
+              (setf (aref table 0) (vector (secp224r1-fe-from-int 1)
+                                           (secp224r1-fe-from-int 1)
+                                           (secp224r1-fe-from-int 0)))
+              (setf (aref table 1) (vector
+                                    (secp224r1-fe-from-int
+                                     (slot-value +secp224r1-g+ 'x))
+                                    (secp224r1-fe-from-int
+                                     (slot-value +secp224r1-g+ 'y))
+                                    (secp224r1-fe-from-int 1)))
+              (loop for i from 2 below 16
+                    do (let ((nx (secp224r1-fe-zero))
+                             (ny (secp224r1-fe-zero))
+                             (nz (secp224r1-fe-zero)))
+                         (if (evenp i)
+                             (secp224r1-double! nx ny nz
+                                                (aref (aref table (ash i -1)) 0)
+                                                (aref (aref table (ash i -1)) 1)
+                                                (aref (aref table (ash i -1)) 2)
+                                                s)
+                             (secp224r1-add! nx ny nz
+                                             (aref (aref table (1- i)) 0)
+                                             (aref (aref table (1- i)) 1)
+                                             (aref (aref table (1- i)) 2)
+                                             (aref (aref table 1) 0)
+                                             (aref (aref table 1) 1)
+                                             (aref (aref table 1) 2)
+                                             s))
+                         (setf (aref table i) (vector nx ny nz))))
+              table))))
+
+(defun secp224r1-base-mult-limbs (k)
+  "The fixed-base comb for G, in the limb field."
+  (declare (type integer k)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((table (secp224r1-ensure-base-table-limbs))
+        (s (secp224r1-make-scratch))
+        (accx (secp224r1-fe-from-int 1))
+        (accy (secp224r1-fe-from-int 1))
+        (accz (secp224r1-fe-from-int 0))
+        (tx (secp224r1-fe-zero)) (ty (secp224r1-fe-zero))
+        (tz (secp224r1-fe-zero)))
+    (declare (type secp224r1-fe accx accy accz tx ty tz))
+    (loop for j from 55 downto 0 do        ; 224 bits / 4 = 56 nibbles
+      (dotimes (i 4)
+        (secp224r1-double! tx ty tz accx accy accz s)
+        (secp224r1-swap3 accx accy accz tx ty tz))
+      (let ((sel (aref table (ldb (byte 4 (* j 4)) k))))
+        (unless (secp224r1-fe-is-zero (aref sel 2))
+          (secp224r1-add! tx ty tz accx accy accz
+                          (aref sel 0) (aref sel 1) (aref sel 2) s)
+          (secp224r1-swap3 accx accy accz tx ty tz))))
+    (secp224r1-point-from-limbs accx accy accz)))
+
+(defun secp224r1-ladder-mult-limbs (x y z e)
+  "E times the point (X : Y : Z), in the limb field.
+X, Y and Z are bignums, and the result is a point."
+  (declare (type integer x y z e)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (when (minusp e)
+    (error "negative scalars are not supported by secp224r1"))
+  (if (zerop e)
+      +secp224r1-point-at-infinity+
+      (let* ((s (secp224r1-make-scratch))
+             (r0x (secp224r1-fe-from-int 1)) (r0y (secp224r1-fe-from-int 1))
+             (r0z (secp224r1-fe-from-int 0))
+             (r1x (secp224r1-fe-from-int x)) (r1y (secp224r1-fe-from-int y))
+             (r1z (secp224r1-fe-from-int z))
+             (tx (secp224r1-fe-zero)) (ty (secp224r1-fe-zero))
+             (tz (secp224r1-fe-zero))
+             (ux (secp224r1-fe-zero)) (uy (secp224r1-fe-zero))
+             (uz (secp224r1-fe-zero)))
+        (declare (type secp224r1-fe r0x r0y r0z r1x r1y r1z tx ty tz ux uy uz))
+        (loop for i from (1- +secp224r1-bits+) downto 0 do
+          (if (logbitp i e)
+              (progn
+                (secp224r1-add! tx ty tz r0x r0y r0z r1x r1y r1z s)
+                (secp224r1-double! ux uy uz r1x r1y r1z s)
+                (secp224r1-swap3 r0x r0y r0z tx ty tz)
+                (secp224r1-swap3 r1x r1y r1z ux uy uz))
+              (progn
+                (secp224r1-add! tx ty tz r0x r0y r0z r1x r1y r1z s)
+                (secp224r1-double! ux uy uz r0x r0y r0z s)
+                (secp224r1-swap3 r1x r1y r1z tx ty tz)
+                (secp224r1-swap3 r0x r0y r0z ux uy uz))))
+        (secp224r1-point-from-limbs r0x r0y r0z))))
 
 (defun secp224r1-fe-mul (a b)
   "The product of the field elements A and B, reduced."
   (declare (type secp224r1-fe a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((c (make-array 14 :element-type '(unsigned-byte 64) :initial-element 0))
+        (q (make-array 11 :element-type '(unsigned-byte 64) :initial-element 0))
         (r (secp224r1-fe-zero)))
     (secp224r1-fe-mul-raw c a b)
-    (secp224r1-fe-reduce r c)
+    (secp224r1-fe-reduce r c q)
     r))
 
-(defun secp224r1-fe-reduce (r c)
+(defun secp224r1-fe-reduce (r c q)
   "R := C mod P, the Solinas form of the P-224 prime.
 C holds fourteen limbs of 32 bits, in words of 64 bits, and R holds
 seven limbs of 32 bits.
@@ -598,9 +834,9 @@ in the four high words of the array, as four limbs, so that no big
 number is made."
   (declare (type (simple-array (unsigned-byte 64) (14)) c)
            (type secp224r1-fe r)
+           (type (simple-array (unsigned-byte 64) (11)) q)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((q (make-array 11 :element-type '(unsigned-byte 64) :initial-element 0))
-        (carry 0) (borrow 0))
+  (let ((carry 0) (borrow 0))
     ;; q := H*B^3 - H.  The limbs of H go to the fourth limb and up,
     ;; and H is then given back from the first seven words.
     (dotimes (j 7)
@@ -608,6 +844,9 @@ number is made."
         (setf (aref q (+ 3 j)) (logand v #xffffffff)
               carry (ash v -32))))
     (setf (aref q 10) carry)
+    ;; The first three words are not written by the pass above, and
+    ;; the scratch is reused, so they are cleared here.
+    (setf (aref q 0) 0 (aref q 1) 0 (aref q 2) 0)
     (dotimes (i 7)
       (let ((v (+ (- (aref q i) (aref c (+ 7 i))) borrow)))
         (setf (aref q i) (logand v #xffffffff)
