@@ -475,6 +475,9 @@ and the result is below twice the prime."
   (declare (type secp224r1-felem out)
            (type secp224r1-wide in)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-assembly)
+  (progn (secp224r1-fe-reduce-limbs-asm out in) out)
+  #-(and sbcl x86-64 ironclad-assembly)
   (let ((o (make-array 5 :element-type 'integer :initial-element 0)))
     ;; The multiples of the prime that make the differences positive.
     (setf (aref o 0) (+ (secp224r1-wide-get in 0) (ash 1 127) (ash 1 15))
@@ -517,6 +520,9 @@ IN is below twice the prime, so the prime is subtracted once at
 most."
   (declare (type secp224r1-felem out in)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-assembly)
+  (progn (secp224r1-fe-contract-limbs-asm out in) out)
+  #-(and sbcl x86-64 ironclad-assembly)
   (let* ((n (secp224r1-felem-to-int in))
          (m (if (>= n +secp224r1-p+) (- n +secp224r1-p+) n)))
     (declare (type integer n m))
@@ -544,15 +550,20 @@ The difference is made in the wide form and reduced, as the reference
 does, and the contract brings it below the prime."
   (declare (type secp224r1-felem out a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let* ((n (- (secp224r1-felem-to-int a) (secp224r1-felem-to-int b)))
-         (m (if (minusp n) (+ n +secp224r1-p+) n))
-         (w (make-array 14 :element-type '(unsigned-byte 64)
-                           :initial-element 0)))
-    (declare (type integer n m))
+  (let ((w (make-array 14 :element-type '(unsigned-byte 64)
+                          :initial-element 0)))
     (declare (dynamic-extent w))
-    (dotimes (i 4)
-      (secp224r1-wide-set w i (logand m +secp224r1-limb-mask+))
-      (setf m (ash m -56)))
+    ;; The multiple of the prime of the reference, so that every
+    ;; coefficient of the difference is positive: 2^58 + 4,
+    ;; 2^58 - 2^42 - 4 and 2^58 - 4.
+    (let ((c0 (+ (ash 1 58) 4))
+          (c1 (- (ash 1 58) (ash 1 42) 4))
+          (c2 (- (ash 1 58) 4)))
+      (declare (type (unsigned-byte 64) c0 c1 c2))
+      (secp224r1-wide-set w 0 (+ (aref a 0) c0 (- (aref b 0))))
+      (secp224r1-wide-set w 1 (+ (aref a 1) c1 (- (aref b 1))))
+      (secp224r1-wide-set w 2 (+ (aref a 2) c2 (- (aref b 2))))
+      (secp224r1-wide-set w 3 (+ (aref a 3) c2 (- (aref b 3)))))
     (secp224r1-felem-reduce out w)
     (secp224r1-felem-contract out out)))
 
@@ -951,11 +962,5 @@ below the prime."
            (type secp224r1-wide c)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (declare (ignore q))
-  #+(and sbcl x86-64 ironclad-assembly)
-  (progn
-    (secp224r1-fe-reduce-limbs-asm r c)
-    (secp224r1-felem-contract r r))
-  #-(and sbcl x86-64 ironclad-assembly)
-  (progn
-    (secp224r1-felem-reduce r c)
-    (secp224r1-felem-contract r r)))
+  (secp224r1-felem-reduce r c)
+  (secp224r1-felem-contract r r))

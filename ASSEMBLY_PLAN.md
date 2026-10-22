@@ -1455,3 +1455,18 @@ big numbers.
 The reduction works on the wide in place and leaves the four limbs of
 the field in the array of the result; the wide is scratch, and every
 caller already made it so.
+
+The contract of the reference is in the assembly too, and the sums
+and the differences of the field are made in the wide of the
+reference with the multiples of the prime of its own sums and
+differences, so that no coefficient is negative and no borrow is
+needed.  The field now multiplies in sixty nanoseconds, and adds and
+subtracts in sixty, against the bignum's quarter of a microsecond,
+and every check of the field, of its sums and differences, of the
+contract, of the reduction and of the point arithmetic still agrees
+with the integer arithmetic and with the big numbers.
+
+The lesson of the last two steps: the array of the field is four
+words, one for each limb, while the wide is fourteen, two for each
+coefficient.  They are not the same array, and the offsets of a VOP
+must be the words of the array it reads, not the pairs of the wide.

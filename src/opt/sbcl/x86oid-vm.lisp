@@ -1734,6 +1734,100 @@
           (inst and t0 t1)
           (inst mov (rw 3) t0))))))
 
+
+#+x86-64
+(define-vop (secp224r1-fe-contract-limbs-asm)
+  ;; R := IN brought below the prime, after the reference.  IN is
+  ;; below twice the prime, in four limbs of fifty-six bits, and R
+  ;; is the same array or a different one.
+  ;;
+  ;; The case of IN above 2^224 is taken first, with 2^224 congruent
+  ;; to 2^96 - 1; then the case of IN at or above the prime, which is
+  ;; the high two limbs all ones, and the low part not zero; then a
+  ;; negative first limb is carried, which can happen once; and the
+  ;; carries are propagated.
+  (:translate ironclad::secp224r1-fe-contract-limbs-asm)
+  (:policy :fast-safe)
+  (:args (r :scs (descriptor-reg))
+         (in :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg) t0 t1 t2 t3 c b x a)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (flet ((iw (k) (ea (+ data-offset (* 8 k)) in))
+             (rw (k) (ea (+ data-offset (* 8 k)) r)))
+        ;; B := IN[3] >> 56, the case of IN at or above 2^224.
+        (inst mov b (iw 3))
+        (inst shr b 56)
+        ;; C := the all-ones mask when the prime is to be subtracted,
+        ;; and zero otherwise.  The high two limbs all ones and the
+        ;; low part not zero is the case of IN at or above the prime.
+        (inst mov a #x000000ffffffffff)
+        (inst mov x (iw 1))
+        (inst or x a)
+        (inst mov t0 (iw 3))
+        (inst mov t1 (iw 2))
+        (inst and t0 t1)
+        (inst and x t0)
+        (inst add x 1)
+        (inst mov t0 (iw 1))
+        (inst and t0 a)
+        (inst add t0 (iw 0))
+        (inst sub t0 1)
+        (inst sar t0 63)
+        (inst or x t0)
+        (inst mov a #x00ffffffffffffff)
+        (inst and x a)
+        (inst sub x 1)
+        (inst sar x 63)
+        (inst mov c x)
+        ;; The four limbs of the result to be.
+        (inst mov t0 (iw 0))
+        (inst sub t0 b)
+        (inst mov t1 (iw 1))
+        (inst mov x b)
+        (inst shl x 40)
+        (inst add t1 x)
+        (inst mov t2 (iw 2))
+        (inst mov t3 (iw 3))
+        (inst and t3 a)
+        ;; Subtract the prime where the mask says so.
+        (inst mov x c)
+        (inst not x)
+        (inst and t3 x)
+        (inst and t2 x)
+        (inst mov a #x000000ffffffffff)
+        (inst or x a)
+        (inst and t1 x)
+        (inst mov x c)
+        (inst and x 1)
+        (inst sub t0 x)
+        ;; A negative first limb is carried, which can happen once.
+        (inst mov x t0)
+        (inst sar x 63)
+        (inst mov a #x0100000000000000)
+        (inst and a x)
+        (inst add t0 a)
+        (inst and x 1)
+        (inst sub t1 x)
+        ;; Carry one to two to three.
+        (inst mov x t1)
+        (inst shr x 56)
+        (inst add t2 x)
+        (inst mov a #x00ffffffffffffff)
+        (inst and t1 a)
+        (inst mov x t2)
+        (inst shr x 56)
+        (inst add t3 x)
+        (inst and t2 a)
+        ;; Store.
+        (inst mov (rw 0) t0)
+        (inst mov (rw 1) t1)
+        (inst mov (rw 2) t2)
+        (inst mov (rw 3) t3)))))
+
 #+x86-64
 (define-vop (ed25519-mul-raw-asm)
   (:translate ironclad::ed25519-fe-mul-raw-asm)
