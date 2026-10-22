@@ -1104,3 +1104,44 @@ by seventy-one bits, less the words of the limbs.
 The contract at the end is a comparison and a subtraction, and the
 comparison is of the value with the prime, and the value is below
 twice the prime, so one subtraction is enough.
+
+The assembly of the field of P-224, in the words it is to have.
+
+The element is four words of sixty-four bits, each holding a limb of
+fifty-six bits.  The product is eight words, each holding a limb of
+fifty-six bits, and the limbs are the columns of the product with the
+carries carried into the next column, so that every limb of the
+product is below 2^56.  The columns are seven, and the carry of a
+column is the high half of the column, shifted up by fifty-six bits,
+plus the part of the low half that is above fifty-six bits, and the
+low halves of a column are summed in one word and the high halves in
+another, as the goldilocks does: the low halves of a column of four
+products sum to under 2^58 and the high halves to under 2^50, so both
+fit in a word, and the limb of the product is the low half of the low
+sum with the rest of the column carried on.  The product of two
+elements is therefore eight words, and it is the product of the
+reference with the carries carried, which is the same number.
+
+The reduction of that product is the one of the reference, and it is
+written on the eight limbs of fifty-six bits.  The value is the low
+four limbs plus the high four limbs times B^7, and B^7 is congruent
+to B^3 less one, so the value is congruent to the low four limbs
+plus the high four limbs times B^3, less the high four limbs.  The
+multiples of the prime that are added first make every difference
+positive: the prime is B^7 - B^3 + 1, and a multiple of it large
+enough is B^7, whose limbs of fifty-six bits are one, zero, zero and
+one, and the multiple that the reference uses is that one with the
+words of ones in it, so that the difference of the high four limbs
+from the low four limbs is made without a borrow.
+
+The four limbs of the multiple of the prime that the reference adds
+are the ones of the wide form: the first is 2^64 + 8, the second is
+2^64 - 2^48 - 8, the third is 2^64 - 8 and the fourth is 2^64 - 8,
+and each of them is added to the limb of the same place, and the
+differences are then without a borrow, and the reduction is the
+shifting of the high limbs and the carrying that the reference does.
+
+The sums and the differences are made in the same eight words, the
+sum of two elements is the eight limbs with the carries of the sum,
+and the difference of two elements is the eight limbs with the
+multiple of the prime added first, and both are reduced the same way.
