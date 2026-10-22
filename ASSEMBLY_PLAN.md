@@ -610,3 +610,25 @@ sixty-four bits in the bignums, and which the limbs of sixty-four
 bits will halve the time of, and of the field of P-384, which is
 six words of sixty-four bits, and which the limbs of sixty-four bits
 will make four times faster.
+
+The point arithmetic of P-521 makes its products without reducing
+them, and the products of three values, which the sum of two points
+needs for the ordinates, are of a thousand five hundred and sixty
+bits; they are reduced once, at the end, and the reduction of a
+number of that size is a fold of several rounds.  Reducing every
+product as it is made keeps the values inside the field, and the
+sum and the difference of two reduced values need one subtraction
+and one addition at most, which the fold does not.
+
+The measurements of the field of P-521, on an idle machine, are these:
+the fast multiply is two hundred nanoseconds and the generic one six
+hundred, the doubling of a point is two microseconds and the sum of
+two points six, and the inverse of a number, which is the Fermat
+exponentiation, is two hundred and forty microseconds; the signature
+is two and a half milliseconds and the verification six and a half,
+the verification being a joint multiplication of two scalars.
+
+The field of P-521 is nine words of sixty-four bits in the bignums,
+and the limbs of sixty-four bits with the product and the reduction
+in the assembly are what will halve the time of the multiply of
+that field.
