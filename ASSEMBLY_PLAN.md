@@ -919,3 +919,26 @@ eleven words that the reduction leaves, and the Lisp reduction is
 the one that is read when the assembly is not wired in, so the two
 are compared by calling each of them on the same product and
 looking at the eleven words.
+
+The fold adds the excess at the fourth limb and up and takes it
+back at the bottom, so the net of the two passes on the words one
+and two is nothing, and the net on the word six is the fourth word
+of the excess, which is zero.  The two scratches differ by two in
+the words one, two, three and six, and the words one and two are
+left by the fold as they were, so the difference is not in the fold
+but in the phases before it, and the excess, which is the four
+words above the value, is the same in the two.
+
+So the two phases that make the value are to be compared the same
+way as the fold: the excess was compared by a probe in the Lisp
+reduction and by stopping the assembly, and the phases are to be
+compared by a probe after the subtraction of the high half and
+after the addition of the low half, with the assembly stopped at
+the same two places.
+
+The two words that carry the difference, the first and the second,
+are the words where the subtraction of the high half and the
+addition of the low half carry their borrows and their carries, so
+the difference is a borrow or a carry that is one too large or one
+too small in one of the two phases, and the words three and six
+carry it further.
