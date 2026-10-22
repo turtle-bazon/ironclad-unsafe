@@ -1230,4 +1230,17 @@ there is the one of the thirty-two bit limbs:
 The name of the routine has to be one of its own, for the one that
 translates the same symbol is the Comba of the thirty-two bit limbs,
 and the definition of the function has to be made before the file of
-the routines is read.
+the routines is read, which is the file of the definitions of the
+routines itself.
+
+With the name changed, the Comba compiles, and the file of the
+curve does not: the error is in the file of the curve and not in the
+file of the routines, and it is the call of the routine of the
+assembly that is at fault, for the file of the curve is in the package
+of the curve and the definition of the routine of the assembly is
+made in the package of the library.  The names of the other routines
+of the assembly are the same in the two packages, so the one of this
+routine has to be the same as well, and the definition of the
+function is to be made with the name of the package of the library and
+the call in the file of the curve is to be made with the name of the
+package of the curve.
