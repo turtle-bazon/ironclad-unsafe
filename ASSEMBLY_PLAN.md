@@ -752,3 +752,30 @@ in which the coefficients of the product are the columns of the
 product, which are not reduced, and the value that comes out of it
 is the product modulo the prime, for three hundred pairs of random
 values and for the corners.
+
+The field of P-224, in limbs, is the next thing, and it is the
+largest gap of the table.  The reference has it in four limbs of
+fifty-six bits, and the product of two field elements is seven
+coefficients of a hundred and twenty-eight bits, which are the
+columns of the product and are not reduced.  The reduction of those
+coefficients is the one of a Solinas prime, and it is what the
+reference does, and it was checked in a program of its own.
+
+In sixty-four bits, the coefficients have to be reduced before the
+reduction, for the multiples of the prime that the reference adds
+first are of a hundred and twenty-seven bits and cannot be held in a
+word.  The reduction of a prime of the shape 2^n - 2^m + 1 is then
+this: the part of the value that is above 2^n is congruent to itself
+shifted up by m bits, less itself, and the part of the value that is
+above 2^n again is folded in the same way, and the value is below the
+prime after two folds.  The shifts by m bits are between the limbs
+when m is a multiple of the size of a limb, and the prime of P-224
+has m of ninety-six bits, so the limbs are of thirty-two bits and
+there are seven of them, and the shift is three limbs.
+
+The Comba of seven limbs of thirty-two bits has forty-nine products
+and the bignums of the field have four words, so the product of the
+bignums is sixteen wide products and the product of the limbs is
+forty-nine narrow ones, and the limb field can only win when the
+reduction and the sums and the differences are in the assembly, which
+is what the P-256 has now.
