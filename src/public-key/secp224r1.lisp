@@ -157,21 +157,17 @@
     acc))
 
 (defmethod ec-scalar-mult ((p secp224r1-point) e)
-  ;; Secret scalars use the fixed-schedule ladder.  The generator G uses
-  ;; the faster fixed-base comb.  Public-only callers can keep using
-  ;; %EC-WINDOW-MULT or %EC-SHAMIR-MULT directly.
-  ;;
   ;; The field of the curve is in limbs, and the comb and the ladder
-  ;; are in limbs as well, in the four limbs of fifty-six bits that
-  ;; the reference uses, but the product and the reduction of that
-  ;; field are still in Lisp, where they are twenty-six times slower
-  ;; than the product of the two bignums, and the signature is made
-  ;; with the bignums until the assembly of the field is there.  then the bignums are the
-  ;; faster of the two, and the signature uses them.
+  ;; are in limbs as well, with the product and the reduction in the
+  ;; assembly of the reference.
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (if (and (eq p +secp224r1-g+) (not (minusp e)))
-      (secp224r1-base-mult e)
-      (%ec-ladder-mult p e :bits +secp224r1-bits+)))
+      (secp224r1-base-mult-limbs e)
+      (let ((px (slot-value p 'x))
+            (py (slot-value p 'y))
+            (pz (slot-value p 'z)))
+        (declare (type integer px py pz))
+        (secp224r1-ladder-mult-limbs px py pz e))))
 
 (defmethod ec-point-on-curve-p ((p secp224r1-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))

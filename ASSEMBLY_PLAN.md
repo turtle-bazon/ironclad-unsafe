@@ -1476,3 +1476,8 @@ product reduction of the reference are not well-formed for it when
 the coefficients are large; the addition is done by the integer
 arithmetic as before, which is correct and cheap enough.  The field
 tests pass again.
+
+P-224 now uses the limb field for the base comb and for the ladder,
+with the assembly Comba, reduction and contract; the sums of the
+field are in the integer arithmetic where it is correct.  The full
+test suite passes.
