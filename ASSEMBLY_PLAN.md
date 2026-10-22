@@ -485,3 +485,26 @@ The fold has a trap in it: the second step must take away the prime,
 to zero.  Taking away 2^521 leaves a value that is one too large,
 and the check of the reduction against the generic one finds it at
 once.
+
+The Karatsuba product of the falcon keeps its coefficients in vectors
+of general integers, and a general vector of integers boxes every
+element, so every product of the recursion makes a box for every
+coefficient it writes.  With vectors of sixty-four bit integers
+instead, the product of five hundred and twelve coefficients went
+from five hundred and seventy microseconds to two hundred and
+seventy, and the norm of the field from three hundred and sixty-eight
+to a hundred and eighty.
+
+The change was reverted, because the key generation hung with it.
+The product itself is right: it was checked against a plain
+convolution over the sizes four, eight, sixteen, sixty-four and five
+hundred and twelve, and the norm of the field and the reduction of
+Babai both work.  So the fault is in one of the callers, and the
+next attempt should look at the vectors that the solution of the
+NTRU equation hands to the products, which are the lift of the norm
+and the Galois conjugate of the polynomial: the lift and the
+conjugate now make vectors of sixty-four bit integers, and their
+values are the ones of the equation, which are of the order of the
+square of the prime, and that is well inside the range, but the
+values of the coefficients of the equation are not checked
+anywhere.
