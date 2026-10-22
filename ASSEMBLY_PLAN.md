@@ -1028,3 +1028,22 @@ subtractions are of numbers that are known to be positive, so that
 the reduction can be written without a borrow and can be written in
 the assembly without a borrow either, which is what the assembly of
 the reference does.
+
+The sums and the differences of the field of P-224 are written after
+the reference as well: they are made in the wide form and reduced,
+like the product is, and the contract brings them below the prime.
+They agree with the integer arithmetic, for two hundred pairs of
+random values.
+
+What the field of the reference gives that the field of the tree
+does not have is that every subtraction in it is of numbers that are
+known to be positive, for the multiples of the prime are added
+first.  That is what the reduction in the assembly needs and what
+the reduction that was in the tree did not have, and it is the
+reason that the reduction in the assembly could be written at all.
+
+The field of the reference is in four limbs of fifty-six bits and
+the point arithmetic of the tree is in seven limbs of thirty-two
+bits, so the point arithmetic is to be moved to the new field
+before the two can be compared, and the comparison is the next
+thing to do.

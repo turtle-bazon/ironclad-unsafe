@@ -499,6 +499,34 @@ most."
       (setf (aref out i) (logand m +secp224r1-limb-mask+))
       (setf m (ash m -56)))))
 
+(defun secp224r1-felem-add (out a b)
+  "OUT := (A + B) mod P, after the reference.
+The sum is made in the wide form and reduced, as the reference does,
+and the contract brings it below the prime."
+  (declare (type secp224r1-felem out a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((w (make-array 7 :element-type 'integer :initial-element 0)))
+    (dotimes (i 4)
+      (setf (aref w i) (+ (aref a i) (aref b i))))
+    (secp224r1-felem-reduce out w)
+    (secp224r1-felem-contract out out)))
+
+(defun secp224r1-felem-sub (out a b)
+  "OUT := (A - B) mod P, after the reference.
+The difference is made in the wide form and reduced, as the reference
+does, and the contract brings it below the prime."
+  (declare (type secp224r1-felem out a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((n (- (secp224r1-felem-to-int a) (secp224r1-felem-to-int b)))
+         (m (if (minusp n) (+ n +secp224r1-p+) n))
+         (w (make-array 7 :element-type 'integer :initial-element 0)))
+    (declare (type integer n m))
+    (dotimes (i 4)
+      (setf (aref w i) (logand m +secp224r1-limb-mask+))
+      (setf m (ash m -56)))
+    (secp224r1-felem-reduce out w)
+    (secp224r1-felem-contract out out)))
+
 ;; The prime in limbs.  This is a DEFVAR and not a DEFCONSTANT: the
 ;; value is a vector, and a DEFCONSTANT whose value is a vector makes
 ;; every recompilation of this file fail with DEFCONSTANT-UNEQL.
