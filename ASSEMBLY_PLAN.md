@@ -796,3 +796,31 @@ still in Lisp.  The signature of P-224 is still made with the
 numbers, for the limb field cannot be faster than they are until
 the reduction is in the assembly too, and that is the last piece of
 the field of P-224 in limbs.
+
+The reduction of the field of P-224 was written in the assembly as
+well, and it is not exact yet, so it is not in the tree.  The
+algorithm is the one of the Lisp reduction, which is checked against
+the integer arithmetic: the limbs of the high half of the product go
+up by three limbs, the high half is given back from the bottom, the
+low half is added, and the excess, which is what is left above the
+seventh limb, is folded in until there is none, for the excess can be
+one and folding it in can give an excess of one again.
+
+Two conventions of borrows are in it, and they are not the same.  In
+the subtraction of the high half the borrow is a count, zero or one,
+and it is subtracted.  In the fold it is signed, minus one or zero,
+and it is added, for the value of the difference is the difference
+less one.  The excess that the fold leaves is the carry of the
+addition and the borrow of the subtraction, and it is two too large
+in the assembly, which is worth a tenth of the value of the excess:
+the result is too large by 2^97 less two.  The borrow of the
+subtraction of the prime is signed in the Lisp reduction, but the
+prime is below the value there, so that borrow never happens and the
+convention does not matter.
+
+The borrow of a subtraction in the assembly has to be counted, and
+the count is made by shifting the difference up by a limb and taking
+the low bit of it, for the shift of a word of ones gives minus one
+and the low bit of that is one.  A move into memory with an
+immediate has no size that the assembler can tell, so the words that
+are cleared are cleared with a register.
