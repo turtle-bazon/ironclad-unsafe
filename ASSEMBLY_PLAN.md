@@ -466,3 +466,22 @@ of their places and gives a number that is wrong and looks plausible.
 And the value of the prime in the file is right while the value of
 the limbs of the prime in the same file was, for a while, read as
 something else; the two have to be compared, and they are equal.
+
+The field of P-521 was bignums, and the prime is a Mersenne prime,
+2^521 - 1, so the reduction of a value is a fold: the low five
+hundred and twenty-one bits of the value, plus the high ones, since
+2^521 is congruent to one.  The sum of the two is below 2^522, so one
+more fold finishes it, and the division that the generic arithmetic
+does is not needed.  The fold is done by a function that takes a
+value of any size and folds it until it is small, so that it can be
+used on the sums and the differences of the point arithmetic as well
+as on the products, and the inverse, which was an exponentiation with
+the generic modular arithmetic, is now an exponentiation with the
+fast multiplication.  The signature of P-521 went from four and six
+tenths of a millisecond to two and a half.
+
+The fold has a trap in it: the second step must take away the prime,
+2^521 - 1, and not 2^521, because 2^521 is congruent to one and not
+to zero.  Taking away 2^521 leaves a value that is one too large,
+and the check of the reduction against the generic one finds it at
+once.
