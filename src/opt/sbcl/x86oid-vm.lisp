@@ -1612,6 +1612,128 @@
           (inst mov (c64 (1+ (* 2 k))) hi))))))
 
 
+
+#+x86-64
+(define-vop (secp224r1-fe-reduce-limbs-asm)
+  ;; R := C mod P, after the reference, where C is the fourteen words
+  ;; of the seven wide coefficients, two words each.  R is four words,
+  ;; and it is below twice the prime.  The wide C is destroyed.
+  ;;
+  ;; The reduction is the one of the reference, step for step: a
+  ;; multiple of the prime is added first, so that every subtraction
+  ;; is of a smaller number from a larger one, and no borrow is ever
+  ;; needed; the coefficients four, five and six are then folded down
+  ;; with the shifts of sixteen and forty bits; and the carries are
+  ;; propagated.  Every value is below 2^128, so a pair of words is
+  ;; its whole value.
+  (:translate ironclad::secp224r1-fe-reduce-limbs-asm)
+  (:policy :fast-safe)
+  (:args (r :scs (descriptor-reg))
+         (c :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg) t0 t1 t2 t3)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (flet ((cw (k) (ea (+ data-offset (* 8 k)) c))
+             (rw (k) (ea (+ data-offset (* 8 k)) r)))
+        (labels ((add-const (k clo chi)
+                   ;; C[2k..2k+1] += CHI:C LO
+                   (inst mov t0 clo)
+                   (inst add (cw (* 2 k)) t0)
+                   (inst mov t0 chi)
+                   (inst adc (cw (1+ (* 2 k))) t0))
+                 (add128 (dst src)
+                   (inst mov t0 (cw (* 2 dst)))
+                   (inst mov t1 (cw (1+ (* 2 dst))))
+                   (inst mov t2 (cw (* 2 src)))
+                   (inst mov t3 (cw (1+ (* 2 src))))
+                   (inst add t0 t2)
+                   (inst adc t1 t3)
+                   (inst mov (cw (* 2 dst)) t0)
+                   (inst mov (cw (1+ (* 2 dst))) t1))
+                 (sub128 (dst src)
+                   (inst mov t0 (cw (* 2 dst)))
+                   (inst mov t1 (cw (1+ (* 2 dst))))
+                   (inst mov t2 (cw (* 2 src)))
+                   (inst mov t3 (cw (1+ (* 2 src))))
+                   (inst sub t0 t2)
+                   (inst sbb t1 t3)
+                   (inst mov (cw (* 2 dst)) t0)
+                   (inst mov (cw (1+ (* 2 dst))) t1))
+                 (add-shifted (dst src shift)
+                   ;; C[2dst..] += (C[2src..] >> SHIFT)
+                   (inst mov t0 (cw (* 2 src)))
+                   (inst mov t1 (cw (1+ (* 2 src))))
+                   (inst shrd t0 t1 shift)
+                   (inst shr t1 shift)
+                   (inst add t0 (cw (* 2 dst)))
+                   (inst adc t1 (cw (1+ (* 2 dst))))
+                   (inst mov (cw (* 2 dst)) t0)
+                   (inst mov (cw (1+ (* 2 dst))) t1))
+                 (add-low16 (dst src)
+                   ;; C[2dst..] += (C[2src] & 0xffff) << 40
+                   (inst mov t0 (cw (* 2 src)))
+                   (inst and t0 #xffff)
+                   (inst shl t0 40)
+                   (inst mov t1 0)
+                   (inst add (cw (* 2 dst)) t0)
+                   (inst adc (cw (1+ (* 2 dst))) t1))
+                 (mask (k)
+                   ;; C[2k..] := C[2k] & mask
+                   (inst mov t1 #x00ffffffffffffff)
+                   (inst mov t0 (cw (* 2 k)))
+                   (inst and t0 t1)
+                   (inst mov (cw (* 2 k)) t0)
+                   (inst mov t1 0)
+                   (inst mov (cw (1+ (* 2 k))) t1))
+                 (out-masked (j k)
+                   ;; R[j] := C[2k] & mask, as a limb of the field.
+                   (inst mov t1 #x00ffffffffffffff)
+                   (inst mov t0 (cw (* 2 k)))
+                   (inst and t0 t1)
+                   (inst mov (rw j) t0)))
+          ;; The multiple of the prime, so that the differences are all
+          ;; positive: 2^127 + 2^15, 2^127 - 2^71 - 2^55, 2^127 - 2^71.
+          (add-const 0 #x8000 #x8000000000000000)
+          (add-const 1 #xff80000000000000 #x7fffffffffffff7f)
+          (add-const 2 #x0000000000000000 #x7fffffffffffff80)
+          ;; Eliminate the coefficients four, five and six.
+          (add-shifted 4 6 16)
+          (add-low16 3 6)
+          (sub128 2 6)
+          (add-shifted 3 5 16)
+          (add-low16 2 5)
+          (sub128 1 5)
+          (add-shifted 2 4 16)
+          (add-low16 1 4)
+          (sub128 0 4)
+          ;; Carry two to three to four.
+          (add-shifted 3 2 56)
+          (mask 2)
+          (inst mov t0 (cw 6))
+          (inst mov t1 (cw 7))
+          (inst shrd t0 t1 56)
+          (inst shr t1 56)
+          (inst mov (cw 8) t0)
+          (inst mov (cw 9) t1)
+          ;; Eliminate the excess.
+          (add-shifted 2 4 16)
+          (add-low16 1 4)
+          (sub128 0 4)
+          ;; Carry zero to one to two to three.
+          (add-shifted 1 0 56)
+          (out-masked 0 0)
+          (add-shifted 2 1 56)
+          (out-masked 1 1)
+          (add-shifted 3 2 56)
+          (out-masked 2 2)
+          (inst mov t1 #x00ffffffffffffff)
+          (inst mov t0 (cw 6))
+          (inst and t0 t1)
+          (inst mov (rw 3) t0))))))
+
 #+x86-64
 (define-vop (ed25519-mul-raw-asm)
   (:translate ironclad::ed25519-fe-mul-raw-asm)

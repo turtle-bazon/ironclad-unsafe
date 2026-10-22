@@ -1442,3 +1442,16 @@ differences of the field make the wide in that shape.
 The Comba of the old thirty-two bit limbs and the sums and the
 differences of that field are taken away, for the field is the one of
 the reference now and nothing called them.
+
+The reduction of the reference is in the assembly now, on the fourteen
+words of the wide: the multiple of the prime is added first, the
+coefficients four, five and six are folded down with the shifts of
+sixteen and forty bits, and the carries are propagated.  It agrees
+with the reduction of the Lisp, coefficient for coefficient, on three
+hundred products, and the field, its sums and its differences and the
+point arithmetic still agree with the integer arithmetic and with the
+big numbers.
+
+The reduction works on the wide in place and leaves the four limbs of
+the field in the array of the result; the wide is scratch, and every
+caller already made it so.

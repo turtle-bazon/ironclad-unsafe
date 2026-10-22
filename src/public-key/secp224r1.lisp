@@ -951,5 +951,11 @@ below the prime."
            (type secp224r1-wide c)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (declare (ignore q))
-  (secp224r1-felem-reduce r c)
-  (secp224r1-felem-contract r r))
+  #+(and sbcl x86-64 ironclad-assembly)
+  (progn
+    (secp224r1-fe-reduce-limbs-asm r c)
+    (secp224r1-felem-contract r r))
+  #-(and sbcl x86-64 ironclad-assembly)
+  (progn
+    (secp224r1-felem-reduce r c)
+    (secp224r1-felem-contract r r)))
