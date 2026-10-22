@@ -1244,3 +1244,37 @@ routine has to be the same as well, and the definition of the
 function is to be made with the name of the package of the library and
 the call in the file of the curve is to be made with the name of the
 package of the curve.
+
+The feature of the assembly is in the file of the packages, and it is
+pushed there, so the assembly of the tree is used and not only
+written.
+
+The Comba of P-224, with the name changed, was put in the file of
+the routines and the definition of the function in the file of the
+definitions of the routines, and the file of the curve then did not
+compile.  The definition of the function was then taken out of the
+way, by making the condition of the reader conditional of the
+assembly false, and the file of the curve compiled, but the product
+was zero: which says that the body of the function was not what it
+was meant to be, and that the reader conditional of the assembly in
+that function reads differently from the ones in the other files.
+
+The reader conditional of the other files is of the form
+
+    #+(and sbcl x86-64 ironclad-assembly)
+    (the call of the assembly)
+    #-(and sbcl x86-64 ironclad-assembly)
+    (the call of the Lisp)
+
+and the function of the Comba was written with the declaration of
+the type of the buffer of the product between the two, and the
+declaration is a form of the body, so the two reader conditionals
+are two forms of the body, and the body is the declaration and the
+one of them that is read.  That is the same as in the other files,
+and yet the product was zero.
+
+So the function is to be written with the reader conditional of the
+assembly first and the declaration after it, or with the two reader
+conditionals inside a progn, and the result is to be looked at before
+the Comba is used, for a product of zero is the sign of a body that
+was not read.
