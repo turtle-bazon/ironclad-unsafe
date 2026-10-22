@@ -1310,3 +1310,32 @@ size, and it is right, and it is slow, and it is not what the
 assembly wants.  The one the assembly wants is the same fold on
 eight words, with the borrows counted and not signed, for the
 assembly can count them.
+
+The reduction of the field of P-224, in the form the assembly wants,
+is the reduction of the reference and nothing else, and it is on the
+seven wide coefficients of the reference, which are two words each:
+the coefficients are the columns of the product without the carries,
+and the Comba of the assembly is to make them so, which is the Comba
+of the goldilocks with the limbs not masked and the two words of each
+coefficient written out.
+
+The reason the reduction of the reference is on the wide form and
+not on eight limbs is that the multiples of the prime that it adds
+first are of a hundred and twenty-seven bits, and they make the
+differences of the high half of the product positive, and the high
+half of the product can be larger than the prime, so a smaller
+multiple does not do: with the limbs of fifty-six bits and the
+product of two elements, the high half is under 2^224 and the prime
+is 2^224 - 2^96 + 1, so the high half can be larger than the prime
+by as much as 2^96, and the multiple has to be twice the prime, and
+then the excess that is left is large and the fold of it is not the
+fold of a small excess.
+
+So the values of the reduction are of a hundred and twenty-eight
+bits and are in two words each, and the operations on them are the
+shift of sixteen bits and of forty bits, the addition and the
+subtraction, and the constants are in two words each as well.  It is
+more instructions than a reduction on words would be, and it is the
+one that is known to be right, for it is the one that was checked
+against the integer arithmetic for three hundred pairs of random
+values and for the corners.
