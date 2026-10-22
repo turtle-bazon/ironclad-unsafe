@@ -845,3 +845,25 @@ the subtraction of the high half is a count and is subtracted.  The
 excess that the fold leaves is the carry of the addition of the
 excess and the borrow of the subtraction of it, and the count of the
 two is what the next fold works with.
+
+The scratch of the assembly and the scratch of the Lisp reduction
+were compared, word by word, on the same product, and the four words
+of the excess agree and the seven words of the value do not: the
+assembly is two too small in the first word and two too large in the
+fourth.  So the excess, which is what the fold works with, is right,
+and the fold itself is wrong: the first pass of the fold, which
+adds the excess at the fourth limb and up, and the second, which
+gives it back at the bottom, do not between them give what the Lisp
+gives.
+
+The two are to be compared the same way again, with the first and
+the second pass of the fold separated: the first pass writes the
+words three to six and the second writes the words zero to six, so
+the words zero to two are the same after both and the words three
+to six are not, and the two that differ are the words that the
+first pass writes and the second one reads.
+
+The comparison is made by calling the assembly directly, for the
+Lisp reduction is the one that is read when the assembly is not
+wired in, and the scratch of each is the eleven words that the
+reduction leaves.
