@@ -667,3 +667,42 @@ field of P-521 are in the bignums, and the product of two of them is
 in the bignum code of SBCL, which allocates; the assembly of the
 Comba product and of the Mersenne fold will keep the field in an
 array of nine words and will not allocate.
+
+What is left of the field of P-521, when it is in limbs, is the
+alignment.  The prime of P-521 is 2^521 - 1, and the fold of a product
+adds the high half of it to the low half, shifted up by 521 bits, and
+521 is a prime number, so no size of limb divides it: the shift is
+always between the limbs.  The sizes that keep the product of the
+field small enough for the columns of the Comba to fit in a word are
+nine limbs of fifty-eight bits, which leave fifty-seven bits of shift
+inside a limb, and ten limbs of fifty-six bits, which leave
+seventeen.  The first has eighty-one products and the second a
+hundred, and the first is the one to take.
+
+The additions and the subtractions of the field are in Lisp in the
+curves whose field is in limbs, and they cost as much as the
+multiplications: the point arithmetic of P-256 does ten of each for a
+doubling, and the addition of two eight-limb field elements in Lisp
+costs the better part of three hundred nanoseconds, while the product
+of two of them, which is in the assembly, costs about thirty.  The
+sum and the difference are therefore what is left to move into the
+assembly, and they are what the curves whose field is in limbs are
+waiting for.
+
+The conditional subtraction of the prime, which every sum and every
+difference needs, wants eight words of scratch, which the field
+element of the goldilocks has, since it is sixteen words long, and
+which the field element of P-256 does not have, since it is eight
+words long.  The field element of P-256 has to grow to sixteen words
+for that, and the change is small, because the functions of the field
+touch only the low eight words: the type, the zero, the copy and the
+two new ones.
+
+The sum is computed in the low eight words, with the carry out of the
+addition, and the difference between that sum and the prime is
+computed in the eight words of scratch, with the borrow out of the
+subtraction.  A borrow means that the sum is below the prime, and
+the sum is the answer; without a borrow the scratch is the answer,
+and it is copied over the sum.  The difference of two field elements
+is computed the same way, and the prime is added to it when the
+borrow says that it is negative.
