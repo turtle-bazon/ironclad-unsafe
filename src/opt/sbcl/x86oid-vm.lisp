@@ -1561,170 +1561,55 @@
           (inst or carry tmp))))))
 
 
+
+
 #+x86-64
-#+x86-64
-(define-vop (secp224r1-fe-add-asm)
-  ;; R := (A + B) mod P, for reduced residues in seven 32-bit limbs.
+(define-vop (secp224r1-fe-mul-limbs-asm)
+  ;; C := A * B, as the seven wide coefficients of the reference: the
+  ;; columns of the product, without the carries carried.  Each
+  ;; coefficient is two words of sixty-four bits, the low word first,
+  ;; and its value is the low word plus the high word shifted up by
+  ;; sixty-four bits.
   ;;
-  ;; The sum of two reduced values is below twice the prime, so the
-  ;; prime is subtracted from the sum, and the sum is the answer when
-  ;; the subtraction borrowed.  The prime is then added back to the
-  ;; difference, unless the sum was above 2^224, which the carry of
-  ;; the addition says, for then the difference is the answer already.
-  (:translate ironclad::secp224r1-fe-add-asm)
-  (:policy :fast-safe)
-  (:args (r :scs (descriptor-reg))
-         (a :scs (descriptor-reg))
-         (b :scs (descriptor-reg)))
-  (:arg-types simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-32)
-  (:temporary (:sc unsigned-reg) tmp tmp2 borrow carry full one)
-  (:generator 1000
-    (let ((data-offset (- (* n-word-bytes vector-data-offset)
-                           other-pointer-lowtag)))
-      (flet ((r32 (i) (dword-ea (+ data-offset (* 4 i)) r))
-             (a32 (i) (dword-ea (+ data-offset (* 4 i)) a))
-             (b32 (i) (dword-ea (+ data-offset (* 4 i)) b)))
-        (let ((done (gen-label)))
-          ;; The limbs of the prime, little endian: the first is one,
-          ;; the second and the third are zero, and the four last are
-          ;; all ones.
-          (inst mov full -1)
-          (inst shr full 32)
-          (inst mov one 1)
-          ;; The sum of the two values.
-          (inst mov carry 0)
-          (dotimes (i 7)
-            (dword-inst mov tmp (a32 i))
-            (dword-inst mov tmp2 (b32 i))
-            (inst add tmp tmp2)
-            (inst add tmp carry)
-            (dword-inst mov (r32 i) tmp)
-            (inst mov carry tmp)
-            (inst shr carry 32))
-          ;; The difference of the sum and the prime.
-          (inst mov borrow 0)
-          (dotimes (i 7)
-            (dword-inst mov tmp (r32 i))
-            (inst sub tmp (case i ((0) one) ((3 4 5 6) full) (t 0)))
-            (inst sub tmp borrow)
-            (inst mov borrow tmp)
-            (inst sar borrow 63)
-            (inst and borrow 1)
-            (dword-inst mov (r32 i) tmp))
-          ;; A borrow means that the sum was below the prime, and the
-          ;; prime is added back to the difference, unless the sum was
-          ;; above 2^224.
-          (inst test borrow borrow)
-          (inst jmp :z done)
-          (inst test carry carry)
-          (inst jmp :nz done)
-          (inst mov carry 0)
-          (dotimes (i 7)
-            (dword-inst mov tmp (r32 i))
-            (inst add tmp (case i ((0) one) ((3 4 5 6) full) (t 0)))
-            (inst add tmp carry)
-            (dword-inst mov (r32 i) tmp)
-            (inst mov carry tmp)
-            (inst shr carry 32))
-          (emit-label done))))))
-
-
-#+x86-64
-(define-vop (secp224r1-fe-sub-asm)
-  ;; R := (A - B) mod P, for reduced residues in seven 32-bit limbs.
+  ;; A and B are four words of sixty-four bits, each holding a limb of
+  ;; fifty-six bits, and C is fourteen words.
   ;;
-  ;; The difference is negative when the subtraction borrowed, and the
-  ;; prime is added to it then.
-  (:translate ironclad::secp224r1-fe-sub-asm)
-  (:policy :fast-safe)
-  (:args (r :scs (descriptor-reg))
-         (a :scs (descriptor-reg))
-         (b :scs (descriptor-reg)))
-  (:arg-types simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-32)
-  (:temporary (:sc unsigned-reg) tmp tmp2 borrow carry full one)
-  (:generator 1000
-    (let ((data-offset (- (* n-word-bytes vector-data-offset)
-                           other-pointer-lowtag)))
-      (flet ((r32 (i) (dword-ea (+ data-offset (* 4 i)) r))
-             (a32 (i) (dword-ea (+ data-offset (* 4 i)) a))
-             (b32 (i) (dword-ea (+ data-offset (* 4 i)) b)))
-        (let ((done (gen-label)))
-          (inst mov full -1)
-          (inst shr full 32)
-          (inst mov one 1)
-          ;; The difference of the two values.
-          (inst mov borrow 0)
-          (dotimes (i 7)
-            (dword-inst mov tmp (a32 i))
-            (dword-inst mov tmp2 (b32 i))
-            (inst sub tmp tmp2)
-            (inst sub tmp borrow)
-            (inst mov borrow tmp)
-            (inst sar borrow 63)
-            (inst and borrow 1)
-            (dword-inst mov (r32 i) tmp))
-          ;; A borrow means that the difference is negative, and the
-          ;; prime is added to it.
-          (inst test borrow borrow)
-          (inst jmp :z done)
-          (inst mov carry 0)
-          (dotimes (i 7)
-            (dword-inst mov tmp (r32 i))
-            (inst add tmp (case i ((0) one) ((3 4 5 6) full) (t 0)))
-            (inst add tmp carry)
-            (dword-inst mov (r32 i) tmp)
-            (inst mov carry tmp)
-            (inst shr carry 32))
-          (emit-label done))))))
-
-
-(define-vop (secp224r1-mul-raw-asm)
-  (:translate ironclad::secp224r1-fe-mul-raw-asm)
+  ;; The low halves of the products of a column are summed in one word
+  ;; and the high halves in another, and the carry out of the first is
+  ;; added to the second, as the Goldilocks does.  The low halves of a
+  ;; column of four products sum to under 2^66 and the high halves to
+  ;; under 2^50, so the carry of the first is all that the second
+  ;; needs.
+  (:translate ironclad::secp224r1-fe-mul-limbs-asm)
   (:policy :fast-safe)
   (:args (c :scs (descriptor-reg))
          (a :scs (descriptor-reg))
          (b :scs (descriptor-reg)))
   (:arg-types simple-array-unsigned-byte-64
-              simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-32)
-  (:temporary (:sc unsigned-reg) lo hi carry tmp)
+              simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg) lo hi tmp)
   (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
   (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
   (:generator 1000
     (let ((data-offset (- (* n-word-bytes vector-data-offset)
                            other-pointer-lowtag)))
-      (flet ((a32 (i) (dword-ea (+ data-offset (* 4 i)) a))
-             (b32 (i) (dword-ea (+ data-offset (* 4 i)) b))
+      (flet ((a64 (i) (ea (+ data-offset (* 8 i)) a))
+             (b64 (i) (ea (+ data-offset (* 8 i)) b))
              (c64 (k) (ea (+ data-offset (* 8 k)) c)))
-        ;; Comba columns: the same shape as the P-256 multiply, with
-        ;; seven limbs instead of eight, so the product has fourteen
-        ;; columns.  CARRY holds under 2^36 across columns.  Each
-        ;; column sums at most seven 32x32-bit products plus the
-        ;; carry, under 2^67, accumulated in (HI, LO).
-        (inst mov carry 0)
-        (dotimes (k 14)
-          (inst mov lo carry)
+        (dotimes (k 7)
+          (inst mov lo 0)
           (inst mov hi 0)
-          (dolist (i (loop for x from (max 0 (- k 6)) to (min 6 k)
+          (dolist (i (loop for x from (max 0 (- k 3)) to (min 3 k)
                            collect x))
             (let ((j (- k i)))
-              (dword-inst mov rax-tmp (a32 i))
-              (dword-inst mov tmp (b32 j))
+              (inst mov rax-tmp (a64 i))
+              (inst mov tmp (b64 j))
               (inst mul tmp)
               (inst add lo rax-tmp)
               (inst adc hi rdx-tmp)))
-          ;; Store the canonical 32-bit word as a full 64-bit element.
-          (dword-inst mov tmp lo)
-          (inst mov (c64 k) tmp)
-          (inst mov carry hi)
-          (inst shl carry 32)
-          (inst mov tmp lo)
-          (inst shr tmp 32)
-          (inst or carry tmp))))))
+          (inst mov (c64 (* 2 k)) lo)
+          (inst mov (c64 (1+ (* 2 k))) hi))))))
 
 
 #+x86-64

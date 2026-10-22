@@ -404,7 +404,27 @@
 (defconstant +secp224r1-limb-bits-wide+ 128)
 
 (deftype secp224r1-felem () '(simple-array (unsigned-byte 64) (4)))
-(deftype secp224r1-widefelem () '(simple-array integer (7)))
+(deftype secp224r1-wide () '(simple-array (unsigned-byte 64) (14)))
+
+(declaim (inline secp224r1-wide-get secp224r1-wide-set))
+
+(defun secp224r1-wide-get (w k)
+  "The K-th wide coefficient of W, which is two words of sixty-four
+bits, the low word first."
+  (declare (type secp224r1-wide w)
+           (type (integer 0 6) k)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (+ (aref w (* 2 k)) (ash (aref w (1+ (* 2 k))) 64)))
+
+(defun secp224r1-wide-set (w k v)
+  "Set the K-th wide coefficient of W to V, in two words."
+  (declare (type secp224r1-wide w)
+           (type (integer 0 6) k)
+           (type integer v)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (setf (aref w (* 2 k)) (logand v 18446744073709551615)
+        (aref w (1+ (* 2 k))) (ash v -64))
+  w)
 
 (defun secp224r1-felem-from-int (n)
   "The field element N, in four limbs of fifty-six bits."
@@ -424,45 +444,51 @@
       (setf n (+ n (ash (aref a i) (* 56 i)))))))
 
 (defun secp224r1-felem-mul (out a b)
-  "OUT := A * B, as seven wide coefficients, after the reference.
-The coefficients are the columns of the product, and they are not
-reduced."
-  (declare (type secp224r1-widefelem out)
+  "OUT := A * B, as the seven wide coefficients of the reference: the
+columns of the product, without the carries carried.  Each
+coefficient is two words of sixty-four bits, the low word first."
+  (declare (type secp224r1-wide out)
            (type secp224r1-felem a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (setf (aref out 0) (* (aref a 0) (aref b 0))
-        (aref out 1) (+ (* (aref a 0) (aref b 1)) (* (aref a 1) (aref b 0)))
-        (aref out 2) (+ (* (aref a 0) (aref b 2)) (* (aref a 1) (aref b 1))
-                       (* (aref a 2) (aref b 0)))
-        (aref out 3) (+ (* (aref a 0) (aref b 3)) (* (aref a 1) (aref b 2))
-                       (* (aref a 2) (aref b 1)) (* (aref a 3) (aref b 0)))
-        (aref out 4) (+ (* (aref a 1) (aref b 3)) (* (aref a 2) (aref b 2))
-                       (* (aref a 3) (aref b 1)))
-        (aref out 5) (+ (* (aref a 2) (aref b 3)) (* (aref a 3) (aref b 2)))
-        (aref out 6) (* (aref a 3) (aref b 3)))
+  (secp224r1-wide-set out 0 (* (aref a 0) (aref b 0)))
+  (secp224r1-wide-set out 1 (+ (* (aref a 0) (aref b 1))
+                               (* (aref a 1) (aref b 0))))
+  (secp224r1-wide-set out 2 (+ (* (aref a 0) (aref b 2))
+                               (* (aref a 1) (aref b 1))
+                               (* (aref a 2) (aref b 0))))
+  (secp224r1-wide-set out 3 (+ (* (aref a 0) (aref b 3))
+                               (* (aref a 1) (aref b 2))
+                               (* (aref a 2) (aref b 1))
+                               (* (aref a 3) (aref b 0))))
+  (secp224r1-wide-set out 4 (+ (* (aref a 1) (aref b 3))
+                               (* (aref a 2) (aref b 2))
+                               (* (aref a 3) (aref b 1))))
+  (secp224r1-wide-set out 5 (+ (* (aref a 2) (aref b 3))
+                               (* (aref a 3) (aref b 2))))
+  (secp224r1-wide-set out 6 (* (aref a 3) (aref b 3)))
   out)
 
 (defun secp224r1-felem-reduce (out in)
   "OUT := IN mod P, after the reference.
-IN holds seven wide coefficients, and the result is below twice the
-prime."
+IN holds the seven wide coefficients of a product, two words each,
+and the result is below twice the prime."
   (declare (type secp224r1-felem out)
-           (type secp224r1-widefelem in)
+           (type secp224r1-wide in)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((o (make-array 5 :element-type 'integer :initial-element 0)))
     ;; The multiples of the prime that make the differences positive.
-    (setf (aref o 0) (+ (aref in 0) (ash 1 127) (ash 1 15))
-          (aref o 1) (+ (aref in 1) (ash 1 127) (- (ash 1 71)) (- (ash 1 55)))
-          (aref o 2) (+ (aref in 2) (ash 1 127) (- (ash 1 71)))
-          (aref o 3) (aref in 3)
-          (aref o 4) (aref in 4))
+    (setf (aref o 0) (+ (secp224r1-wide-get in 0) (ash 1 127) (ash 1 15))
+          (aref o 1) (+ (secp224r1-wide-get in 1) (ash 1 127) (- (ash 1 71)) (- (ash 1 55)))
+          (aref o 2) (+ (secp224r1-wide-get in 2) (ash 1 127) (- (ash 1 71)))
+          (aref o 3) (secp224r1-wide-get in 3)
+          (aref o 4) (secp224r1-wide-get in 4))
     ;; Eliminate the coefficients four, five and six.
-    (setf (aref o 4) (+ (aref o 4) (ash (aref in 6) -16))
-          (aref o 3) (+ (aref o 3) (ash (logand (aref in 6) 65535) 40))
-          (aref o 2) (- (aref o 2) (aref in 6)))
-    (setf (aref o 3) (+ (aref o 3) (ash (aref in 5) -16))
-          (aref o 2) (+ (aref o 2) (ash (logand (aref in 5) 65535) 40))
-          (aref o 1) (- (aref o 1) (aref in 5)))
+    (setf (aref o 4) (+ (aref o 4) (ash (secp224r1-wide-get in 6) -16))
+          (aref o 3) (+ (aref o 3) (ash (logand (secp224r1-wide-get in 6) 65535) 40))
+          (aref o 2) (- (aref o 2) (secp224r1-wide-get in 6)))
+    (setf (aref o 3) (+ (aref o 3) (ash (secp224r1-wide-get in 5) -16))
+          (aref o 2) (+ (aref o 2) (ash (logand (secp224r1-wide-get in 5) 65535) 40))
+          (aref o 1) (- (aref o 1) (secp224r1-wide-get in 5)))
     (setf (aref o 2) (+ (aref o 2) (ash (aref o 4) -16))
           (aref o 1) (+ (aref o 1) (ash (logand (aref o 4) 65535) 40))
           (aref o 0) (- (aref o 0) (aref o 4)))
@@ -504,9 +530,11 @@ The sum is made in the wide form and reduced, as the reference does,
 and the contract brings it below the prime."
   (declare (type secp224r1-felem out a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((w (make-array 7 :element-type 'integer :initial-element 0)))
+  (let ((w (make-array 14 :element-type '(unsigned-byte 64)
+                          :initial-element 0)))
+    (declare (dynamic-extent w))
     (dotimes (i 4)
-      (setf (aref w i) (+ (aref a i) (aref b i))))
+      (secp224r1-wide-set w i (+ (aref a i) (aref b i))))
     (secp224r1-felem-reduce out w)
     (secp224r1-felem-contract out out)))
 
@@ -518,10 +546,12 @@ does, and the contract brings it below the prime."
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (- (secp224r1-felem-to-int a) (secp224r1-felem-to-int b)))
          (m (if (minusp n) (+ n +secp224r1-p+) n))
-         (w (make-array 7 :element-type 'integer :initial-element 0)))
+         (w (make-array 14 :element-type '(unsigned-byte 64)
+                           :initial-element 0)))
     (declare (type integer n m))
+    (declare (dynamic-extent w))
     (dotimes (i 4)
-      (setf (aref w i) (logand m +secp224r1-limb-mask+))
+      (secp224r1-wide-set w i (logand m +secp224r1-limb-mask+))
       (setf m (ash m -56)))
     (secp224r1-felem-reduce out w)
     (secp224r1-felem-contract out out)))
@@ -533,7 +563,6 @@ does, and the contract brings it below the prime."
                               4294967295))
 
 (deftype secp224r1-fe () '(simple-array (unsigned-byte 64) (4)))
-(deftype secp224r1-wide () '(simple-array integer (7)))
 
 (declaim (inline secp224r1-fe-zero secp224r1-fe-from-int
                  secp224r1-fe-to-int))
@@ -567,7 +596,10 @@ reduced."
   (declare (type secp224r1-wide c)
            (type secp224r1-fe a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (secp224r1-felem-mul c a b))
+  #+(and sbcl x86-64 ironclad-assembly)
+  (progn (secp224r1-fe-mul-limbs-asm c a b) c)
+  #-(and sbcl x86-64 ironclad-assembly)
+  (progn (secp224r1-felem-mul c a b) c))
 
 (defun secp224r1-fe-add! (r a b)
   "R := A + B, reduced.  R may be the same array as A or B."
@@ -645,7 +677,8 @@ allocates nothing per multiply."
     (dotimes (i 21 s)
       (setf (svref s i) (secp224r1-fe-zero)))
     (setf (svref s 21)
-          (make-array 7 :element-type 'integer :initial-element 0))
+          (make-array 14 :element-type '(unsigned-byte 64)
+                          :initial-element 0))
     (setf (svref s 22)
           (make-array 7 :element-type 'integer :initial-element 0))
     s))
@@ -903,7 +936,8 @@ X, Y and Z are bignums, and the result is a point."
   "The product of the field elements A and B, reduced."
   (declare (type secp224r1-fe a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((c (make-array 7 :element-type 'integer :initial-element 0))
+  (let ((c (make-array 14 :element-type '(unsigned-byte 64)
+                           :initial-element 0))
         (r (secp224r1-fe-zero)))
     (secp224r1-fe-mul-raw c a b)
     (secp224r1-fe-reduce r c nil)

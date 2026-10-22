@@ -197,26 +197,10 @@
   :overwrite-fndb-silently t)
 
 #+x86-64
-(defknown ironclad::secp224r1-fe-add-asm
-  ((simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*)))
-  (values)
-  (any)
-  :overwrite-fndb-silently t)
-
-(defknown ironclad::secp224r1-fe-sub-asm
-  ((simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*)))
-  (values)
-  (any)
-  :overwrite-fndb-silently t)
-
-(defknown ironclad::secp224r1-fe-mul-raw-asm
+(defknown ironclad::secp224r1-fe-mul-limbs-asm
   ((simple-array (unsigned-byte 64) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*)))
+   (simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*)))
   (values)
   (any)
   :overwrite-fndb-silently t)

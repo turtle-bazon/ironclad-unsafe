@@ -1423,3 +1423,22 @@ The wide of the reduction is the fourteen words, and the reduction
 of the reference reads the coefficients of it with the helper
 SECP224R1-WIDE-GET, and the portable product of the reference writes
 them with SECP224R1-WIDE-SET.
+
+The Comba of the field of P-224 is in the tree now, on the four words
+of the field: the columns of the product are summed, the low halves in
+one word and the high halves in another, with the carry of the first
+added to the second, and each coefficient is written as the pair of
+words of its value.  The product of the assembly agrees with the
+integer arithmetic on three hundred pairs, and so does the reduction
+that follows it, and the sums, the differences and the point
+arithmetic on the field of the reference still agree with the integer
+arithmetic and with the big numbers.
+
+The wide of the reduction is fourteen words of sixty-four bits now,
+two for each coefficient, and SECP224R1-WIDE-GET and
+SECP224R1-WIDE-SET read and write those pairs.  The sums and the
+differences of the field make the wide in that shape.
+
+The Comba of the old thirty-two bit limbs and the sums and the
+differences of that field are taken away, for the field is the one of
+the reference now and nothing called them.
