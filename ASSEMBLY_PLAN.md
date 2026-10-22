@@ -400,3 +400,47 @@ elements is 42 nanoseconds and the division that follows it 187, so
 the division is four fifths of the cost of a multiplication, and
 replacing it with a fold in bignums is no use: the fold was
 measured at 266 nanoseconds, because every step of it allocates.
+The complex transform of the falcon was pooled, in the same way as
+the number theoretic one: the two halves of the coefficients and the
+two results of their transforms come from a pool of buffers, one set
+per level of the recursion, and a transform writes into an array
+that the caller gives it.  The transform of five hundred and twelve
+coefficients went from four hundred and fourteen microseconds to a
+hundred and sixty-eight, the norm of the Gram-Schmidt from seven
+thousand three hundred and thirty-six microseconds to four thousand
+three hundred and sixty-eight, and the signature from twenty-five
+and a tenth of a millisecond to eighteen and seven tenths.  The
+keygen, which uses the norm a few dozen times, went from two hundred
+and seven milliseconds to a hundred and seventy-seven, though that
+number moves with the random draw of the key.
+
+The pooling of the complex transform was not straightforward, and
+what it taught is worth writing down.  The first attempt compared
+the pooled transform with the old one over vectors of zeroes, which
+proved nothing at all, since the transform of zeroes is zeroes; the
+comparison has to be over random coefficients.  The second attempt
+declared the coefficients to be a simple vector, which is a lie when
+they are a vector of doubles, and with the safety checks off the
+compiler then reads the eight bytes of the double as if they were a
+pointer, so that the transform of the vector (one, two) returned the
+pair of denormals (2.3d-313, 2.3d-313) and the division of the Gram-
+Schmidt divided by zero.  A declaration of type must name the real
+type of the array: a vector of doubles is FALCON-DVEC, a vector of
+complexes is FALCON-CVEC, and SIMPLE-VECTOR is only for the vectors
+of pointers, which are the tables of roots and the pool itself.  The
+coefficients of the transform do not always come from a vector of
+doubles, because the map of the vector in the norm of the Gram-
+Schmidt gives a general vector of boxed doubles, so the transform
+copies them into a vector of doubles first, which costs one pass and
+buys a typed recursion.  The third attempt had a parallel LET
+where a sequential one was wanted, so that the count of the pairs of
+the merge referred to a variable that was not bound yet, and the
+fourth had a print statement as the last form of a function, so that
+the function returned nil where it should have returned its buffers.
+
+The complex transform is not the transform that the falcon spends
+most of its time in: the number theoretic one takes fifty
+microseconds for five hundred and twelve coefficients and the
+Karatsuba product takes six hundred, and both are in the keygen, in
+the solution of the NTRU equation, which is a hundred and thirty
+three milliseconds of the two hundred of the keygen.

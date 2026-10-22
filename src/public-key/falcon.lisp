@@ -533,18 +533,78 @@ so it needs two buffers per level of the recursion."
       (setf (aref f (* 2 i)) (+ (aref f0 i) (* (aref w (* 2 i)) (aref f1 i)))
             (aref f (+ (* 2 i) 1)) (- (aref f0 i) (* (aref w (* 2 i)) (aref f1 i)))))))
 
+(defun falcon-fft-buffers (pool level h)
+  "The buffers of a level of the transform: the two halves of the
+coefficients, and the two results of their transforms."
+  (or (aref pool level)
+      (setf (aref pool level)
+            (vector (make-array h :element-type 'double-float)
+                    (make-array h :element-type 'double-float)
+                    (falcon-cvec h)
+                    (falcon-cvec h)))))
+
+(defun falcon-fft-level (f pool level out)
+  "The forward FFT of F into OUT, using the buffer pool POOL.
+LEVEL is the depth of the recursion.  The transform splits the
+coefficients into the even and the odd ones, transforms each of them
+and merges them; the two halves and the two results of each level
+come from the pool, so that a transform allocates a few arrays
+rather than one for every node of its recursion.
+
+A vector of one coefficient has nothing to transform, and the
+transform of it is empty; the merge of a level whose halves are empty
+is empty too, and that emptiness is what the callers see."
+  (declare (type falcon-dvec f)
+           (type simple-vector pool)
+           (type falcon-cvec out)
+           (type fixnum level)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((n (length f))
+         (h (ash n -1)))
+    (cond ((= n 2)
+           (setf (aref out 0) (complex (float (aref f 0) 0d0) (float (aref f 1) 0d0))
+                 (aref out 1) (complex (float (aref f 0) 0d0) (- (float (aref f 1) 0d0))))
+           out)
+          ((< n 2)
+           nil)
+          (t
+           (let* ((bufs (falcon-fft-buffers pool level h))
+                  (f0 (aref bufs 0))
+                  (f1 (aref bufs 1))
+                  (r0buf (aref bufs 2))
+                  (r1buf (aref bufs 3))
+                  (w (falcon-fft-roots n)))
+             (declare (type simple-vector bufs w)
+                      (type falcon-dvec f0 f1)
+                      (type falcon-cvec r0buf r1buf))
+             (dotimes (i h)
+               (setf (aref f0 i) (float (aref f (* 2 i)) 0d0)
+                     (aref f1 i) (float (aref f (+ (* 2 i) 1)) 0d0)))
+             (let* ((r0 (falcon-fft-level f0 pool (1+ level) r0buf))
+                    (r1 (falcon-fft-level f1 pool (1+ level) r1buf))
+                    (h (length r0)))
+               (if (zerop h)
+                   nil
+                   (progn
+                     (dotimes (i h)
+                       (let ((tw (* (aref w (* 2 i)) (aref r1 i))))
+                         (setf (aref out (* 2 i)) (+ (aref r0 i) tw)
+                               (aref out (+ (* 2 i) 1)) (- (aref r0 i) tw))))
+                     out))))))))
+
 (defun falcon-fft (f)
-  "Forward FFT: coefficient reals -> FFT domain."
+  "Forward FFT: coefficient reals -> FFT domain.
+
+F may be any vector of reals; the coefficients are copied into a
+specialized vector first, so that the recursion can work on it with
+known types."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((n (length f)))
-    (cond ((> n 2)
-           (multiple-value-bind (f0 f1) (falcon-split f)
-             (falcon-merge-fft (falcon-fft f0) (falcon-fft f1))))
-          ((= n 2)
-           (let ((r (falcon-cvec 2)))
-             (setf (aref r 0) (complex (float (aref f 0) 0d0) (float (aref f 1) 0d0))
-                   (aref r 1) (complex (float (aref f 0) 0d0) (- (float (aref f 1) 0d0))))
-             r)))))
+  (let* ((n (length f))
+         (v (falcon-dvec n))
+         (pool (make-array (+ 2 (integer-length n)) :initial-element nil)))
+    (dotimes (i n) (setf (aref v i) (float (aref f i) 0d0)))
+    (or (falcon-fft-level v pool 0 (falcon-cvec n))
+        (falcon-cvec 0))))
 
 (defun falcon-split (f)
   "Split a real-coefficient vector into even/odd halves (as doubles)."
