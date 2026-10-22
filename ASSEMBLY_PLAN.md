@@ -1162,3 +1162,72 @@ wide, and the shifts of eight and fifty-six are the ones of a limb
 of fifty-six bits.  The product of the goldilocks is of eight limbs
 and has fifteen columns and a carry, and the product of the field of
 P-224 is of four limbs and has seven columns and a carry.
+
+The Comba of the field of P-224 is written, in the assembly, as the
+Comba of the goldilocks with four limbs and eight columns, and it did
+not compile, so it is not in the tree.  It is this, with the name of
+the routine changed to SECP224R1-FE-MUL-LIMBS-ASM, for the one that is
+there is the one of the thirty-two bit limbs:
+
+#+x86-64
+(define-vop (secp224r1-fe-mul-raw-asm)
+  ;; C := A * B, as eight limbs of fifty-six bits, with the carries
+  ;; carried, after the goldilocks.
+  ;;
+  ;; A and B are four limbs of fifty-six bits in words of sixty-four
+  ;; bits, and C is eight words of sixty-four bits, each holding a limb
+  ;; of fifty-six bits.
+  ;;
+  ;; The low halves of a column are summed in one word and the high
+  ;; halves in another: the low halves of a column of four products
+  ;; sum to under 2^58 and the high halves to under 2^50, so both fit
+  ;; in a word.  The limb of the product is the low fifty-six bits of
+  ;; the low sum, and the carry into the next column is the high sum
+  ;; shifted up by fifty-six bits with the part of the low sum above
+  ;; fifty-six bits added to it.
+  (:translate ironclad::secp224r1-fe-mul-limbs-asm)
+  (:policy :fast-safe)
+  (:args (c :scs (descriptor-reg))
+         (a :scs (descriptor-reg))
+         (b :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg) lo hi carry tmp)
+  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+  (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (flet ((a64 (i) (ea (+ data-offset (* 8 i)) a))
+             (b64 (i) (ea (+ data-offset (* 8 i)) b))
+             (c64 (k) (ea (+ data-offset (* 8 k)) c)))
+        (inst mov carry 0)
+        (dotimes (k 8)
+          (inst mov lo carry)
+          (inst mov hi 0)
+          (dolist (i (loop for x from (max 0 (- k 3)) to (min 3 k)
+                           collect x))
+            (let ((j (- k i)))
+              (inst mov rax-tmp (a64 i))
+              (inst mov tmp (b64 j))
+              (inst mul tmp)
+              (inst add lo rax-tmp)
+              (inst adc hi rdx-tmp)))
+          ;; The limb is the low fifty-six bits of the low sum, and the
+          ;; carry is the rest of the column.
+          (inst mov tmp lo)
+          (inst shl tmp 8)
+          (inst shr tmp 8)
+          (inst mov (c64 k) tmp)
+          (inst mov carry hi)
+          (inst shl carry 48)
+          (inst mov tmp lo)
+          (inst shr tmp 56)
+          (inst or carry tmp))))))
+
+
+The name of the routine has to be one of its own, for the one that
+translates the same symbol is the Comba of the thirty-two bit limbs,
+and the definition of the function has to be made before the file of
+the routines is read.
