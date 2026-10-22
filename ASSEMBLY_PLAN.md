@@ -1345,3 +1345,81 @@ each holding a limb of fifty-six bits, as the reference has it, and
 the functions of the field are on those words.  The field, its sums
 and its differences, and the point arithmetic on it, still agree with
 the integer arithmetic, and with the big numbers.
+
+The Comba of the field of P-224, in the assembly, is written and
+agrees with the integer arithmetic, and it is not in the tree yet,
+for the wide of the reduction has to be the fourteen words of it
+first: the sums and the differences of the field make the wide of
+seven coefficients, and they are to make the fourteen words of it,
+two for each coefficient, and the old Comba of the thirty-two bit
+limbs is to be taken away, for the field is not that one any more.
+The Comba is this:
+
+#+x86-64
+(define-vop (secp224r1-fe-mul-raw-asm)
+  ;; C := A * B, as the seven wide coefficients of the reference: the
+  ;; columns of the product, without the carries carried.  Each
+  ;; coefficient is two words of sixty-four bits, the low word first.
+  ;;
+  ;; A and B are four words of sixty-four bits, each holding a limb of
+  ;; fifty-six bits, and C is fourteen words.
+  ;;
+  ;; The low halves of a column are summed in one word and the high
+  ;; halves in another, as the goldilocks does: the low halves of a
+  ;; column of four products sum to under 2^58 and the high halves to
+  ;; under 2^50, so both fit in a word, and the coefficient is the low
+  ;; sum plus the high sum shifted up by fifty-six bits.
+  (:translate ironclad::secp224r1-fe-mul-raw-asm)
+  (:policy :fast-safe)
+  (:args (c :scs (descriptor-reg))
+         (a :scs (descriptor-reg))
+         (b :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg) lo hi tmp tmp2 tmp3)
+  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+  (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (flet ((a64 (i) (ea (+ data-offset (* 8 i)) a))
+             (b64 (i) (ea (+ data-offset (* 8 i)) b))
+             (c64 (k) (ea (+ data-offset (* 8 k)) c)))
+        (dotimes (k 7)
+          (inst mov lo 0)
+          (inst mov hi 0)
+          (dolist (i (loop for x from (max 0 (- k 3)) to (min 3 k)
+                           collect x))
+            (let ((j (- k i)))
+              (inst mov rax-tmp (a64 i))
+              (inst mov tmp (b64 j))
+              (inst mul tmp)
+              (inst add lo rax-tmp)
+              (inst adc hi rdx-tmp)))
+          ;; The high word of the coefficient is the excess of the low
+          ;; sum above fifty-six bits, with the high sum shifted up by
+          ;; fifty-six bits and then down by eight.
+          (inst mov tmp2 lo)
+          (inst shr tmp2 56)
+          (inst mov tmp3 hi)
+          (inst shr tmp3 8)
+          (inst add tmp2 tmp3)
+          ;; The low word is the low sum with its excess taken away,
+          ;; with the low eight bits of the high sum shifted up, and
+          ;; the carry of that addition goes to the high word.
+          (inst mov tmp lo)
+          (inst and tmp #x00ffffffffffffff)
+          (inst mov tmp3 hi)
+          (inst shl tmp3 56)
+          (inst add tmp tmp3)
+          (inst mov (c64 (* 2 k)) tmp)
+          (inst mov tmp3 tmp2)
+          (inst adc tmp3 0)
+          (inst mov (c64 (1+ (* 2 k))) tmp3))))))
+
+
+The wide of the reduction is the fourteen words, and the reduction
+of the reference reads the coefficients of it with the helper
+SECP224R1-WIDE-GET, and the portable product of the reference writes
+them with SECP224R1-WIDE-SET.
