@@ -1003,3 +1003,28 @@ the borrow of each word written out, which the probe can do: the
 probe of the phase two should also give the borrow, and the
 assembly should write its borrow out as well, and the two borrows
 are to be compared word by word.
+
+The field of P-224 was written again after the reference, in four
+limbs of fifty-six bits, and the reduction of it is the one of the
+reference: the product of two field elements is seven wide
+coefficients of a hundred and twenty-eight bits, which are the
+columns of the product and are not reduced, and the reduction of
+those coefficients is the one of a Solinas prime, in which the
+multiples of the prime that are added first make every difference
+positive, so that no borrow is ever needed.  The value that comes
+out is below twice the prime, and the contract at the end takes it
+below the prime.
+
+It agrees with the integer arithmetic, for two hundred pairs of
+random values.  The old reduction of the field, which is in Lisp
+and which is checked against the integer arithmetic as well, is
+kept for the while: the field in limbs of thirty-two bits that the
+point arithmetic of the tree uses is not the field in limbs of
+fifty-six bits that the reference uses, and the point arithmetic
+has to be moved to the new field before the two can be told apart.
+
+What the reference has that the old reduction does not is that the
+subtractions are of numbers that are known to be positive, so that
+the reduction can be written without a borrow and can be written in
+the assembly without a borrow either, which is what the assembly of
+the reference does.

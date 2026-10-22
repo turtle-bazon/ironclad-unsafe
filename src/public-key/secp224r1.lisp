@@ -386,6 +386,119 @@
         (p (ec-decode-point :secp224r1 (secp224r1-key-y public-key))))
     (ec-encode-point (ec-scalar-mult p s))))
 
+;;;; The field of P-224 in four limbs of fifty-six bits, after the
+;;;; reference: the product of two field elements is seven wide
+;;;; coefficients of a hundred and twenty-eight bits, and the
+;;;; reduction of those coefficients is the one of a Solinas prime.
+;;;;
+;;;; The prime is 2^224 - 2^96 + 1, so 2^224 is congruent to 2^96
+;;;; less one, and the reduction adds the high half of the product
+;;;; shifted up by ninety-six bits, less the high half itself.  The
+;;;; multiples of the prime that are added first make every
+;;;; difference positive, so that no borrow is ever needed, which is
+;;;; what lets the reduction be written with the coefficients alone.
+;;;; The value that comes out is below twice the prime, and the
+;;;; contract at the end takes it below the prime.
+
+(defconstant +secp224r1-limb-bits+ 56)
+(defconstant +secp224r1-limb-mask+ (1- (ash 1 56)))
+(defconstant +secp224r1-limb-bits-wide+ 128)
+
+(deftype secp224r1-felem () '(simple-array integer (4)))
+(deftype secp224r1-widefelem () '(simple-array integer (7)))
+
+(defun secp224r1-felem-from-int (n)
+  "The field element N, in four limbs of fifty-six bits."
+  (declare (type integer n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((a (make-array 4 :element-type 'integer :initial-element 0)))
+    (dotimes (i 4 a)
+      (setf (aref a i) (logand n +secp224r1-limb-mask+))
+      (setf n (ash n -56)))))
+
+(defun secp224r1-felem-to-int (a)
+  "The integer value of the field element A."
+  (declare (type secp224r1-felem a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((n 0))
+    (dotimes (i 4 n)
+      (setf n (+ n (ash (aref a i) (* 56 i)))))))
+
+(defun secp224r1-felem-mul (out a b)
+  "OUT := A * B, as seven wide coefficients, after the reference.
+The coefficients are the columns of the product, and they are not
+reduced."
+  (declare (type secp224r1-widefelem out)
+           (type secp224r1-felem a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (setf (aref out 0) (* (aref a 0) (aref b 0))
+        (aref out 1) (+ (* (aref a 0) (aref b 1)) (* (aref a 1) (aref b 0)))
+        (aref out 2) (+ (* (aref a 0) (aref b 2)) (* (aref a 1) (aref b 1))
+                       (* (aref a 2) (aref b 0)))
+        (aref out 3) (+ (* (aref a 0) (aref b 3)) (* (aref a 1) (aref b 2))
+                       (* (aref a 2) (aref b 1)) (* (aref a 3) (aref b 0)))
+        (aref out 4) (+ (* (aref a 1) (aref b 3)) (* (aref a 2) (aref b 2))
+                       (* (aref a 3) (aref b 1)))
+        (aref out 5) (+ (* (aref a 2) (aref b 3)) (* (aref a 3) (aref b 2)))
+        (aref out 6) (* (aref a 3) (aref b 3)))
+  out)
+
+(defun secp224r1-felem-reduce (out in)
+  "OUT := IN mod P, after the reference.
+IN holds seven wide coefficients, and the result is below twice the
+prime."
+  (declare (type secp224r1-felem out)
+           (type secp224r1-widefelem in)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((o (make-array 5 :element-type 'integer :initial-element 0)))
+    ;; The multiples of the prime that make the differences positive.
+    (setf (aref o 0) (+ (aref in 0) (ash 1 127) (ash 1 15))
+          (aref o 1) (+ (aref in 1) (ash 1 127) (- (ash 1 71)) (- (ash 1 55)))
+          (aref o 2) (+ (aref in 2) (ash 1 127) (- (ash 1 71)))
+          (aref o 3) (aref in 3)
+          (aref o 4) (aref in 4))
+    ;; Eliminate the coefficients four, five and six.
+    (setf (aref o 4) (+ (aref o 4) (ash (aref in 6) -16))
+          (aref o 3) (+ (aref o 3) (ash (logand (aref in 6) 65535) 40))
+          (aref o 2) (- (aref o 2) (aref in 6)))
+    (setf (aref o 3) (+ (aref o 3) (ash (aref in 5) -16))
+          (aref o 2) (+ (aref o 2) (ash (logand (aref in 5) 65535) 40))
+          (aref o 1) (- (aref o 1) (aref in 5)))
+    (setf (aref o 2) (+ (aref o 2) (ash (aref o 4) -16))
+          (aref o 1) (+ (aref o 1) (ash (logand (aref o 4) 65535) 40))
+          (aref o 0) (- (aref o 0) (aref o 4)))
+    ;; Carry two to three to four.
+    (setf (aref o 3) (+ (aref o 3) (ash (aref o 2) -56))
+          (aref o 2) (logand (aref o 2) +secp224r1-limb-mask+))
+    (setf (aref o 4) (ash (aref o 3) -56)
+          (aref o 3) (logand (aref o 3) +secp224r1-limb-mask+))
+    ;; Eliminate the excess.
+    (setf (aref o 2) (+ (aref o 2) (ash (aref o 4) -16))
+          (aref o 1) (+ (aref o 1) (ash (logand (aref o 4) 65535) 40))
+          (aref o 0) (- (aref o 0) (aref o 4)))
+    ;; Carry zero to one to two to three.
+    (setf (aref o 1) (+ (aref o 1) (ash (aref o 0) -56))
+          (aref o 0) (logand (aref o 0) +secp224r1-limb-mask+))
+    (setf (aref o 2) (+ (aref o 2) (ash (aref o 1) -56))
+          (aref o 1) (logand (aref o 1) +secp224r1-limb-mask+))
+    (setf (aref o 3) (+ (aref o 3) (ash (aref o 2) -56))
+          (aref o 2) (logand (aref o 2) +secp224r1-limb-mask+))
+    (dotimes (i 4) (setf (aref out i) (aref o i))))
+  out)
+
+(defun secp224r1-felem-contract (out in)
+  "OUT := IN, brought below the prime, after the reference.
+IN is below twice the prime, so the prime is subtracted once at
+most."
+  (declare (type secp224r1-felem out in)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((n (secp224r1-felem-to-int in))
+         (m (if (>= n +secp224r1-p+) (- n +secp224r1-p+) n)))
+    (declare (type integer n m))
+    (dotimes (i 4 out)
+      (setf (aref out i) (logand m +secp224r1-limb-mask+))
+      (setf m (ash m -56)))))
+
 ;; The prime in limbs.  This is a DEFVAR and not a DEFCONSTANT: the
 ;; value is a vector, and a DEFCONSTANT whose value is a vector makes
 ;; every recompilation of this file fail with DEFCONSTANT-UNEQL.
