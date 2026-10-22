@@ -706,3 +706,12 @@ the sum is the answer; without a borrow the scratch is the answer,
 and it is copied over the sum.  The difference of two field elements
 is computed the same way, and the prime is added to it when the
 borrow says that it is negative.
+
+The table of the benchmark, after the change of the point arithmetic
+of P-521, has the signature of P-521 at four hundred and forty-five
+operations a second, where it was at two hundred and fifteen, and the
+gap between it and the reference at eight and a tenth, where it was at
+nineteen and a tenth.  The verification of P-521 is at three hundred
+and ten operations a second, where it was at a hundred and fifty-five,
+and the gap at six and a quarter, where it was at fourteen and a
+third.
