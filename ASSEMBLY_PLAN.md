@@ -1065,3 +1065,42 @@ makes the field win, and it is the next thing: sixteen products of
 fifty-six by fifty-six bits for the product, and the reduction of
 the reference, which needs no borrow and so can be written in the
 assembly as it is.
+
+The assembly of the field of P-224 follows the structure of the
+reference, and the words are these.
+
+The element is four words of sixty-four bits, each holding a limb of
+fifty-six bits, and the value is below the prime, so the top word
+holds only eight bits.  The product is seven wide coefficients of a
+hundred and twenty-eight bits, and each of them is two words.
+
+The product is made in columns, as the reference makes it: the
+coefficient of a column is the sum of the products of the limbs whose
+indices add up to the column, and the columns are seven, for four
+limbs on each side.  The product of two limbs of fifty-six bits is a
+hundred and twelve bits, and it is made of a low half of fifty-six
+bits and a high half of fifty-six bits, and the low halves of a
+column are summed in one word and the high halves in another.  The
+sum of the low halves of a column is under 2^58 and the sum of the
+high halves is under 2^50, so both fit in a word, and the coefficient
+is the low sum plus the high sum shifted up by fifty-six bits, which
+is the hundred and twenty-eight bits of the reference's coefficient.
+The carry of a column is the high sum shifted up by fifty-six bits
+plus the part of the low sum above fifty-six bits, and it is the
+carry of the next column.
+
+The reduction is the one of the reference, and it needs no borrow,
+for the multiples of the prime are added first: the wide
+coefficients are the seven limbs of fifty-six bits, each in two words,
+and the constants of the reference, which are of a hundred and
+twenty-seven bits, are added to the three lowest of them.
+
+The prime of P-224 is 2^224 - 2^96 + 1, and its limbs of fifty-six
+bits are one, 2^56 - 2^40, 2^56 - 1 and 2^8, and the multiples of
+it that the reference adds are of a hundred and twenty-seven bits,
+which in the limbs of fifty-six bits are the word of ones shifted up
+by seventy-one bits, less the words of the limbs.
+
+The contract at the end is a comparison and a subtraction, and the
+comparison is of the value with the prime, and the value is below
+twice the prime, so one subtraction is enough.
