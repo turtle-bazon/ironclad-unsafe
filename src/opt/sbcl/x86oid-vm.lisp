@@ -1862,6 +1862,133 @@
 
 
 #+x86-64
+(define-vop (secp256r1-fe-add-asm)
+  ;; R := (A + B) mod P, for reduced residues in eight 32-bit limbs.
+  ;;
+  ;; The sum of two reduced values is below twice the prime, so the
+  ;; prime is subtracted from the sum, and the sum is the answer when
+  ;; the subtraction borrowed.  The prime is then added back to the
+  ;; difference, unless the sum was above 2^256, which the carry of
+  ;; the addition says, for then the difference is the answer already.
+  ;;
+  ;; The borrow of a subtraction is taken from the sign of the
+  ;; difference, and the carry of an addition from its high bits, so
+  ;; that no flag of an arithmetic instruction is read but the one
+  ;; that the test sets.  The limbs are read with the 32-bit move,
+  ;; for the 64-bit one would read the neighbour as well.
+  (:translate ironclad::secp256r1-fe-add-asm)
+  (:policy :fast-safe)
+  (:args (r :scs (descriptor-reg))
+         (a :scs (descriptor-reg))
+         (b :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32)
+  (:temporary (:sc unsigned-reg) tmp tmp2 borrow carry full one)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (flet ((r32 (i) (dword-ea (+ data-offset (* 4 i)) r))
+             (a32 (i) (dword-ea (+ data-offset (* 4 i)) a))
+             (b32 (i) (dword-ea (+ data-offset (* 4 i)) b)))
+        (let ((done (gen-label)))
+          ;; The limbs of the prime, little endian: the first three and
+          ;; the last are all ones, the fourth to the sixth are zero, and
+          ;; the seventh is one.  A word of ones shifted up by half a
+          ;; limb is a limb of ones.
+          (inst mov full -1)
+          (inst shr full 32)
+          (inst mov one 1)
+          ;; The sum of the two values.
+          (inst mov carry 0)
+          (dotimes (i 8)
+            (dword-inst mov tmp (a32 i))
+            (dword-inst mov tmp2 (b32 i))
+            (inst add tmp tmp2)
+            (inst add tmp carry)
+            (dword-inst mov (r32 i) tmp)
+            (inst mov carry tmp)
+            (inst shr carry 32))
+          ;; The difference of the sum and the prime.
+          (inst mov borrow 0)
+          (dotimes (i 8)
+            (dword-inst mov tmp (r32 i))
+            (inst sub tmp (case i ((0 1 2 7) full) ((6) one) (t 0)))
+            (inst sub tmp borrow)
+            (inst mov borrow tmp)
+            (inst sar borrow 63)
+            (inst and borrow 1)
+            (dword-inst mov (r32 i) tmp))
+          ;; A borrow means that the sum was below the prime, and the
+          ;; prime is added back to the difference, unless the sum was
+          ;; above 2^256.
+          (inst test borrow borrow)
+          (inst jmp :z done)
+          (inst test carry carry)
+          (inst jmp :nz done)
+          (inst mov carry 0)
+          (dotimes (i 8)
+            (dword-inst mov tmp (r32 i))
+            (inst add tmp (case i ((0 1 2 7) full) ((6) one) (t 0)))
+            (inst add tmp carry)
+            (dword-inst mov (r32 i) tmp)
+            (inst mov carry tmp)
+            (inst shr carry 32))
+          (emit-label done))))))
+
+
+#+x86-64
+(define-vop (secp256r1-fe-sub-asm)
+  ;; R := (A - B) mod P, for reduced residues in eight 32-bit limbs.
+  ;;
+  ;; The difference is negative when the subtraction borrowed, and the
+  ;; prime is added to it then.
+  (:translate ironclad::secp256r1-fe-sub-asm)
+  (:policy :fast-safe)
+  (:args (r :scs (descriptor-reg))
+         (a :scs (descriptor-reg))
+         (b :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32)
+  (:temporary (:sc unsigned-reg) tmp tmp2 borrow carry full one)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (flet ((r32 (i) (dword-ea (+ data-offset (* 4 i)) r))
+             (a32 (i) (dword-ea (+ data-offset (* 4 i)) a))
+             (b32 (i) (dword-ea (+ data-offset (* 4 i)) b)))
+        (let ((done (gen-label)))
+          (inst mov full -1)
+          (inst shr full 32)
+          (inst mov one 1)
+          ;; The difference of the two values.
+          (inst mov borrow 0)
+          (dotimes (i 8)
+            (dword-inst mov tmp (a32 i))
+            (dword-inst mov tmp2 (b32 i))
+            (inst sub tmp tmp2)
+            (inst sub tmp borrow)
+            (inst mov borrow tmp)
+            (inst sar borrow 63)
+            (inst and borrow 1)
+            (dword-inst mov (r32 i) tmp))
+          ;; A borrow means that the difference is negative, and the
+          ;; prime is added to it.
+          (inst test borrow borrow)
+          (inst jmp :z done)
+          (inst mov carry 0)
+          (dotimes (i 8)
+            (dword-inst mov tmp (r32 i))
+            (inst add tmp (case i ((0 1 2 7) full) ((6) one) (t 0)))
+            (inst add tmp carry)
+            (dword-inst mov (r32 i) tmp)
+            (inst mov carry tmp)
+            (inst shr carry 32))
+          (emit-label done))))))
+
+
+#+x86-64
 (define-vop (secp256r1-reduce-asm)
   (:translate ironclad::secp256r1-fe-reduce-asm)
   (:translate ironclad::secp256r1-fe-reduce-asm)

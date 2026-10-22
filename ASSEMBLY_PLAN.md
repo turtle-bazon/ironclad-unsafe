@@ -715,3 +715,40 @@ nineteen and a tenth.  The verification of P-521 is at three hundred
 and ten operations a second, where it was at a hundred and fifty-five,
 and the gap at six and a quarter, where it was at fourteen and a
 third.
+
+The sums and the differences of the field of P-256 are in the
+assembly now, which is what the curves whose field is in limbs were
+waiting for: the product of two field elements was already there, in
+the assembly, and the sum and the difference were in Lisp, and they
+cost as much as the product.  The verification of P-256 is six hundred
+and forty microseconds, where it was eight hundred and forty, and the
+signature is a hundred and sixty, where it was a hundred and sixty.
+
+Three things about the writing of the two are worth remembering.  The
+limbs of the field are words of thirty-two bits, and the move that
+reads them has to be the thirty-two bit one, for the sixty-four bit
+one reads the neighbour with the limb and the value that comes out
+is a number that is wrong and looks plausible.  The instruction set
+has no subtract with borrow, so the borrow of a subtraction is taken
+from the sign of the difference and the carry of an addition from its
+high bits, and no flag of an arithmetic instruction is read but the
+one that the test sets.  And the immediate of thirty-two ones is
+assembled as a word of sixty-four ones, for the assembler gives it
+the sign of the word, so the limbs of the prime that are all ones
+are made by shifting a word of ones.
+
+The field of P-224 is four limbs of fifty-six bits in the reference,
+and its reduction is the one of a Solinas prime: the high half of
+the product is added to the low half, shifted up by ninety-six bits,
+less itself, and the multiples of the prime that are added first make
+every difference positive, so that no borrow is ever needed.  The
+reference adds a multiple of the prime of a hundred and twenty-seven
+bits, for the coefficients of the product are not reduced, and the
+same thing in sixty-four bits has to add a smaller multiple, for the
+coefficients are reduced first.
+
+The reduction of the reference was checked in a program of its own,
+in which the coefficients of the product are the columns of the
+product, which are not reduced, and the value that comes out of it
+is the product modulo the prime, for three hundred pairs of random
+values and for the corners.
