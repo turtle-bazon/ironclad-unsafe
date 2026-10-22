@@ -632,3 +632,38 @@ The field of P-521 is nine words of sixty-four bits in the bignums,
 and the limbs of sixty-four bits with the product and the reduction
 in the assembly are what will halve the time of the multiply of
 that field.
+
+The point arithmetic of P-521 now reduces every product as it is
+made, which is what the reference does: its field element is nine
+words of sixty-four bits and its product is reduced at once, and its
+sum and its difference are one subtraction and one addition.  The
+helpers are SECP521R1-ADDMOD, SECP521R1-SUBMOD and SECP521R1-DBLMOD;
+they need reduced values, and they give reduced values, which the
+Mersenne fold of the sum of two reduced values gives with one
+subtraction at most.
+
+The check of the change is against the integer arithmetic: the
+projective coordinates of the doubling and of the sum of two points
+are the same as the ones the reference arithmetic gives, for points
+on the curve and for points with a third coordinate that is not one.
+
+On a machine with a load of two, the measurements are these.  The
+signature of P-521 is two thousand one hundred and thirty microseconds
+and the verification three thousand and seventy, where the old
+arithmetic gives two thousand five hundred and thirty and three
+thousand four hundred and seventy; the multiplication of the
+generator is one thousand eight hundred and sixty-seven microseconds
+and the inverse of a number two hundred, where the old gives two
+thousand one hundred and thirty-three and two hundred and twenty.
+The difference is the width of the products: the old arithmetic
+multiplies three values, of a thousand five hundred and sixty bits,
+and reduces the product at the end, and the new one multiplies two
+values and reduces each product at once.
+
+The doubling of a point is the largest part of the signature, and it
+is nine multiplications of the field, so the field is what the
+assembly must make faster.  The nine words of sixty-four bits of the
+field of P-521 are in the bignums, and the product of two of them is
+in the bignum code of SBCL, which allocates; the assembly of the
+Comba product and of the Mersenne fold will keep the field in an
+array of nine words and will not allocate.

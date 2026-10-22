@@ -81,6 +81,39 @@
       (setf p (- p +secp521r1-p+)))
     p))
 
+(defun secp521r1-addmod (x y)
+  "The sum of X and Y, modulo the prime of P-521.
+X and Y are reduced, so the sum needs one subtraction at most."
+  (declare (type integer x y)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((s (+ x y)))
+    (declare (type integer s))
+    (if (>= s +secp521r1-p+)
+        (- s +secp521r1-p+)
+        s)))
+
+(defun secp521r1-submod (x y)
+  "The difference of X and Y, modulo the prime of P-521.
+X and Y are reduced, so the difference needs one addition at most."
+  (declare (type integer x y)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((s (- x y)))
+    (declare (type integer s))
+    (if (minusp s)
+        (+ s +secp521r1-p+)
+        s)))
+
+(defun secp521r1-dblmod (x)
+  "Twice X, modulo the prime of P-521.
+X is reduced, so the double needs one subtraction at most."
+  (declare (type integer x)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((s (+ x x)))
+    (declare (type integer s))
+    (if (>= s +secp521r1-p+)
+        (- s +secp521r1-p+)
+        s)))
+
 (defmethod ec-scalar-inv ((kind (eql :secp521r1)) n)
   "The inverse of N modulo the prime of P-521.
 Fermat's little theorem gives it as N^(p-2), and the exponentiation
@@ -103,10 +136,14 @@ uses the fast reduction of the field."
     (declare (type integer x1 y1 z1))
     (with-slots ((x2 x) (y2 y) (z2 z)) q
       (declare (type integer x2 y2 z2))
-      (let ((z1z1 (secp521r1-reduce (* z1 z1)))
-            (z2z2 (secp521r1-reduce (* z2 z2))))
-        (and (zerop (secp521r1-reduce (- (* x1 z2z2) (* x2 z1z1))))
-             (zerop (secp521r1-reduce (- (* y1 z2z2 z2) (* y2 z1z1 z1)))))))))
+      (let ((z1z1 (secp521r1-mulmod z1 z1))
+            (z2z2 (secp521r1-mulmod z2 z2)))
+        (and (zerop (secp521r1-submod
+                     (secp521r1-mulmod x1 z2z2)
+                     (secp521r1-mulmod x2 z1z1)))
+             (zerop (secp521r1-submod
+                     (secp521r1-mulmod (secp521r1-mulmod y1 z2) z2z2)
+                     (secp521r1-mulmod (secp521r1-mulmod y2 z1) z1z1))))))))
 
 (defmethod ec-double ((p secp521r1-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
@@ -114,18 +151,25 @@ uses the fast reduction of the field."
     (declare (type integer x1 y1 z1))
     (if (zerop z1)
         +secp521r1-point-at-infinity+
-        (let* ((xx (secp521r1-reduce (* x1 x1)))
-               (yy (secp521r1-reduce (* y1 y1)))
-               (yyyy (secp521r1-reduce (* yy yy)))
-               (zz (secp521r1-reduce (* z1 z1)))
-               (x1+yy (secp521r1-reduce (+ x1 yy)))
-               (y1+z1 (secp521r1-reduce (+ y1 z1)))
-               (s (secp521r1-reduce (* 2 (- (* x1+yy x1+yy) xx yyyy))))
-               (m (secp521r1-reduce (* 3 (- xx (* zz zz)))))
-               (u (secp521r1-reduce (- (* m m) (* 2 s))))
+        (let* ((xx (secp521r1-mulmod x1 x1))
+               (yy (secp521r1-mulmod y1 y1))
+               (yyyy (secp521r1-mulmod yy yy))
+               (zz (secp521r1-mulmod z1 z1))
+               (x1+yy (secp521r1-addmod x1 yy))
+               (y1+z1 (secp521r1-addmod y1 z1))
+               (s0 (secp521r1-submod
+                    (secp521r1-submod (secp521r1-mulmod x1+yy x1+yy) xx) yyyy))
+               (s (secp521r1-dblmod s0))
+               (m0 (secp521r1-submod xx (secp521r1-mulmod zz zz)))
+               (m (secp521r1-addmod (secp521r1-dblmod m0) m0))
+               (u (secp521r1-submod
+                   (secp521r1-mulmod m m) (secp521r1-dblmod s)))
                (x2 u)
-               (y2 (secp521r1-reduce (- (* m (- s u)) (* 8 yyyy))))
-               (z2 (secp521r1-reduce (- (* y1+z1 y1+z1) yy zz))))
+               (y2 (secp521r1-submod
+                    (secp521r1-mulmod m (secp521r1-submod s u))
+                    (secp521r1-mulmod 8 yyyy)))
+               (z2 (secp521r1-submod
+                    (secp521r1-submod (secp521r1-mulmod y1+z1 y1+z1) yy) zz)))
           (make-instance 'secp521r1-point :x x2 :y y2 :z z2)))))
 
 (defmethod ec-add ((p secp521r1-point) (q secp521r1-point))
@@ -140,25 +184,32 @@ uses the fast reduction of the field."
         ((zerop z2)
          p)
         (t
-         (let* ((z1z1 (secp521r1-reduce (* z1 z1)))
-                (z2z2 (secp521r1-reduce (* z2 z2)))
-                (u1 (secp521r1-reduce (* x1 z2z2)))
-                (u2 (secp521r1-reduce (* x2 z1z1)))
-                (s1 (secp521r1-reduce (* y1 z2 z2z2)))
-                (s2 (secp521r1-reduce (* y2 z1 z1z1))))
+         (let* ((z1z1 (secp521r1-mulmod z1 z1))
+                (z2z2 (secp521r1-mulmod z2 z2))
+                (u1 (secp521r1-mulmod x1 z2z2))
+                (u2 (secp521r1-mulmod x2 z1z1))
+                (s1 (secp521r1-mulmod (secp521r1-mulmod y1 z2) z2z2))
+                (s2 (secp521r1-mulmod (secp521r1-mulmod y2 z1) z1z1)))
            (if (= u1 u2)
                (if (= s1 s2)
                    (ec-double p)
                    +secp521r1-point-at-infinity+)
-               (let* ((h (secp521r1-reduce (- u2 u1)))
-                      (i (secp521r1-reduce (* 4 h h)))
-                      (j (secp521r1-reduce (* h i)))
-                      (r (secp521r1-reduce (* 2 (- s2 s1))))
-                      (v (secp521r1-reduce (* u1 i)))
-                      (x3 (secp521r1-reduce (- (* r r) j (* 2 v))))
-                      (y3 (secp521r1-reduce (- (* r (- v x3)) (* 2 s1 j))))
-                      (z1+z2 (secp521r1-reduce (+ z1 z2)))
-                      (z3 (secp521r1-reduce (* (- (* z1+z2 z1+z2) z1z1 z2z2) h))))
+                (let* ((h (secp521r1-submod u2 u1))
+                       (i (secp521r1-mulmod 4 (secp521r1-mulmod h h)))
+                       (j (secp521r1-mulmod h i))
+                       (r (secp521r1-dblmod (secp521r1-submod s2 s1)))
+                       (v (secp521r1-mulmod u1 i))
+                       (x3 (secp521r1-submod
+                            (secp521r1-submod (secp521r1-mulmod r r) j)
+                            (secp521r1-dblmod v)))
+                       (y3 (secp521r1-submod
+                            (secp521r1-mulmod r (secp521r1-submod v x3))
+                            (secp521r1-dblmod (secp521r1-mulmod s1 j))))
+                       (z1+z2 (secp521r1-addmod z1 z2))
+                       (z3 (secp521r1-mulmod
+                            (secp521r1-submod
+                             (secp521r1-submod
+                              (secp521r1-mulmod z1+z2 z1+z2) z1z1) z2z2) h)))
                  (make-instance 'secp521r1-point :x x3 :y y3 :z z3)))))))))
 
 
@@ -222,14 +273,18 @@ uses the fast reduction of the field."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (with-slots (x y z) p
     (declare (type integer x y z))
-    (let* ((y2 (secp521r1-reduce (* y y)))
-           (x3 (secp521r1-reduce (* x x x)))
-           (z2 (secp521r1-reduce (* z z)))
-           (z4 (secp521r1-reduce (* z2 z2)))
-           (z6 (secp521r1-reduce (* z4 z2)))
-           (a (secp521r1-reduce (+ x3 (* -3 x z4) (* +secp521r1-b+ z6)))))
+    (let* ((y2 (secp521r1-mulmod y y))
+           (x2 (secp521r1-mulmod x x))
+           (x3 (secp521r1-mulmod x2 x))
+           (z2 (secp521r1-mulmod z z))
+           (z4 (secp521r1-mulmod z2 z2))
+           (z6 (secp521r1-mulmod z4 z2))
+           (xz4 (secp521r1-mulmod x z4))
+           (a (secp521r1-addmod
+               (secp521r1-submod x3 (secp521r1-addmod (secp521r1-dblmod xz4) xz4))
+               (secp521r1-mulmod +secp521r1-b+ z6))))
       (declare (type integer y2 x3 z2 z4 z6 a))
-      (zerop (secp521r1-reduce (- y2 a))))))
+      (zerop (secp521r1-submod y2 a)))))
 
 (defmethod ec-make-point ((kind (eql :secp521r1)) &key x y)
   (unless x
@@ -254,10 +309,10 @@ uses the fast reduction of the field."
       (error 'ironclad-error
              :format-control "The point at infinity can't be encoded."))
     (let* ((invz (ec-scalar-inv :secp521r1 z))
-           (invz2 (secp521r1-reduce (* invz invz)))
-           (invz3 (secp521r1-reduce (* invz2 invz)))
-           (x (secp521r1-reduce (* x invz2)))
-           (y (secp521r1-reduce (* y invz3))))
+           (invz2 (secp521r1-mulmod invz invz))
+           (invz3 (secp521r1-mulmod invz2 invz))
+           (x (secp521r1-mulmod x invz2))
+           (y (secp521r1-mulmod y invz3)))
       (list :x x :y y))))
 
 (defmethod ec-encode-scalar ((kind (eql :secp521r1)) n)
