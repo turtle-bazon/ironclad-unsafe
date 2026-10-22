@@ -1047,3 +1047,21 @@ the point arithmetic of the tree is in seven limbs of thirty-two
 bits, so the point arithmetic is to be moved to the new field
 before the two can be compared, and the comparison is the next
 thing to do.
+
+The field of P-224 is now the field of the reference all the way
+through: four limbs of fifty-six bits for the element, seven wide
+coefficients for the product, the reduction of a Solinas prime, the
+contract, and the sums and the differences made in the wide form and
+reduced.  The point arithmetic of the tree, the comb and the ladder,
+run on that field and agree with the big numbers, for the corners
+and for twenty random triples.
+
+The signature is not moved onto that field yet, for the product and
+the reduction of it are in Lisp, where the coefficients are big
+numbers, and the comb of the limbs takes three thousand two hundred
+microseconds where the comb of the big numbers takes a hundred and
+twenty.  The assembly of the product and of the reduction is what
+makes the field win, and it is the next thing: sixteen products of
+fifty-six by fifty-six bits for the product, and the reduction of
+the reference, which needs no borrow and so can be written in the
+assembly as it is.

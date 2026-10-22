@@ -162,12 +162,11 @@
   ;; %EC-WINDOW-MULT or %EC-SHAMIR-MULT directly.
   ;;
   ;; The field of the curve is in limbs, and the comb and the ladder
-  ;; are in limbs as well, but the limbs are thirty-two bits and the
-  ;; product of two of them is six times slower than the product of
-  ;; the two bignums, because a bignum of two hundred and twenty-four
-  ;; bits is four words of sixty-four bits inside.  The limbs of
-  ;; fifty-six bits are what the reference does, and they are what
-  ;; will make the field of P-224 win; until then the bignums are the
+  ;; are in limbs as well, in the four limbs of fifty-six bits that
+  ;; the reference uses, but the product and the reduction of that
+  ;; field are still in Lisp, where they are twenty-six times slower
+  ;; than the product of the two bignums, and the signature is made
+  ;; with the bignums until the assembly of the field is there.  then the bignums are the
   ;; faster of the two, and the signature uses them.
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (if (and (eq p +secp224r1-g+) (not (minusp e)))
@@ -533,22 +532,24 @@ does, and the contract brings it below the prime."
 (defvar +secp224r1-p-limbs+ '#(1 0 0 4294967295 4294967295 4294967295
                               4294967295))
 
-(deftype secp224r1-fe () '(simple-array (unsigned-byte 32) (7)))
+(deftype secp224r1-fe () '(simple-array integer (4)))
+(deftype secp224r1-wide () '(simple-array integer (7)))
 
 (declaim (inline secp224r1-fe-zero secp224r1-fe-from-int
                  secp224r1-fe-to-int))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun secp224r1-fe-zero ()
-    (make-array 7 :element-type '(unsigned-byte 32) :initial-element 0)))
+    (make-array 4 :element-type 'integer :initial-element 0)))
 
 (defun secp224r1-fe-from-int (n)
-  "The field element N, reduced."
+  "The field element N, in four limbs of fifty-six bits."
   (declare (type integer n)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((r (secp224r1-fe-zero)))
-    (dotimes (i 7 r)
-      (setf (aref r i) (ldb (byte 32 (* i 32)) n)))))
+    (dotimes (i 4 r)
+      (setf (aref r i) (logand n +secp224r1-limb-mask+))
+      (setf n (ash n -56)))))
 
 (defun secp224r1-fe-to-int (a)
   "The integer value of the field element A."
@@ -556,57 +557,23 @@ does, and the contract brings it below the prime."
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((n 0))
     (declare (type integer n))
-    (dotimes (i 7 n)
-      (setf n (dpb (aref a i) (byte 32 (* i 32)) n)))))
+    (dotimes (i 4 n)
+      (setf n (+ n (ash (aref a i) (* 56 i)))))))
 
 (defun secp224r1-fe-mul-raw (c a b)
-  "C := A * B, as fourteen limbs of 32 bits, in words of 64 bits."
-  (declare (type secp224r1-fe a b)
-           (type (simple-array (unsigned-byte 64) (14)) c)
+  "C := A * B, as seven wide coefficients, after the reference.
+The coefficients are the columns of the product, and they are not
+reduced."
+  (declare (type secp224r1-wide c)
+           (type secp224r1-fe a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-assembly)
-  (secp224r1-fe-mul-raw-asm c a b)
-  #-(and sbcl x86-64 ironclad-assembly)
-  (progn
-    (dotimes (k 14) (setf (aref c k) 0))
-  (dotimes (i 7)
-    (let ((carry 0))
-      (declare (type integer carry))
-      (dotimes (j 7)
-        (let* ((prod (* (aref a i) (aref b j)))
-               (plo (ldb (byte 32 0) prod))
-               (phi (ash prod -32))
-               (k (+ i j))
-               (s (+ (aref c k) plo carry)))
-          (setf (aref c k) (logand s #xffffffff)
-                carry (+ (ash s -32) phi))))
-      ;; The carry can be larger than a limb, so it is propagated.
-      (loop for k from (+ i 7) below 14
-            while (plusp carry)
-            do (let ((s (+ (aref c k) carry)))
-                 (setf (aref c k) (logand s #xffffffff)
-                       carry (ash s -32)))))))
-  c)
+  (secp224r1-felem-mul c a b))
 
 (defun secp224r1-fe-add! (r a b)
   "R := A + B, reduced.  R may be the same array as A or B."
   (declare (type secp224r1-fe r a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-assembly)
-  (progn
-    (secp224r1-fe-add-asm r a b)
-    r)
-  #-(and sbcl x86-64 ironclad-assembly)
-  (progn
-  ;; The reduction of a product takes the low half and the high half
-  ;; of the value; a sum has no high half, so the words above the
-  ;; seventh are zero, and the reduction folds the value back in.
-  (let ((c (make-array 14 :element-type '(unsigned-byte 64) :initial-element 0))
-        (q (make-array 11 :element-type '(unsigned-byte 64) :initial-element 0)))
-    (dotimes (i 7)
-      (setf (aref c i) (+ (aref a i) (aref b i))))
-    (secp224r1-fe-reduce r c q)
-    r)))
+  (secp224r1-felem-add r a b))
 
 (defun secp224r1-fe-add (a b)
   "The sum of the field elements A and B, reduced."
@@ -617,31 +584,7 @@ does, and the contract brings it below the prime."
   "R := A - B, reduced.  R may be the same array as A or B."
   (declare (type secp224r1-fe r a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-assembly)
-  (progn
-    (secp224r1-fe-sub-asm r a b)
-    r)
-  #-(and sbcl x86-64 ironclad-assembly)
-  (progn
-  (let ((c (make-array 14 :element-type '(unsigned-byte 64) :initial-element 0))
-        (q (make-array 11 :element-type '(unsigned-byte 64) :initial-element 0))
-        (borrow 0) (carry 0))
-    ;; The borrow is subtracted: it is a whole B^7 when it is not
-    ;; zero, and the borrow out is its magnitude.
-    (dotimes (i 7)
-      (let ((v (- (- (aref a i) (aref b i)) borrow)))
-        (setf (aref c i) (logand v #xffffffff)
-              borrow (if (minusp v) 1 0))))
-    ;; The difference is negative when there was a borrow, and the
-    ;; prime is added to it.
-    (when (= borrow 1)
-      (setf carry 0)
-      (dotimes (i 7)
-        (let ((v (+ (aref c i) (aref +secp224r1-p-limbs+ i) carry)))
-          (setf (aref c i) (logand v #xffffffff)
-                carry (ash v -32)))))
-    (secp224r1-fe-reduce r c q)
-    r)))
+  (secp224r1-felem-sub r a b))
 
 (defun secp224r1-fe-sub (a b)
   "The difference of the field elements A and B, reduced."
@@ -664,7 +607,7 @@ does, and the contract brings it below the prime."
   "R := A.  R may be the same array as A."
   (declare (type secp224r1-fe r a)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (dotimes (i 7 r)
+  (dotimes (i 4 r)
     (setf (aref r i) (aref a i))))
 
 (defun secp224r1-fe-is-zero (a)
@@ -672,20 +615,17 @@ does, and the contract brings it below the prime."
   (declare (type secp224r1-fe a)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (and (zerop (aref a 0)) (zerop (aref a 1)) (zerop (aref a 2))
-       (zerop (aref a 3)) (zerop (aref a 4)) (zerop (aref a 5))
-       (zerop (aref a 6))))
+       (zerop (aref a 3))))
 
 (defun secp224r1-fe-mul-buf (r a b c q)
-  "R := (A * B) mod P, using the product buffer C and the scratch Q
-of the reduction.  The caller reuses both, so that a multiply
-inside a point operation allocates nothing."
+  "R := (A * B) mod P, using the wide buffer C.  The caller reuses it,
+so that a multiply inside a point operation allocates nothing."
   (declare (type secp224r1-fe r a b)
-           (type (simple-array (unsigned-byte 64) (14)) c)
-           (type (simple-array (unsigned-byte 64) (11)) q)
+           (type secp224r1-wide c)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (declare (ignore q))
   (secp224r1-fe-mul-raw c a b)
-  (secp224r1-fe-reduce r c q)
-  r)
+  (secp224r1-fe-reduce r c q))
 
 (defun secp224r1-fe-equal (a b)
   "True when the field elements A and B are the same."
@@ -694,26 +634,20 @@ inside a point operation allocates nothing."
   (and (= (aref a 0) (aref b 0))
        (= (aref a 1) (aref b 1))
        (= (aref a 2) (aref b 2))
-       (= (aref a 3) (aref b 3))
-       (= (aref a 4) (aref b 4))
-       (= (aref a 5) (aref b 5))
-       (= (aref a 6) (aref b 6))))
+       (= (aref a 3) (aref b 3))))
 
 (defun secp224r1-make-scratch ()
   "A fresh scratch pool for the point operations.
-The twenty one first slots are field elements, the twenty second is
-the product buffer of a field multiply and the twenty third is the
-scratch of its reduction, so that a point operation allocates
-nothing per multiply."
+The twenty one first slots are field elements and the twenty second
+is the wide buffer of a field multiply, so that a point operation
+allocates nothing per multiply."
   (let ((s (make-array 23)))
     (dotimes (i 21 s)
       (setf (svref s i) (secp224r1-fe-zero)))
     (setf (svref s 21)
-          (make-array 14 :element-type '(unsigned-byte 64)
-                          :initial-element 0))
+          (make-array 7 :element-type 'integer :initial-element 0))
     (setf (svref s 22)
-          (make-array 11 :element-type '(unsigned-byte 64)
-                          :initial-element 0))
+          (make-array 7 :element-type 'integer :initial-element 0))
     s))
 
 (defun secp224r1-double! (dx dy dz x1 y1 z1 s)
@@ -969,108 +903,19 @@ X, Y and Z are bignums, and the result is a point."
   "The product of the field elements A and B, reduced."
   (declare (type secp224r1-fe a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((c (make-array 14 :element-type '(unsigned-byte 64) :initial-element 0))
-        (q (make-array 11 :element-type '(unsigned-byte 64) :initial-element 0))
+  (let ((c (make-array 7 :element-type 'integer :initial-element 0))
         (r (secp224r1-fe-zero)))
     (secp224r1-fe-mul-raw c a b)
-    (secp224r1-fe-reduce r c q)
+    (secp224r1-fe-reduce r c nil)
     r))
 
 (defun secp224r1-fe-reduce (r c q)
-  "R := C mod P, the Solinas form of the P-224 prime.
-C holds fourteen limbs of 32 bits, in words of 64 bits, and R holds
-seven limbs of 32 bits.
-
-The prime is B^7 - B^3 + 1 with B = 2^32, so B^7 is congruent to
-B^3 - 1.  The value of C is the low seven limbs, L, plus the high
-seven limbs, H, times B^7, so it is congruent to L + H*B^3 - H.
-
-The three parts go into one array of eleven words, so that no part is
-read after it has been written, and every carry and every borrow is
-signed, so that a sum which is negative carries -1 into the next
-word.  The excess, the part of the value which is above B^7, is kept
-in the four high words of the array, as four limbs, so that no big
-number is made."
-  (declare (type (simple-array (unsigned-byte 64) (14)) c)
-           (type secp224r1-fe r)
-           (type (simple-array (unsigned-byte 64) (11)) q)
+  "R := C mod P, after the reference.
+C holds the seven wide coefficients of a product, and the result is
+below the prime."
+  (declare (type secp224r1-fe r)
+           (type secp224r1-wide c)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((carry 0) (borrow 0))
-    ;; q := H*B^3 - H.  The limbs of H go to the fourth limb and up,
-    ;; and H is then given back from the first seven words.
-    (dotimes (j 7)
-      (let ((v (+ (aref c (+ 7 j)) carry)))
-        (setf (aref q (+ 3 j)) (logand v #xffffffff)
-              carry (ash v -32))))
-    (setf (aref q 10) carry)
-    ;; The first three words are not written by the pass above, and
-    ;; the scratch is reused, so they are cleared here.
-    (setf (aref q 0) 0 (aref q 1) 0 (aref q 2) 0)
-    (dotimes (i 7)
-      (let ((v (+ (- (aref q i) (aref c (+ 7 i))) borrow)))
-        (setf (aref q i) (logand v #xffffffff)
-              borrow (ash v -32))))
-    ;; The value is L + q, with the excess being what is left above
-    ;; B^7: the high words of q, the borrow of the subtraction of H,
-    ;; and the carry of the addition of L.
-    (setf carry 0)
-    (dotimes (i 7)
-      (let ((v (+ (aref c i) (aref q i) carry)))
-        (setf (aref q i) (logand v #xffffffff)
-              carry (ash v -32))))
-    ;; The excess goes into the high words, the borrow and the carry
-    ;; being added to its low word, with a carry of their own.
-    (let ((v (+ (aref q 7) borrow carry)))
-      (setf (aref q 7) (logand v #xffffffff)
-            carry (ash v -32)))
-    (dotimes (i 3)
-      (let ((v (+ (aref q (+ 8 i)) carry)))
-        (setf (aref q (+ 8 i)) (logand v #xffffffff)
-              carry (ash v -32))))
-    (setf (aref q 10) carry)
-    ;; The excess is congruent to itself times B^3, less itself, and
-    ;; is folded in until there is none.  The excess can be 1, and
-    ;; folding it in can give an excess of 1 again, so this is a loop.
-    (loop
-      ;; Is the excess zero?
-      (unless (or (plusp (aref q 7)) (plusp (aref q 8))
-                  (plusp (aref q 9)) (plusp (aref q 10)))
-        (return))
-      ;; The excess is added at the fourth limb and up, with a carry.
-      (setf carry 0)
-      (dotimes (i 4)
-        (let ((v (+ (aref q (+ 3 i)) (aref q (+ 7 i)) carry)))
-          (setf (aref q (+ 3 i)) (logand v #xffffffff)
-                carry (ash v -32))))
-      ;; And given back at the bottom, with a borrow.  The two have to
-      ;; be done separately: adding them together would hide the
-      ;; borrow of the second.  The borrow has to be carried on to the
-      ;; words above the fourth, which the first pass has changed.
-      (setf borrow 0)
-      (dotimes (i 7)
-        (let ((v (+ (- (aref q i) (if (< i 4) (aref q (+ 7 i)) 0)) borrow)))
-          (setf (aref q i) (logand v #xffffffff)
-                borrow (ash v -32))))
-      ;; The new excess is the carry of the addition and the borrow of
-      ;; the subtraction; it is one at most.
-      (setf (aref q 7) (logand (+ carry borrow) #xffffffff)
-            (aref q 8) 0
-            (aref q 9) 0
-            (aref q 10) 0))
-    ;; The value is below B^7 now, and the prime is B^7 - B^3 + 1, so
-    ;; the value is at least the prime exactly when the addition of
-    ;; B^3 - 1 reaches B^7.  The sum is not kept, only its carry.
-    (let ((cc 0))
-      (dotimes (i 7)
-        (let ((v (+ (aref q i) (if (<= i 2) #xffffffff 0) cc)))
-          (setf cc (ash v -32))))
-      (when (= cc 1)
-        ;; The prime is subtracted.  It is below the value, so no
-        ;; borrow runs out of the top.
-        (let ((bb 0))
-          (dotimes (i 7)
-            (let ((v (- (aref q i) (aref +secp224r1-p-limbs+ i) bb)))
-              (setf (aref q i) (logand v #xffffffff)
-                    bb (ash v -32)))))))
-    (dotimes (i 7) (setf (aref r i) (aref q i)))
-  r))
+  (declare (ignore q))
+  (secp224r1-felem-reduce r c)
+  (secp224r1-felem-contract r r))
