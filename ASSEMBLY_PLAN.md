@@ -537,3 +537,27 @@ before the work was reverted, so the next attempt should look for it
 in the assembly, which writes into the array of the product and
 which the other curves say assumes the usual layout of a simple
 vector.
+
+The rewriting of the point arithmetic of P-224 in limbs was begun a
+second time and reverted again, and the traps of the first attempt
+are worth writing down.  A SETF with several pairs has no order that
+the language gives, so the swap of two triples of coordinates, which
+is what the ladder does at every step, has to be written out with
+three assignments and a temporary; with the arrays of the field, a
+wrong swap gives a point that is not on the curve, and the key
+generation fails with an invalid point rather than with a wrong
+signature.  The reduction that takes the scratch of its own as an
+argument needs the parameter added to the parameter list as well:
+without it the scratch is an undefined special variable, and the
+corruption warning of SBCL gives the memory fault at 0x22, a small
+address, which is a null pointer with an offset in it.
+
+The pooling of the point arithmetic does make the limbs faster than
+they were: the doubling of a point went from twenty-two microseconds
+to six, and the addition from ten to eight, and the reason is that
+the field operations allocate nothing any more.  It is still slower
+than the bignum arithmetic of the same curve, whose doubling takes
+two microseconds, because the product of two limbs of the field of
+P-224 takes two hundred nanoseconds and the bignum product takes a
+hundred and eighty: the field of P-224 is too small for the limbs to
+win, and the assembly of the reduction is what will make them win.
