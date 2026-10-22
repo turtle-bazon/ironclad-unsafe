@@ -942,3 +942,32 @@ addition of the low half carry their borrows and their carries, so
 the difference is a borrow or a carry that is one too large or one
 too small in one of the two phases, and the words three and six
 carry it further.
+
+The probes of the two phases that make the value say that the
+difference is there and not in the fold: after the addition of the
+low half the words one, two and three of the value are two too large
+in the assembly, and the words zero, four, five and six and the
+whole of the excess are the same in the two.
+
+The excess is made of the word of the shift of the high half, less
+one when the subtraction of the high half borrowed, and the carry of
+the addition of the low half.  The excess is the same in the two,
+so the borrow of the subtraction and the carry of the addition are
+the same in the two, and the words that differ are the ones that
+the addition carries into and out of: the words one, two and three
+are two too large and the word zero is not, and a word that is two
+too large in the middle of a chain of carries makes the words above
+it two too large as well, which they are not.
+
+So the addition of the low half is not the whole of it either, and
+the word that is two too large is one that the addition writes, and
+the subtraction of the high half writes before it.  The two phases
+are to be probed one at a time: the subtraction of the high half
+alone, with a probe after it, against the assembly stopped at the
+same place, and then the addition of the low half alone.
+
+The words of the value that the addition writes are the words zero
+to six, and the excess that it takes is the word seven and the three
+above it, so the word six and the three words above it are worth
+looking at first: the excess is the same in the two, but the words
+below it are not.
