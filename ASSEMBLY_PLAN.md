@@ -532,3 +532,8 @@ an argument has every caller changed at once, or the scratch is
 unbound and the reduction writes to a null address: the corruption
 warning of SBCL says the memory fault is at 0x22, which is a small
 address, and a small address is a null pointer with an offset in it.
+That was one cause of the corruption, and the other was not found
+before the work was reverted, so the next attempt should look for it
+in the assembly, which writes into the array of the product and
+which the other curves say assumes the usual layout of a simple
+vector.
