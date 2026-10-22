@@ -1470,3 +1470,9 @@ The lesson of the last two steps: the array of the field is four
 words, one for each limb, while the wide is fourteen, two for each
 coefficient.  They are not the same array, and the offsets of a VOP
 must be the words of the array it reads, not the pairs of the wide.
+
+For the sums of the field elements, the limb sums passed through the
+product reduction of the reference are not well-formed for it when
+the coefficients are large; the addition is done by the integer
+arithmetic as before, which is correct and cheap enough.  The field
+tests pass again.

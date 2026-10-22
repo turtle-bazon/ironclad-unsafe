@@ -531,18 +531,15 @@ most."
       (setf m (ash m -56)))))
 
 (defun secp224r1-felem-add (out a b)
-  "OUT := (A + B) mod P, after the reference.
-The sum is made in the wide form and reduced, as the reference does,
-and the contract brings it below the prime."
+  "OUT := (A + B) mod P."
   (declare (type secp224r1-felem out a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((w (make-array 14 :element-type '(unsigned-byte 64)
-                          :initial-element 0)))
-    (declare (dynamic-extent w))
-    (dotimes (i 4)
-      (secp224r1-wide-set w i (+ (aref a i) (aref b i))))
-    (secp224r1-felem-reduce out w)
-    (secp224r1-felem-contract out out)))
+  (let* ((n (+ (secp224r1-felem-to-int a) (secp224r1-felem-to-int b)))
+         (m (if (>= n +secp224r1-p+) (- n +secp224r1-p+) n)))
+    (declare (type integer n m))
+    (dotimes (i 4 out)
+      (setf (aref out i) (logand m +secp224r1-limb-mask+))
+      (setf m (ash m -56)))))
 
 (defun secp224r1-felem-sub (out a b)
   "OUT := (A - B) mod P, after the reference.
