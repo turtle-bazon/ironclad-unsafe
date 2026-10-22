@@ -867,3 +867,30 @@ The comparison is made by calling the assembly directly, for the
 Lisp reduction is the one that is read when the assembly is not
 wired in, and the scratch of each is the eleven words that the
 reduction leaves.
+
+The comparison of the two scratches says more than it first seemed.
+The four words of the excess that the fold leaves are the same in
+the two, and the seven words of the value differ by two in the first
+word and two in the fourth, and that is exactly what a value of the
+excess that is two too large gives, for the fold adds the excess at
+the fourth limb and gives it back at the bottom, and the difference
+between the two is the excess times B^3 less the excess.
+
+So the excess that the fold works with, which is the excess as it
+is made by the fourth phase and not the excess that the fold
+leaves, is two too large in its first word, and the three words
+above it are right.  The first word of that excess is the fourth
+word of the shift of the high half, which is the eleventh word of
+the product, plus the borrow of the subtraction of the high half and
+the carry of the addition of the low half.  The borrow is a count
+and the carry is a count, and the two of them are two too large
+between them, so one of the two counts is one too large, or both of
+them are.
+
+The counts of the two phases are made the same way in the two:
+a sum carries one when it reaches a limb, and a difference borrows
+one when it goes below zero.  In the assembly the count of a
+difference is made by shifting it up a limb, which gives minus one,
+and taking the low bit of that, which gives one; in the Lisp it is
+the test for a negative value.  The borrow of the fold is signed
+and is added, and there the shift up a limb is used as it is.
