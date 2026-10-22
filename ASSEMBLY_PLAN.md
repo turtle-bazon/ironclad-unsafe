@@ -824,3 +824,24 @@ the low bit of it, for the shift of a word of ones gives minus one
 and the low bit of that is one.  A move into memory with an
 immediate has no size that the assembler can tell, so the words that
 are cleared are cleared with a register.
+
+The way to find the two that are too many is to compare the scratch
+of the assembly with the scratch of the Lisp reduction, for the two
+are the same eleven words and the phases are the same.  The scratch
+of the Lisp reduction is not reachable while the assembly is there,
+for the reader throws the Lisp away, so the two have to be compared
+by making the Lisp the one that is read, or by writing the eleven
+words of the scratch of the assembly out and computing the same
+words with the Lisp in a program of its own.  The eleven words are
+the three that the first phase does not write, the seven that the
+second phase writes, and the one that the first phase writes at the
+end, so the phases are four words, and the first phase to differ is
+the one that is wrong.
+
+The excess of the fold is a count of limbs and not a number, and the
+two borrows of the fold are of different kinds: the borrow of the
+subtraction of the excess is signed and is added, and the borrow of
+the subtraction of the high half is a count and is subtracted.  The
+excess that the fold leaves is the carry of the addition of the
+excess and the borrow of the subtraction of it, and the count of the
+two is what the next fold works with.
