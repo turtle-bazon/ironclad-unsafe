@@ -1278,3 +1278,35 @@ assembly first and the declaration after it, or with the two reader
 conditionals inside a progn, and the result is to be looked at before
 the Comba is used, for a product of zero is the sign of a body that
 was not read.
+
+The reason the Comba of P-224 does not fit the field as it is, is
+that the limbs of the field are numbers of any size and the
+assembly reads words of sixty-four bits.  The reference has the
+limbs of the field in words of sixty-four bits, each holding a limb
+of fifty-six bits, and the field element of the tree has the limbs
+in numbers of any size, and the two are not the same thing.
+
+So the field element of P-224 is to be four words of sixty-four
+bits, as the reference has it, and the functions of the field are to
+be written on words and not on numbers: the conversion from a number
+takes the limbs out of it with a mask, and the conversion to a
+number puts the limbs together with a shift.
+
+The product of two elements is then either eight words of
+sixty-four bits, each holding a limb of fifty-six bits, with the
+carries carried, as the Comba of the goldilocks makes it, or the
+seven wide coefficients of a hundred and twenty-eight bits of the
+reference, which are the columns of the product without the
+carries.  The first is what the assembly of the Comba gives, and
+the reduction that goes with it is the one on eight limbs, which
+folds the excess with a shift of forty bits within a limb, because
+the term of the fold is 2^96, which is 2^40 times a limb of
+fifty-six bits, and the sixteen bits that are left of a limb after
+forty of them are what the reference splits a coefficient into.
+
+The reduction of the reference, which is the one that was written
+first, works on the seven wide coefficients and on numbers of any
+size, and it is right, and it is slow, and it is not what the
+assembly wants.  The one the assembly wants is the same fold on
+eight words, with the borrows counted and not signed, for the
+assembly can count them.
