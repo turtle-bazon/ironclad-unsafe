@@ -1145,3 +1145,20 @@ The sums and the differences are made in the same eight words, the
 sum of two elements is the eight limbs with the carries of the sum,
 and the difference of two elements is the eight limbs with the
 multiple of the prime added first, and both are reduced the same way.
+
+The Comba of the assembly of the field of P-224 is the Comba of the
+goldilocks, which is for the same limbs of fifty-six bits and is
+written the same way: the low halves of a column are summed in one
+word and the high halves in another, the limb of the product is the
+low fifty-six bits of the low sum, which is made by shifting the sum
+up by eight bits and back down by eight, and the carry into the next
+column is the high sum shifted up by eight bits with the part of the
+low sum above fifty-six bits added to it, which is the low sum
+shifted right by fifty-six bits.
+
+The comment of that Comba says that it stores a word of thirty-two
+bits, and that is stale: the words it stores are fifty-six bits
+wide, and the shifts of eight and fifty-six are the ones of a limb
+of fifty-six bits.  The product of the goldilocks is of eight limbs
+and has fifteen columns and a carry, and the product of the field of
+P-224 is of four limbs and has seven columns and a carry.
