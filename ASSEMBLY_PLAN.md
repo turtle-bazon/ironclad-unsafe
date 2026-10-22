@@ -444,3 +444,25 @@ microseconds for five hundred and twelve coefficients and the
 Karatsuba product takes six hundred, and both are in the keygen, in
 the solution of the NTRU equation, which is a hundred and thirty
 three milliseconds of the two hundred of the keygen.
+
+The reduction of the field of P-224 was in the way of the multiply:
+the reduction of a product took eight hundred nanoseconds of the nine
+hundred and sixty of the multiply, and it was written with the safety
+checks on, which made every access of the array a checked one.  With
+the checks off, and with the excess kept as four limbs of thirty-two
+bits in the high words of the array instead of as a big number, the
+multiply went down to two hundred and forty nanoseconds.  The excess
+is the part of the value which is above B^7; it is congruent to
+itself times B^3, less itself, and it is folded in until there is
+none, and it is one at most after the first fold, so the loop that
+folds it in runs at most twice.
+
+Two things about the writing of the check of the reduction are worth
+remembering.  A value of fourteen limbs is reduced against the prime
+with the integer arithmetic, and the check of that is easy to get
+wrong: the limbs are little endian, so the value is made with DPB and
+not with a shift of the accumulator, which shifts the low limbs out
+of their places and gives a number that is wrong and looks plausible.
+And the value of the prime in the file is right while the value of
+the limbs of the prime in the same file was, for a while, read as
+something else; the two have to be compared, and they are equal.
