@@ -508,3 +508,27 @@ values are the ones of the equation, which are of the order of the
 square of the prime, and that is well inside the range, but the
 values of the coefficients of the equation are not checked
 anywhere.
+
+The field of P-224 is in limbs, with the product in the assembly, and
+the point arithmetic in limbs as well, but the signature of P-224
+still works on bignums, and the limb point arithmetic is eleven times
+slower than the bignum one: twenty-two microseconds for a doubling
+against two.  The reason is not the arithmetic but the allocation:
+every field operation makes a fresh array for the product, a fresh
+array for the scratch of the reduction and a fresh array for the
+result, and a doubling makes thirteen of them.
+
+So the limbs of P-224 want the treatment that the limbs of P-256
+have: a pool of field elements, a product buffer and the scratch of
+the reduction in the last two slots of the pool, and point
+operations that write into destinations they are given and take
+their temporaries from the pool.  The rewriting was begun and
+reverted, and the traps it has are worth writing down.  A variable
+may not be called T, which is a constant, and TW is the name to use.
+A function whose last form is a branch with several forms in it must
+have them wrapped in a PROGN, or the branch is read as a COND with
+too many elements.  A reduction that takes the scratch of its own as
+an argument has every caller changed at once, or the scratch is
+unbound and the reduction writes to a null address: the corruption
+warning of SBCL says the memory fault is at 0x22, which is a small
+address, and a small address is a null pointer with an offset in it.
