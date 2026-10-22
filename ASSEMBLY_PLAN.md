@@ -585,3 +585,28 @@ triples of coordinates has to be a macro: a function that sets its
 parameters sets its own parameters and leaves the caller's variables
 alone, so the accumulator of the comb never moved and the comb
 returned the point at infinity.
+
+The limbs of P-224 are thirty-two bits, and that is the whole
+story: the comb in limbs takes a millisecond and a tenth, and the
+comb in bignums takes a hundred and twenty microseconds, and the
+ladder in limbs takes a millisecond and two hundred and the ladder
+in bignums two hundred and forty.  The reason is that a bignum of
+two hundred and twenty-four bits is four words of sixty-four bits
+inside, so the product of two of them is sixteen multiplications of
+sixty-four bits, while the product of two limbs of thirty-two bits
+is forty-nine of them, and the reduction of the product of P-224 is
+in Lisp.
+
+So the field of P-224 in thirty-two bit limbs cannot win, and the
+signature of P-224 goes back to the bignums until the field is in
+limbs of fifty-six bits, which is four limbs and which is what the
+reference does.  The point arithmetic in limbs, with the pool of
+field elements and the destinations, is in the tree and is checked
+against the bignum arithmetic, and it is what the field of
+fifty-six bits will use.
+
+The same is to be said of the field of P-521, which is nine words of
+sixty-four bits in the bignums, and which the limbs of sixty-four
+bits will halve the time of, and of the field of P-384, which is
+six words of sixty-four bits, and which the limbs of sixty-four bits
+will make four times faster.

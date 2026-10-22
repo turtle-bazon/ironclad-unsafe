@@ -160,13 +160,19 @@
   ;; Secret scalars use the fixed-schedule ladder.  The generator G uses
   ;; the faster fixed-base comb.  Public-only callers can keep using
   ;; %EC-WINDOW-MULT or %EC-SHAMIR-MULT directly.
-  ;; The field of the curve is in limbs, and so is the arithmetic of
-  ;; the ladder and of the comb.
+  ;;
+  ;; The field of the curve is in limbs, and the comb and the ladder
+  ;; are in limbs as well, but the limbs are thirty-two bits and the
+  ;; product of two of them is six times slower than the product of
+  ;; the two bignums, because a bignum of two hundred and twenty-four
+  ;; bits is four words of sixty-four bits inside.  The limbs of
+  ;; fifty-six bits are what the reference does, and they are what
+  ;; will make the field of P-224 win; until then the bignums are the
+  ;; faster of the two, and the signature uses them.
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (if (and (eq p +secp224r1-g+) (not (minusp e)))
-      (secp224r1-base-mult-limbs e)
-      (secp224r1-ladder-mult-limbs (slot-value p 'x) (slot-value p 'y)
-                                   (slot-value p 'z) e)))
+      (secp224r1-base-mult e)
+      (%ec-ladder-mult p e :bits +secp224r1-bits+)))
 
 (defmethod ec-point-on-curve-p ((p secp224r1-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
