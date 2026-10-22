@@ -779,3 +779,20 @@ bignums is sixteen wide products and the product of the limbs is
 forty-nine narrow ones, and the limb field can only win when the
 reduction and the sums and the differences are in the assembly, which
 is what the P-256 has now.
+
+The sums and the differences of the field of P-224 are in the
+assembly now, and they are the same code as the ones of P-256 with
+seven limbs instead of eight, for the limbs of the prime of P-224 are
+a one, two zeros and four limbs of ones, where the limbs of the
+prime of P-256 are three limbs of ones, three zeros, a one and a
+limb of ones.  The sum of two field elements takes less than five
+nanoseconds, where the sum of two numbers with the general division
+takes about a hundred.
+
+The product of two field elements is still a tie with the product of
+two numbers, at two hundred nanoseconds for both, for the Comba of
+the limbs is in the assembly and the reduction of the product is
+still in Lisp.  The signature of P-224 is still made with the
+numbers, for the limb field cannot be faster than they are until
+the reduction is in the assembly too, and that is the last piece of
+the field of P-224 in limbs.

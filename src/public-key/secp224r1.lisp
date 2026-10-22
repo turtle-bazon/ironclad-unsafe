@@ -451,6 +451,12 @@
   "R := A + B, reduced.  R may be the same array as A or B."
   (declare (type secp224r1-fe r a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-assembly)
+  (progn
+    (secp224r1-fe-add-asm r a b)
+    r)
+  #-(and sbcl x86-64 ironclad-assembly)
+  (progn
   ;; The reduction of a product takes the low half and the high half
   ;; of the value; a sum has no high half, so the words above the
   ;; seventh are zero, and the reduction folds the value back in.
@@ -459,7 +465,7 @@
     (dotimes (i 7)
       (setf (aref c i) (+ (aref a i) (aref b i))))
     (secp224r1-fe-reduce r c q)
-    r))
+    r)))
 
 (defun secp224r1-fe-add (a b)
   "The sum of the field elements A and B, reduced."
@@ -470,6 +476,12 @@
   "R := A - B, reduced.  R may be the same array as A or B."
   (declare (type secp224r1-fe r a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-assembly)
+  (progn
+    (secp224r1-fe-sub-asm r a b)
+    r)
+  #-(and sbcl x86-64 ironclad-assembly)
+  (progn
   (let ((c (make-array 14 :element-type '(unsigned-byte 64) :initial-element 0))
         (q (make-array 11 :element-type '(unsigned-byte 64) :initial-element 0))
         (borrow 0) (carry 0))
@@ -488,7 +500,7 @@
           (setf (aref c i) (logand v #xffffffff)
                 carry (ash v -32)))))
     (secp224r1-fe-reduce r c q)
-    r))
+    r)))
 
 (defun secp224r1-fe-sub (a b)
   "The difference of the field elements A and B, reduced."
