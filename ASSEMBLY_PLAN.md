@@ -971,3 +971,35 @@ to six, and the excess that it takes is the word seven and the three
 above it, so the word six and the three words above it are worth
 looking at first: the excess is the same in the two, but the words
 below it are not.
+
+The subtraction of the high half is where the two differ, and not
+the addition of the low half: after the subtraction the words one,
+two and three of the value are two too large in the assembly, and
+the word zero, the words four, five and six and the whole of the
+excess are the same in the two.  The excess is the same, so the
+borrow of the subtraction and the carry of the addition are the
+same.
+
+The subtraction of the high half is a chain of borrows: the first
+three words of the scratch are cleared and the limbs of the high
+half come out of the fourth word and up, so the first three words
+are zero less a limb of the high half less the borrow, and the
+fourth word is a limb of the shift less a limb of the high half
+less the borrow.  The words one and two are two too large and the
+word three is two too large, and the word four and the two above it
+are the same, so the chain is right again at the fourth word.
+
+The borrow of the subtraction is signed and is subtracted, so that a
+word that borrows makes the word above it one larger, and the word
+that borrows has the borrow of the word below it added to it, which
+is what the two together do.  A word two too large with the word
+above it right again is not a chain of borrows, and the three words
+that are two too large are the three that the borrow of the word
+below reaches, so the borrow is two too small in the word below the
+first of them and right in the fourth word.
+
+The subtraction is therefore to be compared a word at a time, with
+the borrow of each word written out, which the probe can do: the
+probe of the phase two should also give the borrow, and the
+assembly should write its borrow out as well, and the two borrows
+are to be compared word by word.
