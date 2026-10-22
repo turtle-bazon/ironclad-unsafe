@@ -894,3 +894,28 @@ difference is made by shifting it up a limb, which gives minus one,
 and taking the low bit of that, which gives one; in the Lisp it is
 the test for a negative value.  The borrow of the fold is signed
 and is added, and there the shift up a limb is used as it is.
+
+The borrow of the subtraction of the high half is signed and is
+subtracted, and the excess takes it as it is: the excess is the word
+of the shift of the high half, less one when the subtraction
+borrowed, plus the carry of the addition of the low half.  The
+assembly counted the borrow, which made the excess two too large,
+and the count is the reason the two scratches differed by two in
+the first word and by two in the fourth.
+
+With the borrow signed, as the Lisp reduction has it, the first four
+phases of the two agree, and the difference is in the fold: the
+words one, two, three and six of the value are two too large.  The
+fold adds the excess at the fourth limb and up and gives it back at
+the bottom, and the words that the two passes write are the words
+zero to six, so the difference of two in the words one, two, three
+and six says that the first pass and the second pass do not
+between them take out what the excess is.
+
+The two passes are to be compared one at a time: the first pass
+alone, with the second pass left out, and then the second pass
+alone, with the first left out.  The scratch of the assembly is the
+eleven words that the reduction leaves, and the Lisp reduction is
+the one that is read when the assembly is not wired in, so the two
+are compared by calling each of them on the same product and
+looking at the eleven words.
