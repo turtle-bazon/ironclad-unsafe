@@ -1481,3 +1481,8 @@ P-224 now uses the limb field for the base comb and for the ladder,
 with the assembly Comba, reduction and contract; the sums of the
 field are in the integer arithmetic where it is correct.  The full
 test suite passes.
+
+P-224 is on the limb field with the assembly Comba, reduction and
+contract, and the full suite passes.  The attempt to move P-521 to
+limbs was too complex to do correctly in one pass and was reverted;
+the integer arithmetic of P-521 remains.
