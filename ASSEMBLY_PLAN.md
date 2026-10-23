@@ -1567,3 +1567,9 @@ P-521 stays on integer arithmetic: the field is a Mersenne fold in one
 step and the prior limb attempt was reverted; no further progress.
 secp256r1 verify's shamir is already limb-based with a 4-bit window.
 falcon-512 keygen is the NTRU solve.  The full suite passes.
+
+Further attempts consulted the P-224 C reference (ecp_nistp224.c) for
+the points_mul precomputation and mixed-addition strategy; the Lisp
+already uses a 4-bit window comb with mixed adds for the generator.
+Remaining gaps (falcon-512, secp256r1, secp521r1, ed448) need their
+own reference sources or major rewrites.  The full suite passes.
