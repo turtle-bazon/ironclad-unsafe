@@ -11,9 +11,9 @@ Sorted by current C/Lisp ratio, descending. Rows without a C reference are liste
 
 | Category | Algorithm | Operation | Unit | Lisp initial | Lisp current | C reference | C/Lisp initial | C/Lisp current |
 |---|---|---|---|---:|---:|---:|---:|---:|
-| public-key | secp224r1 | verify | ops/s | 745 | 725 | 10.140k | 12.40 | 13.99 |
+| public-key | secp224r1 | verify | ops/s | 745 | 3.916k | 10.140k | 12.40 | 2.59 |
 | public-key | falcon-512 | keygen | ops/s | 1.75 | 8.475 | 111.2 | 45.31 | 13.12 |
-| public-key | secp224r1 | sign | ops/s | 985 | 1.760k | 21.450k | 19.84 | 12.19 |
+| public-key | secp224r1 | sign | ops/s | 985 | 4.993k | 21.450k | 19.84 | 4.30 |
 | public-key | ed448 | verify | ops/s | 113 | 420 | 4.940k | 43.42 | 11.76 |
 | public-key | secp256r1 | verify | ops/s | 600 | 1.885k | 18.550k | 30.17 | 9.84 |
 | public-key | secp521r1 | sign | ops/s | 215 | 415 | 4.077k | 18.93 | 9.82 |
