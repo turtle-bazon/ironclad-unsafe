@@ -1486,3 +1486,23 @@ P-224 is on the limb field with the assembly Comba, reduction and
 contract, and the full suite passes.  The attempt to move P-521 to
 limbs was too complex to do correctly in one pass and was reverted;
 the integer arithmetic of P-521 remains.
+
+P-224 then ported the reference's point double and point add, plus the
+reference's field inverse.  The double and the add now stay in the
+wide for every sum and difference: `widefelem_diff` adds the
+2^120-based multiple of the prime before subtracting, so no
+coefficient borrows and the reduction is the reference's step for
+step.  The field inverse is the reference's addition chain, about
+two hundred and twenty squarings and a handful of multiplications,
+all in the limb field; it replaces the bignum exponentiation.  The
+scalar multiplication of P-224 now runs in about five hundred
+microseconds for a verification and about two hundred for a
+signature, against the twelve hundred and three hundred and seventy
+before this step.  The full suite passes.
+
+The Goldilocks add and subtract in assembly was attempted and reverted:
+the naive fifty-six-bit carry chain together with the unconditional
+subtraction of 2^224 + 1 produced the wrong residue and broke
+:HPKE, :ED448-SIGNATURE, :CURVE448-DH and :GOLDILOCKS-FIELD.  It
+must be derived from `goldilocks-fe-reduce16` instead and is left
+alone until then.
