@@ -17,7 +17,7 @@ Sorted by current C/Lisp ratio, descending. Rows without a C reference are liste
 | public-key | ed448 | verify | ops/s | 113 | 420 | 4.940k | 43.42 | 11.76 |
 | public-key | secp256r1 | verify | ops/s | 600 | 1.885k | 18.550k | 30.17 | 9.84 |
 | public-key | secp521r1 | sign | ops/s | 215 | 415 | 4.077k | 18.93 | 9.82 |
-| public-key | dsa | verify | ops/s | 310 | 560 | 5.216k | 15.82 | 9.31 |
+| public-key | dsa | verify | ops/s | 310 | 806 | 5.216k | 15.82 | 6.47 |
 | public-key | dsa | sign | ops/s | 610 | 585 | 4.559k | 7.03 | 7.79 |
 | public-key | secp521r1 | verify | ops/s | 155 | 295 | 2.201k | 14.26 | 7.46 |
 | public-key | falcon-512 | verify | ops/s | 1.775k | 3.495k | 25.960k | 14.90 | 7.43 |
