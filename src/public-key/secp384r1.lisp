@@ -200,7 +200,7 @@
   (with-slots (x y z) p
     (declare (type integer x y z))
     (when (zerop z)
-      (error 'ironclad-error
+      (error 'ironclad-unsafe-error
              :format-control "The point at infinity can't be encoded."))
     (let* ((invz (ec-scalar-inv :secp384r1 z))
            (invz2 (mod (* invz invz) +secp384r1-p+))

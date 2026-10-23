@@ -29,7 +29,7 @@
              (declare (dynamic-extent buffer))
              (frob buffer 0 +buffer-size+)))))
     (t
-     (error 'ironclad-error
+     (error 'ironclad-unsafe-error
             :format-control "Unsupported stream element-type ~S for stream ~S."
             :format-arguments (list (stream-element-type stream) stream)))))
 
@@ -345,7 +345,7 @@
   (get sym '%digest-length))
 
 (defun list-all-digests ()
-  (loop for symbol being each external-symbol of (find-package :ironclad)
+  (loop for symbol being each external-symbol of (find-package :ironclad-unsafe)
      if (digestp symbol)
      collect (intern (symbol-name symbol) :keyword) into digests
      finally (return (sort digests #'string<))))
@@ -369,7 +369,7 @@
 
 (eval-when (:compile-toplevel :load-toplevel)
   (defun optimized-maker-name (name)
-    (let ((*package* (find-package :ironclad)))
+    (let ((*package* (find-package :ironclad-unsafe)))
       (symbolicate '#:%make- name '#:-digest))))
 
 (defmacro defdigest (name &key digest-length block-length)

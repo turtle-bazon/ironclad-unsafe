@@ -3,7 +3,7 @@
 
 (require 'asdf)
 (push (truename #p"./") asdf:*central-registry*)
-(asdf:load-system :ironclad)
+(asdf:load-system :ironclad-unsafe)
 
 (defpackage :c-vs-lisp
   (:use :cl))
@@ -62,13 +62,13 @@
       (setf (aref m i) (mod (* i 7 3) 256)))))
 
 (defun lisp-benchmark-kem (kind iterations)
-  (multiple-value-bind (priv pub) (ironclad:generate-key-pair kind)
+  (multiple-value-bind (priv pub) (ironclad-unsafe:generate-key-pair kind)
     (let ((keygen-start (now-ms)))
-      (multiple-value-bind (priv2 pub2) (ironclad:generate-key-pair kind)
+      (multiple-value-bind (priv2 pub2) (ironclad-unsafe:generate-key-pair kind)
         (declare (ignore priv2 pub2)))
       (let ((keygen (- (now-ms) keygen-start)))
-        (multiple-value-bind (ct ss) (ironclad:encapsulate-key pub)
-          (let ((ss2 (ironclad:decapsulate-key priv ct)))
+        (multiple-value-bind (ct ss) (ironclad-unsafe:encapsulate-key pub)
+          (let ((ss2 (ironclad-unsafe:decapsulate-key priv ct)))
             (unless (equalp ss ss2)
               (error "KEM roundtrip failed for ~A" kind))
             (let ((encaps-start (now-ms))
@@ -77,11 +77,11 @@
                   (decaps 0.0d0))
               (dotimes (i iterations)
                 (setf encaps-start (now-ms))
-                (multiple-value-bind (ct2 ss3) (ironclad:encapsulate-key pub)
+                (multiple-value-bind (ct2 ss3) (ironclad-unsafe:encapsulate-key pub)
                   (setf ct ct2 ss ss3))
                 (incf encaps (- (now-ms) encaps-start))
                 (setf decaps-start (now-ms))
-                (setf ss2 (ironclad:decapsulate-key priv ct))
+                (setf ss2 (ironclad-unsafe:decapsulate-key priv ct))
                 (incf decaps (- (now-ms) decaps-start)))
               (list :keygen-ms keygen
                     :encaps-ms (/ encaps iterations)
@@ -89,13 +89,13 @@
 
 (defun lisp-benchmark-sign (kind iterations)
   (let ((msg (bench-message)))
-    (multiple-value-bind (priv pub) (ironclad:generate-key-pair kind)
+    (multiple-value-bind (priv pub) (ironclad-unsafe:generate-key-pair kind)
       (let ((keygen-start (now-ms)))
-        (multiple-value-bind (priv2 pub2) (ironclad:generate-key-pair kind)
+        (multiple-value-bind (priv2 pub2) (ironclad-unsafe:generate-key-pair kind)
           (declare (ignore priv2 pub2)))
         (let ((keygen (- (now-ms) keygen-start)))
-          (let ((sig (ironclad:sign-message priv msg)))
-            (unless (ironclad:verify-signature pub msg sig)
+          (let ((sig (ironclad-unsafe:sign-message priv msg)))
+            (unless (ironclad-unsafe:verify-signature pub msg sig)
               (error "signature roundtrip failed for ~A" kind))
             (let ((sign 0.0d0)
                   (verify 0.0d0)
@@ -103,10 +103,10 @@
                   (verify-start 0.0d0))
               (dotimes (i iterations)
                 (setf sign-start (now-ms))
-                (setf sig (ironclad:sign-message priv msg))
+                (setf sig (ironclad-unsafe:sign-message priv msg))
                 (incf sign (- (now-ms) sign-start))
                 (setf verify-start (now-ms))
-                (unless (ironclad:verify-signature pub msg sig)
+                (unless (ironclad-unsafe:verify-signature pub msg sig)
                   (error "signature verification failed for ~A" kind))
                 (incf verify (- (now-ms) verify-start)))
               (list :keygen-ms keygen
@@ -119,8 +119,8 @@
   (let ((key (list kind type iterations)))
     (or (gethash key *lisp-cache*)
         (let ((result
-                (let ((ironclad:*prng*
-                        (ironclad:make-prng :fortuna
+                (let ((ironclad-unsafe:*prng*
+                        (ironclad-unsafe:make-prng :fortuna
                                             :seed (make-array 64 :element-type '(unsigned-byte 8)
                                                               :initial-element 7))))
                   (ecase type

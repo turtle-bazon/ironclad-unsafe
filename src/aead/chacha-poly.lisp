@@ -129,7 +129,7 @@ REINITIALIZE-INSTANCE, and the Poly1305 key is single-use anyway."
 
 (defmethod process-associated-data ((mode chacha-poly-base) data &key (start 0) end)
   (if (encryption-started-p mode)
-      (error 'ironclad-error :format-control "All associated data must be processed before the encryption begins.")
+      (error 'ironclad-unsafe-error :format-control "All associated data must be processed before the encryption begins.")
       (let* ((end (or end (length data)))
              (length (- end start)))
         (incf (chacha-poly-ad-length mode) length)

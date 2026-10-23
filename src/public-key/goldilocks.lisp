@@ -106,9 +106,9 @@ This is the portable version; the assembly version is faster."
   (declare (type goldilocks-fe a b)
            (type goldilocks-product r)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (goldilocks-fe-mul-raw-asm r a b)
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
     (dotimes (k 16) (setf (aref r k) 0))
     (dotimes (i 8)
@@ -183,11 +183,11 @@ The high eight limbs are the scratch, and are clobbered."
 The result is in the low eight limbs of C; the others are clobbered."
   (declare (type goldilocks-product c)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
     (goldilocks-fe-reduce-asm c)
     c)
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
   ;; The product is the low half plus the high half shifted up by 448
   ;; bits, and 2^448 = 2^224 + 1 modulo the prime, so the high half is

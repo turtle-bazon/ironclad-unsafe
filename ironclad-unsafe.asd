@@ -1,13 +1,13 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 
-(cl:defpackage #:ironclad-system
+(cl:defpackage #:ironclad-unsafe-system
   (:use :cl :asdf))
 
-(cl:in-package #:ironclad-system)
+(cl:in-package #:ironclad-unsafe-system)
 
-(defclass ironclad-source-file (cl-source-file) ())
+(defclass ironclad-unsafe-source-file (cl-source-file) ())
 
-(defclass ironclad-system (system)
+(defclass ironclad-unsafe-system (system)
   ()
   (:default-initargs
    :version "0.61"
@@ -15,28 +15,28 @@
    :maintainer "Guillaume LE VAILLANT <glv@posteo.net>"
    :description "A cryptographic toolkit written in pure Common Lisp"
    :license "BSD 3-Clause"
-   :default-component-class 'ironclad-source-file))
+   :default-component-class 'ironclad-unsafe-source-file))
 
-(defmacro define-ironclad-subsystems (aggregate-system kind path &body components)
+(defmacro define-ironclad-unsafe-subsystems (aggregate-system kind path &body components)
   (let ((subsystems (loop for spec in (mapcar #'uiop:ensure-list components)
-                          collect (format nil "ironclad/~a/~a" kind (first spec)))))
+                          collect (format nil "ironclad-unsafe/~a/~a" kind (first spec)))))
     `(progn
        ,@(loop for (component . options) in (mapcar #'uiop:ensure-list components)
                for subsystem in subsystems
                collect `(defsystem ,subsystem
-                          :class ironclad-system
+                          :class ironclad-unsafe-system
                           :description ,(format nil "Ironclad ~a: ~a" kind component)
-                          :depends-on ,(cons "ironclad/core" (getf options :depends-on))
+                          :depends-on ,(cons "ironclad-unsafe/core" (getf options :depends-on))
                           :pathname ,path
                           :serial t
                           :components ,(or (getf options :components)
                                            `((:file ,component)))))
        (defsystem ,aggregate-system
-         :class ironclad-system
-         :depends-on ("ironclad/core" ,@subsystems)))))
+         :class ironclad-unsafe-system
+         :depends-on ("ironclad-unsafe/core" ,@subsystems)))))
 
-(defsystem "ironclad/core"
-  :class ironclad-system
+(defsystem "ironclad-unsafe/core"
+  :class ironclad-unsafe-system
   :depends-on (#+sbcl "sb-rotate-byte" #+sbcl "sb-posix" "bordeaux-threads")
   :serial t
   :components ((:static-file "LICENSE")
@@ -44,7 +44,7 @@
                (:static-file "README.org")
                (:static-file "TODO")
                (:module "doc"
-                :components ((:html-file "ironclad")))
+                :components ((:html-file "ironclad-unsafe")))
                (:module "src"
                 :serial t
                 :components ((:file "package")
@@ -100,7 +100,7 @@
                                            (:file "elliptic-curve")
                                            (:file "rfc6979")))))))
 
-(define-ironclad-subsystems "ironclad/ciphers" "cipher" #p"src/ciphers/"
+(define-ironclad-unsafe-subsystems "ironclad-unsafe/ciphers" "cipher" #p"src/ciphers/"
   "aes"
   "arcfour"
   "aria"
@@ -108,19 +108,19 @@
   "camellia"
   "cast5"
   "chacha"
-  ("xchacha" :depends-on ("ironclad/cipher/chacha"))
+  ("xchacha" :depends-on ("ironclad-unsafe/cipher/chacha"))
   "des"
   "idea"
   "kalyna"
-  ("keystream" :depends-on ("ironclad/cipher/chacha"
-                            "ironclad/cipher/salsa20"))
+  ("keystream" :depends-on ("ironclad-unsafe/cipher/chacha"
+                            "ironclad-unsafe/cipher/salsa20"))
   "kuznyechik"
   "misty1"
   "rc2"
   "rc5"
   "rc6"
   "salsa20"
-  ("xsalsa20" :depends-on ("ironclad/cipher/salsa20"))
+  ("xsalsa20" :depends-on ("ironclad-unsafe/cipher/salsa20"))
   "seed"
   "serpent"
   "sm4"
@@ -132,7 +132,7 @@
   "xor"
   "xtea")
 
-(define-ironclad-subsystems "ironclad/digests" "digest" #p"src/digests/"
+(define-ironclad-unsafe-subsystems "ironclad-unsafe/digests" "digest" #p"src/digests/"
   "adler32"
   "ascon"
   "blake2"
@@ -140,10 +140,10 @@
   "blake3"
   "crc24"
   "crc32"
-  ("cshake" :depends-on ("ironclad/digest/sha3"))
+  ("cshake" :depends-on ("ironclad-unsafe/digest/sha3"))
   "groestl"
   "jh"
-  ("kupyna" :depends-on ("ironclad/cipher/kalyna"))
+  ("kupyna" :depends-on ("ironclad-unsafe/cipher/kalyna"))
   "md2"
   "md4"
   ("md5" :components ((:file "md5")
@@ -154,118 +154,118 @@
   "sha256"
   "sha3"
   "sha512"
-  ("skein" :depends-on ("ironclad/cipher/threefish"))
+  ("skein" :depends-on ("ironclad-unsafe/cipher/threefish"))
   "sm3"
   "streebog"
   "tiger"
-  ("tree-hash" :depends-on ("ironclad/digest/tiger"))
+  ("tree-hash" :depends-on ("ironclad-unsafe/digest/tiger"))
   "whirlpool")
 
-(define-ironclad-subsystems "ironclad/macs" "mac" #p"src/macs/"
-  ("blake2-mac" :depends-on ("ironclad/digest/blake2"))
-  ("blake2s-mac" :depends-on ("ironclad/digest/blake2s"))
+(define-ironclad-unsafe-subsystems "ironclad-unsafe/macs" "mac" #p"src/macs/"
+  ("blake2-mac" :depends-on ("ironclad-unsafe/digest/blake2"))
+  ("blake2s-mac" :depends-on ("ironclad-unsafe/digest/blake2s"))
   "cmac"
   "hmac"
   "gmac"
-  ("kmac" :depends-on ("ironclad/digest/cshake"))
+  ("kmac" :depends-on ("ironclad-unsafe/digest/cshake"))
   "poly1305"
   "siphash"
-  ("skein-mac" :depends-on ("ironclad/cipher/threefish"
-                            "ironclad/digest/skein")))
+  ("skein-mac" :depends-on ("ironclad-unsafe/cipher/threefish"
+                            "ironclad-unsafe/digest/skein")))
 
-(define-ironclad-subsystems "ironclad/prngs" "prng" #p"src/prng/"
-  ("fortuna" :depends-on ("ironclad/cipher/aes"
-                          "ironclad/digest/sha256")
+(define-ironclad-unsafe-subsystems "ironclad-unsafe/prngs" "prng" #p"src/prng/"
+  ("fortuna" :depends-on ("ironclad-unsafe/cipher/aes"
+                          "ironclad-unsafe/digest/sha256")
              :components ((:file "generator")
                           (:file "fortuna"))))
 
-(define-ironclad-subsystems "ironclad/aeads" "aead" #p"src/aead/"
-  ("eax" :depends-on ("ironclad/mac/cmac"))
+(define-ironclad-unsafe-subsystems "ironclad-unsafe/aeads" "aead" #p"src/aead/"
+  ("eax" :depends-on ("ironclad-unsafe/mac/cmac"))
   "etm"
-  ("gcm" :depends-on ("ironclad/mac/gmac"))
-  ("ccm" :depends-on ("ironclad/cipher/aes"))
-  ("gcm-siv" :depends-on ("ironclad/cipher/aes"))
-  ("chacha-poly" :depends-on ("ironclad/cipher/chacha"
-                              "ironclad/cipher/xchacha"
-                              "ironclad/mac/poly1305"))
-  ("ascon-aead" :depends-on ("ironclad/digest/ascon")))
+  ("gcm" :depends-on ("ironclad-unsafe/mac/gmac"))
+  ("ccm" :depends-on ("ironclad-unsafe/cipher/aes"))
+  ("gcm-siv" :depends-on ("ironclad-unsafe/cipher/aes"))
+  ("chacha-poly" :depends-on ("ironclad-unsafe/cipher/chacha"
+                              "ironclad-unsafe/cipher/xchacha"
+                              "ironclad-unsafe/mac/poly1305"))
+  ("ascon-aead" :depends-on ("ironclad-unsafe/digest/ascon")))
 
-(define-ironclad-subsystems "ironclad/hpke" "hpke" #p"src/hpke/"
-  ("hpke" :depends-on ("ironclad/public-key/curve25519"
-                       "ironclad/public-key/curve448"
-                       "ironclad/public-key/secp256r1"
-                       "ironclad/public-key/secp384r1"
-                       "ironclad/public-key/secp521r1"
-                       "ironclad/aead/gcm"
-                       "ironclad/aead/chacha-poly"
-                       "ironclad/cipher/aes"
-                       "ironclad/kdf/hmac")))
+(define-ironclad-unsafe-subsystems "ironclad-unsafe/hpke" "hpke" #p"src/hpke/"
+  ("hpke" :depends-on ("ironclad-unsafe/public-key/curve25519"
+                       "ironclad-unsafe/public-key/curve448"
+                       "ironclad-unsafe/public-key/secp256r1"
+                       "ironclad-unsafe/public-key/secp384r1"
+                       "ironclad-unsafe/public-key/secp521r1"
+                       "ironclad-unsafe/aead/gcm"
+                       "ironclad-unsafe/aead/chacha-poly"
+                       "ironclad-unsafe/cipher/aes"
+                       "ironclad-unsafe/kdf/hmac")))
 
-(define-ironclad-subsystems "ironclad/kdfs" "kdf" #p"src/kdf/"
-  ("argon2" :depends-on ("ironclad/mac/blake2-mac"))
-  ("bcrypt" :depends-on ("ironclad/cipher/blowfish"
-                         "ironclad/digest/sha512"))
-  ("hmac" :depends-on ("ironclad/mac/hmac"))
+(define-ironclad-unsafe-subsystems "ironclad-unsafe/kdfs" "kdf" #p"src/kdf/"
+  ("argon2" :depends-on ("ironclad-unsafe/mac/blake2-mac"))
+  ("bcrypt" :depends-on ("ironclad-unsafe/cipher/blowfish"
+                         "ironclad-unsafe/digest/sha512"))
+  ("hmac" :depends-on ("ironclad-unsafe/mac/hmac"))
   "pkcs5"
-  ("password-hash" :depends-on ("ironclad/digest/sha256"))
-  ("scrypt" :depends-on ("ironclad/cipher/salsa20"
-                         "ironclad/digest/sha256"
-                         "ironclad/kdf/pkcs5")))
+  ("password-hash" :depends-on ("ironclad-unsafe/digest/sha256"))
+  ("scrypt" :depends-on ("ironclad-unsafe/cipher/salsa20"
+                         "ironclad-unsafe/digest/sha256"
+                         "ironclad-unsafe/kdf/pkcs5")))
 
-(define-ironclad-subsystems "ironclad/public-keys" "public-key" #p"src/public-key/"
+(define-ironclad-unsafe-subsystems "ironclad-unsafe/public-keys" "public-key" #p"src/public-key/"
   "dsa"
   "rsa"
   "elgamal"
-  ("ed25519" :depends-on ("ironclad/digest/sha512"))
-  ("curve25519" :depends-on ("ironclad/public-key/ed25519"))
+  ("ed25519" :depends-on ("ironclad-unsafe/digest/sha512"))
+  ("curve25519" :depends-on ("ironclad-unsafe/public-key/ed25519"))
   "goldilocks"
-  ("curve448" :depends-on ("ironclad/public-key/goldilocks"))
-  ("ed448" :depends-on ("ironclad/digest/sha3"
-                        "ironclad/public-key/goldilocks"))
+  ("curve448" :depends-on ("ironclad-unsafe/public-key/goldilocks"))
+  ("ed448" :depends-on ("ironclad-unsafe/digest/sha3"
+                        "ironclad-unsafe/public-key/goldilocks"))
   "secp256k1"
   "secp224r1"
   "secp256r1"
   "secp384r1"
   "secp521r1"
-  ("ecdsa" :depends-on ("ironclad/public-key/secp224r1"
-                        "ironclad/public-key/secp256k1"
-                        "ironclad/public-key/secp256r1"
-                        "ironclad/public-key/secp384r1"
-                        "ironclad/public-key/secp521r1"))
-  ("ecies" :depends-on ("ironclad/public-key/secp256k1"
-                        "ironclad/public-key/secp256r1"
-                        "ironclad/public-key/secp384r1"
-                        "ironclad/public-key/secp521r1"
-                        "ironclad/aead/gcm"
-                        "ironclad/cipher/aes"
-                        "ironclad/kdf/hmac"))
-  ("ml-kem" :depends-on ("ironclad/digest/sha3"))
-  ("slh-dsa" :depends-on ("ironclad/digest/sha256"))
-  ("ml-dsa" :depends-on ("ironclad/digest/sha3"))
-  ("falcon" :depends-on ("ironclad/digest/sha3")
+  ("ecdsa" :depends-on ("ironclad-unsafe/public-key/secp224r1"
+                        "ironclad-unsafe/public-key/secp256k1"
+                        "ironclad-unsafe/public-key/secp256r1"
+                        "ironclad-unsafe/public-key/secp384r1"
+                        "ironclad-unsafe/public-key/secp521r1"))
+  ("ecies" :depends-on ("ironclad-unsafe/public-key/secp256k1"
+                        "ironclad-unsafe/public-key/secp256r1"
+                        "ironclad-unsafe/public-key/secp384r1"
+                        "ironclad-unsafe/public-key/secp521r1"
+                        "ironclad-unsafe/aead/gcm"
+                        "ironclad-unsafe/cipher/aes"
+                        "ironclad-unsafe/kdf/hmac"))
+  ("ml-kem" :depends-on ("ironclad-unsafe/digest/sha3"))
+  ("slh-dsa" :depends-on ("ironclad-unsafe/digest/sha256"))
+  ("ml-dsa" :depends-on ("ironclad-unsafe/digest/sha3"))
+  ("falcon" :depends-on ("ironclad-unsafe/digest/sha3")
    :components ((:file "falcon-tables") (:file "falcon-fft-tables")
                 (:file "falcon")))
-  ("mceliece" :depends-on ("ironclad/digest/sha3"))
-  ("hqc" :depends-on ("ironclad/digest/sha3"))
-  ("bike" :depends-on ("ironclad/digest/sha512" "ironclad/cipher/aes"))
-  ("lms" :depends-on ("ironclad/digest/sha256"))
-  ("xmss" :depends-on ("ironclad/digest/sha256"))
-  ("x-wing" :depends-on ("ironclad/public-key/ml-kem"
-                         "ironclad/public-key/curve25519"
-                         "ironclad/digest/sha3")))
+  ("mceliece" :depends-on ("ironclad-unsafe/digest/sha3"))
+  ("hqc" :depends-on ("ironclad-unsafe/digest/sha3"))
+  ("bike" :depends-on ("ironclad-unsafe/digest/sha512" "ironclad-unsafe/cipher/aes"))
+  ("lms" :depends-on ("ironclad-unsafe/digest/sha256"))
+  ("xmss" :depends-on ("ironclad-unsafe/digest/sha256"))
+  ("x-wing" :depends-on ("ironclad-unsafe/public-key/ml-kem"
+                         "ironclad-unsafe/public-key/curve25519"
+                         "ironclad-unsafe/digest/sha3")))
 
-(defsystem "ironclad"
-  :class ironclad-system
-  :in-order-to ((test-op (test-op "ironclad/tests")))
-  :depends-on ("ironclad/core"
-               "ironclad/ciphers"
-               "ironclad/digests"
-               "ironclad/macs"
-               "ironclad/prngs"
-               "ironclad/aeads"
-               "ironclad/kdfs"
-               "ironclad/hpke"
-               "ironclad/public-keys"))
+(defsystem "ironclad-unsafe"
+  :class ironclad-unsafe-system
+  :in-order-to ((test-op (test-op "ironclad-unsafe/tests")))
+  :depends-on ("ironclad-unsafe/core"
+               "ironclad-unsafe/ciphers"
+               "ironclad-unsafe/digests"
+               "ironclad-unsafe/macs"
+               "ironclad-unsafe/prngs"
+               "ironclad-unsafe/aeads"
+               "ironclad-unsafe/kdfs"
+               "ironclad-unsafe/hpke"
+               "ironclad-unsafe/public-keys"))
 
 (macrolet ((do-silently (&body body)
              `(handler-bind ((style-warning #'muffle-warning)
@@ -276,18 +276,18 @@
                              ;; anyway...
                              #+sbcl (sb-ext:compiler-note #'muffle-warning))
                 ,@body)))
-  (defmethod perform :around ((op compile-op) (c ironclad-source-file))
+  (defmethod perform :around ((op compile-op) (c ironclad-unsafe-source-file))
     (let ((*print-base* 10)               ; INTERN'ing FORMAT'd symbols
           (*print-case* :upcase)
           #+sbcl (sb-ext:*inline-expansion-limit* (max sb-ext:*inline-expansion-limit* 1000))
           #+cmu (ext:*inline-expansion-limit* (max ext:*inline-expansion-limit* 1000)))
       (do-silently (call-next-method))))
 
-  (defmethod perform :around ((op load-op) (c ironclad-source-file))
+  (defmethod perform :around ((op load-op) (c ironclad-unsafe-source-file))
     (do-silently (call-next-method))))
 
-(defmethod perform :after ((op load-op) (c (eql (find-system "ironclad"))))
-  (provide :ironclad))
+(defmethod perform :after ((op load-op) (c (eql (find-system "ironclad-unsafe"))))
+  (provide :ironclad-unsafe))
 
 
 ;;; testing
@@ -295,14 +295,14 @@
 (defclass test-vector-file (static-file)
   ((type :initform "testvec")))
 
-(defpackage :ironclad-tests
+(defpackage :ironclad-unsafe-tests
   (:nicknames :crypto-tests)
   (:use :cl))
 
-(defsystem "ironclad/tests"
-  :depends-on ("ironclad" "rt")
+(defsystem "ironclad-unsafe/tests"
+  :depends-on ("ironclad-unsafe" "rt")
   :version "0.61"
-  :in-order-to ((test-op (load-op "ironclad/tests")))
+  :in-order-to ((test-op (load-op "ironclad-unsafe/tests")))
   :perform (test-op (o s)
              (or (funcall (intern "DO-TESTS" (find-package "RTEST")))
                  (error "TEST-OP failed for IRONCLAD/TESTS")))
@@ -310,7 +310,7 @@
                 :components ((:file "testfuns")
                              (:module "test-vectors"
                               :depends-on ("testfuns")
-                              :components ((:file "ironclad")
+                              :components ((:file "ironclad-unsafe")
                                            (:file "padding")
                                            ;; aead
                                            (:file "aead")

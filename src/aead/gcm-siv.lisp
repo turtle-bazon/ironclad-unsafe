@@ -199,7 +199,7 @@ Returns (VALUES ciphertext tag); pure computation, no state change."
          (ad (gcm-siv-ad mode))
          (pt (gcm-siv-pt mode)))
     (when (or (> (length pt) (expt 2 36)) (> (length ad) (expt 2 36)))
-      (error 'ironclad-error
+      (error 'ironclad-unsafe-error
              :format-control "GCM-SIV message or associated data exceeds 2^36 octets."))
     (multiple-value-bind (auth-key enc-key) (gcm-siv-derive-keys key nonce)
       (let* ((pre-tag (gcm-siv-authenticate auth-key nonce ad pt))
@@ -214,7 +214,7 @@ Returns (VALUES ciphertext tag); pure computation, no state change."
          (nonce (gcm-siv-nonce mode))
          (ct (gcm-siv-ct mode))
          (tag (or (tag mode)
-                  (error 'ironclad-error
+                  (error 'ironclad-unsafe-error
                          :format-control "GCM-SIV decryption needs the tag up front for its counter mode."))))
     (multiple-value-bind (auth-key enc-key) (gcm-siv-derive-keys key nonce)
       (declare (ignore auth-key))
@@ -256,7 +256,7 @@ Returns (VALUES ciphertext tag); pure computation, no state change."
 
 (defmethod process-associated-data ((mode gcm-siv) data &key (start 0) end)
   (if (encryption-started-p mode)
-      (error 'ironclad-error :format-control "All associated data must be processed before the encryption begins.")
+      (error 'ironclad-unsafe-error :format-control "All associated data must be processed before the encryption begins.")
       (let* ((end (or end (length data)))
              (buffer (gcm-siv-ad mode)))
         (incf (gcm-siv-ad-length mode) (- end start))
@@ -271,7 +271,7 @@ Returns (VALUES ciphertext tag); pure computation, no state change."
   (let ((mac-digest (if (gcm-siv-finalized-p mode)
                         (gcm-siv-computed-tag mode)
                         (if (plusp (length (gcm-siv-ct mode)))
-                            (error 'ironclad-error
+                            (error 'ironclad-unsafe-error
                                    :format-control "GCM-SIV decryption must be finalized with HANDLE-FINAL-BLOCK before producing a tag.")
                             (nth-value 1 (gcm-siv-run-encrypt mode))))))
     (etypecase tag
@@ -288,7 +288,7 @@ Returns (VALUES ciphertext tag); pure computation, no state change."
 (defmethod encrypt ((mode gcm-siv) plaintext ciphertext &key (plaintext-start 0) plaintext-end (ciphertext-start 0) handle-final-block)
   (let ((plaintext-end (or plaintext-end (length plaintext))))
     (when (gcm-siv-finalized-p mode)
-      (error 'ironclad-error
+      (error 'ironclad-unsafe-error
              :format-control "GCM-SIV message already finalized; start a new mode for more data."))
     (unless (encryption-started-p mode)
       (setf (encryption-started-p mode) t))
@@ -304,7 +304,7 @@ Returns (VALUES ciphertext tag); pure computation, no state change."
 (defmethod decrypt ((mode gcm-siv) ciphertext plaintext &key (ciphertext-start 0) ciphertext-end (plaintext-start 0) handle-final-block)
   (let ((ciphertext-end (or ciphertext-end (length ciphertext))))
     (when (gcm-siv-finalized-p mode)
-      (error 'ironclad-error
+      (error 'ironclad-unsafe-error
              :format-control "GCM-SIV message already finalized; start a new mode for more data."))
     (unless (encryption-started-p mode)
       (setf (encryption-started-p mode) t))

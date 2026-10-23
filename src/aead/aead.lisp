@@ -22,7 +22,7 @@
 (defun list-all-authenticated-encryption-modes ()
   "Returns a list whose elements may be validly passed to
 make-authenticated-encryption-mode."
-  (loop for symbol being each external-symbol of (find-package :ironclad)
+  (loop for symbol being each external-symbol of (find-package :ironclad-unsafe)
         if (aeadp symbol)
           collect (intern (symbol-name symbol) :keyword) into ciphers
         finally (return (sort ciphers #'string<))))

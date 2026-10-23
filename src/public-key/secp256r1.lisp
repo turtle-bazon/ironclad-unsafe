@@ -113,11 +113,11 @@
   "R := (A + B) mod P, all reduced residues."
   (declare (type secp256r1-fe r a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
     (secp256r1-fe-add-asm r a b)
     r)
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
     (let ((carry 0))
       (declare (type (unsigned-byte 32) carry))
@@ -146,11 +146,11 @@
   "R := (A - B) mod P, all reduced residues."
   (declare (type secp256r1-fe r a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
     (secp256r1-fe-sub-asm r a b)
     r)
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
     (let ((borrow 0))
       (declare (type (unsigned-byte 32) borrow))
@@ -174,9 +174,9 @@
   (declare (type secp256r1-fe a b)
            (type (simple-array (unsigned-byte 64) (16)) r)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (secp256r1-fe-mul-raw-asm r a b)
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
     (dotimes (k 16)
       (setf (aref r k) 0))
@@ -242,9 +242,9 @@ R and Q are eight 32-bit limbs, C holds sixteen 64-bit limbs."
   (declare (type (simple-array (unsigned-byte 32) (8)) r q)
            (type (simple-array (unsigned-byte 64) (16)) c)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (secp256r1-fe-reduce-fast-asm r q c)
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
     (secp256r1-fe-normalize16 c)
     (secp256r1-fe-solinas r c))
@@ -259,10 +259,10 @@ R and Q are eight 32-bit limbs, C holds sixteen 64-bit limbs."
     ;; NB: the product must stay in the heap; the assembly VOP assumes
     ;; the usual heap layout of a simple vector.
     (secp256r1-fe-mul-raw c a b)
-    #+(and sbcl x86-64 ironclad-assembly)
+    #+(and sbcl x86-64 ironclad-unsafe-assembly)
     (let ((q (secp256r1-fe-zero)))
       (secp256r1-fe-reduce-fast r q c))
-    #-(and sbcl x86-64 ironclad-assembly)
+    #-(and sbcl x86-64 ironclad-unsafe-assembly)
     (progn
       (secp256r1-fe-normalize16 c)
       (secp256r1-fe-solinas r c)))
@@ -278,9 +278,9 @@ operation allocates nothing."
            (type secp256r1-fe q)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (secp256r1-fe-mul-raw c a b)
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (secp256r1-fe-reduce-fast r q c)
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
     (secp256r1-fe-normalize16 c)
     (secp256r1-fe-solinas r c))
@@ -293,9 +293,9 @@ operation allocates nothing."
            (type secp256r1-fe q)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (secp256r1-fe-sqr-raw c a)
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (secp256r1-fe-reduce-asm r q c)
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
     (secp256r1-fe-normalize16 c)
     (secp256r1-fe-solinas r c))
@@ -512,9 +512,9 @@ normalize first unless the words are already canonical."
   (declare (type secp256r1-fe a)
            (type (simple-array (unsigned-byte 64) (16)) r)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (secp256r1-fe-sqr-raw-asm r a)
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
     (dotimes (k 16)
       (setf (aref r k) 0))
@@ -529,10 +529,10 @@ normalize first unless the words are already canonical."
                        :initial-element 0)))
     ;; NB: the product must stay in the heap; see SECP256R1-FE-MUL.
     (secp256r1-fe-sqr-raw c a)
-    #+(and sbcl x86-64 ironclad-assembly)
+    #+(and sbcl x86-64 ironclad-unsafe-assembly)
     (let ((q (secp256r1-fe-zero)))
       (secp256r1-fe-reduce-asm r q c))
-    #-(and sbcl x86-64 ironclad-assembly)
+    #-(and sbcl x86-64 ironclad-unsafe-assembly)
     (progn
       (secp256r1-fe-normalize16 c)
       (secp256r1-fe-solinas r c)))
@@ -857,7 +857,7 @@ reusing scratch pool S. DST must differ from P."
         (z (secp256r1-point-z p)))
     (declare (type secp256r1-fe x y z))
     (when (secp256r1-fe-is-zero z)
-      (error 'ironclad-error
+      (error 'ironclad-unsafe-error
              :format-control "The point at infinity can't be encoded."))
     (let* ((invz (secp256r1-fe-from-int
                   (ec-scalar-inv :secp256r1 (secp256r1-fe-to-int z))))

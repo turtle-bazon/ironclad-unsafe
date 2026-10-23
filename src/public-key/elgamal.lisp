@@ -91,7 +91,7 @@
                  :parameter 'num-bits
                  :description "modulus size"))
         (let* ((n (if (< num-bits 512)
-                      (error 'ironclad-error
+                      (error 'ironclad-unsafe-error
                              :format-control "NUM-BITS is too small for an Elgamal key.")
                       256))
                (q (generate-prime n))

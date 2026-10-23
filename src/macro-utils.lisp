@@ -12,11 +12,11 @@
 
 (defun massage-symbol (symbol)
   (let ((package (symbol-package symbol))
-        (ironclad (load-time-value (find-package :ironclad))))
+        (ironclad-unsafe (load-time-value (find-package :ironclad-unsafe))))
     (cond
-      ((eq package ironclad) symbol)
+      ((eq package ironclad-unsafe) symbol)
       ((eq package (load-time-value (find-package :keyword)))
-       (find-symbol (symbol-name symbol) ironclad))
+       (find-symbol (symbol-name symbol) ironclad-unsafe))
       (t nil))))
 
 

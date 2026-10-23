@@ -46,7 +46,7 @@ default curve :secp256r1).  Signals IRONCLAD-ERROR for unknown curves."
        curve)
       ((cdr (assoc curve *ecdsa-curve-aliases* :test #'eq)))
       (t
-       (error 'ironclad-error
+       (error 'ironclad-unsafe-error
               :format-control "Unknown ECDSA curve: ~A."
               :format-arguments (list curve))))))
 
@@ -243,7 +243,7 @@ compressed points."
   "DER TLV for the non-negative integer N."
   (declare (type integer n))
   (unless (and (integerp n) (not (minusp n)))
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "Cannot DER-encode negative signature element ~A."
            :format-arguments (list n)))
   (let* ((magnitude (if (zerop n)
@@ -279,7 +279,7 @@ signals IRONCLAD-ERROR."
   (let ((end (or end (length der))))
     (labels ((need (pos n what)
                (unless (<= (+ pos n) end)
-                 (error 'ironclad-error
+                 (error 'ironclad-unsafe-error
                         :format-control "Truncated DER signature in ~A."
                         :format-arguments (list what)))
                pos)
@@ -289,58 +289,58 @@ signals IRONCLAD-ERROR."
                  (cond ((< first #x80)
                         (values first (1+ pos)))
                        ((= first #x80)
-                        (error 'ironclad-error
+                        (error 'ironclad-unsafe-error
                                :format-control "Indefinite DER length is not allowed in signatures."))
                        (t
                         (let ((count (logand first #x7f)))
                           (when (> count 4)
-                            (error 'ironclad-error
+                            (error 'ironclad-unsafe-error
                                    :format-control "Overlong DER length ~D." :format-arguments (list count)))
                           (need (1+ pos) count "long-form length")
                           (let ((length (octets-to-integer der :start (1+ pos)
                                                                :end (+ pos 1 count)
                                                                :big-endian t)))
                             (when (< length 128)
-                              (error 'ironclad-error
+                              (error 'ironclad-unsafe-error
                                      :format-control "Non-minimal DER length ~D." :format-arguments (list length)))
                             (values length (+ pos 1 count))))))))
              (take-integer (pos)
                (need pos 1 "integer tag")
                (unless (= (aref der pos) #x02)
-                 (error 'ironclad-error
+                 (error 'ironclad-unsafe-error
                         :format-control "Expected DER INTEGER tag, found ~2,'0X."
                         :format-arguments (list (aref der pos))))
                (multiple-value-bind (length p) (take-length (1+ pos))
                  (when (zerop length)
-                   (error 'ironclad-error
+                   (error 'ironclad-unsafe-error
                           :format-control "Empty DER INTEGER."))
                  (need p length "integer body")
                  (let ((first (aref der p)))
                    (cond ((>= first #x80)
-                          (error 'ironclad-error
+                          (error 'ironclad-unsafe-error
                                  :format-control "Negative DER signature element."))
                          ((and (> length 1)
                                (zerop first)
                                (< (aref der (1+ p)) #x80))
-                          (error 'ironclad-error
+                          (error 'ironclad-unsafe-error
                                  :format-control "Non-minimal DER INTEGER encoding."))))
                  (values (octets-to-integer der :start p :end (+ p length)
                                                 :big-endian t)
                          (+ p length)))))
       (need start 1 "sequence tag")
       (unless (= (aref der start) #x30)
-        (error 'ironclad-error
+        (error 'ironclad-unsafe-error
                :format-control "Expected DER SEQUENCE tag, found ~2,'0X."
                :format-arguments (list (aref der start))))
       (multiple-value-bind (length pos) (take-length (1+ start))
         (unless (= (+ pos length) end)
-          (error 'ironclad-error
+          (error 'ironclad-unsafe-error
                  :format-control "DER signature length mismatch: ~D bytes of content for ~D bytes of input."
                  :format-arguments (list length (- end pos))))
         (multiple-value-bind (r p) (take-integer pos)
           (multiple-value-bind (s p2) (take-integer p)
             (unless (= p2 end)
-              (error 'ironclad-error
+              (error 'ironclad-unsafe-error
                      :format-control "Trailing data after DER signature."))
             (values r s)))))))
 

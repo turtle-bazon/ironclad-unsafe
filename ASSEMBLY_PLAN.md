@@ -1234,7 +1234,7 @@ there is the one of the thirty-two bit limbs:
   ;; the low sum, and the carry into the next column is the high sum
   ;; shifted up by fifty-six bits with the part of the low sum above
   ;; fifty-six bits added to it.
-  (:translate ironclad::secp224r1-fe-mul-limbs-asm)
+  (:translate ironclad-unsafe::secp224r1-fe-mul-limbs-asm)
   (:policy :fast-safe)
   (:args (c :scs (descriptor-reg))
          (a :scs (descriptor-reg))
@@ -1310,9 +1310,9 @@ that function reads differently from the ones in the other files.
 
 The reader conditional of the other files is of the form
 
-    #+(and sbcl x86-64 ironclad-assembly)
+    #+(and sbcl x86-64 ironclad-unsafe-assembly)
     (the call of the assembly)
-    #-(and sbcl x86-64 ironclad-assembly)
+    #-(and sbcl x86-64 ironclad-unsafe-assembly)
     (the call of the Lisp)
 
 and the function of the Comba was written with the declaration of
@@ -1418,7 +1418,7 @@ The Comba is this:
   ;; column of four products sum to under 2^58 and the high halves to
   ;; under 2^50, so both fit in a word, and the coefficient is the low
   ;; sum plus the high sum shifted up by fifty-six bits.
-  (:translate ironclad::secp224r1-fe-mul-raw-asm)
+  (:translate ironclad-unsafe::secp224r1-fe-mul-raw-asm)
   (:policy :fast-safe)
   (:args (c :scs (descriptor-reg))
          (a :scs (descriptor-reg))

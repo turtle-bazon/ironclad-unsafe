@@ -2,7 +2,7 @@
 ;;; sha512.lisp -- implementation of SHA-384/512 from NIST
 
 (in-package :crypto)
-(in-ironclad-readtable)
+(in-ironclad-unsafe-readtable)
 
 (define-digest-registers (sha384 :endian :big :size 8 :digest-registers 6)
   (a #xCBBB9D5DC1059ED8)
@@ -88,7 +88,7 @@
         (g (sha512-regs-g regs)) (h (sha512-regs-h regs)))
     (flet ((rho (x r1 r2 r3)
              (logxor (ror64 x r1) (ror64 x r2) (ror64 x r3))))
-      #+ironclad-fast-mod64-arithmetic
+      #+ironclad-unsafe-fast-mod64-arithmetic
       (declare (inline rho))
       (macrolet ((sha512-round (i a b c d e f g h)
                    `(let ((x (mod64+ (rho ,e 14 18 41)
@@ -118,7 +118,7 @@
            #.(burn-baby-burn))
   (flet ((sigma (x r1 r2 r3)
            (logxor (ror64 x r1) (ror64 x r2) (ash x (- r3)))))
-    #+ironclad-fast-mod64-arithmetic (declare (inline sigma))
+    #+ironclad-unsafe-fast-mod64-arithmetic (declare (inline sigma))
     (loop for i from 16 below 80 do
          (setf (aref block i)
                (mod64+ (sigma (aref block (- i 2)) 19 61 6)

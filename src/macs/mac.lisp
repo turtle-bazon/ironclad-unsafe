@@ -10,7 +10,7 @@
   (get sym '%make-mac))
 
 (defun list-all-macs ()
-  (loop for symbol being each external-symbol of (find-package :ironclad)
+  (loop for symbol being each external-symbol of (find-package :ironclad-unsafe)
         if (macp symbol)
           collect (intern (symbol-name symbol) :keyword) into macs
         finally (return (sort macs #'string<))))

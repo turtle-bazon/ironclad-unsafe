@@ -80,7 +80,7 @@
   #+ccl
   (ccl::%little-endian-u8-ref-u16 vector offset)
 
-  #+(and ecl ironclad-assembly little-endian)
+  #+(and ecl ironclad-unsafe-assembly little-endian)
   (ffi:c-inline (vector offset)
                 (t :unsigned-int)
                 :uint16-t
@@ -92,7 +92,7 @@
   (sb-sys:sap-ref-16 (sb-sys:vector-sap vector) offset)
 
   #-(or ccl
-        (and ecl ironclad-assembly little-endian)
+        (and ecl ironclad-unsafe-assembly little-endian)
         (and sbcl little-endian))
   (dpb (aref vector (1+ offset))
        (byte 8 8)
@@ -105,7 +105,7 @@
   #+ccl
   (setf (ccl::%little-endian-u8-ref-u16 vector offset) value)
 
-  #+(and ecl ironclad-assembly little-endian)
+  #+(and ecl ironclad-unsafe-assembly little-endian)
   (ffi:c-inline (vector offset value)
                 (t :unsigned-int :uint16-t)
                 :void
@@ -116,7 +116,7 @@
   (setf (sb-sys:sap-ref-16 (sb-sys:vector-sap vector) offset) value)
 
   #-(or ccl
-        (and ecl ironclad-assembly little-endian)
+        (and ecl ironclad-unsafe-assembly little-endian)
         (and sbcl little-endian))
   (setf (aref vector offset) (logand value #xff)
         (aref vector (1+ offset)) (ldb (byte 8 8) value))
@@ -156,10 +156,10 @@
 (defun ub32ref/le (vector offset)
   (declare (type simple-octet-vector vector)
            (type index offset))
-  #+(and ccl ironclad-assembly x86-64)
+  #+(and ccl ironclad-unsafe-assembly x86-64)
   (%ub32ref/le vector offset)
 
-  #+(and ecl ironclad-assembly little-endian)
+  #+(and ecl ironclad-unsafe-assembly little-endian)
   (ffi:c-inline (vector offset)
                 (t :unsigned-int)
                 :uint32-t
@@ -170,8 +170,8 @@
   #+(and sbcl little-endian)
   (sb-sys:sap-ref-32 (sb-sys:vector-sap vector) offset)
 
-  #-(or (and ccl ironclad-assembly x86-64)
-        (and ecl ironclad-assembly little-endian)
+  #-(or (and ccl ironclad-unsafe-assembly x86-64)
+        (and ecl ironclad-unsafe-assembly little-endian)
         (and sbcl little-endian))
   (dpb (ub16ref/le vector (+ offset 2))
        (byte 16 16)
@@ -181,10 +181,10 @@
   (declare (type (unsigned-byte 32) value)
            (type simple-octet-vector vector)
            (type index offset))
-  #+(and ccl ironclad-assembly x86-64)
+  #+(and ccl ironclad-unsafe-assembly x86-64)
   (%ub32set/le value vector offset)
 
-  #+(and ecl ironclad-assembly little-endian)
+  #+(and ecl ironclad-unsafe-assembly little-endian)
   (ffi:c-inline (vector offset value)
                 (t :unsigned-int :uint32-t)
                 :void
@@ -194,8 +194,8 @@
   #+(and sbcl little-endian)
   (setf (sb-sys:sap-ref-32 (sb-sys:vector-sap vector) offset) value)
 
-  #-(or (and ccl ironclad-assembly x86-64)
-        (and ecl ironclad-assembly little-endian)
+  #-(or (and ccl ironclad-unsafe-assembly x86-64)
+        (and ecl ironclad-unsafe-assembly little-endian)
         (and sbcl little-endian))
   (setf (ub16ref/le vector offset) (logand value #xffff)
         (ub16ref/le vector (+ offset 2)) (ldb (byte 16 16) value))
@@ -205,10 +205,10 @@
 (defun ub32ref/be (vector offset)
   (declare (type simple-octet-vector vector)
            (type index offset))
-  #+(and ccl ironclad-assembly x86-64)
+  #+(and ccl ironclad-unsafe-assembly x86-64)
   (%ub32ref/be vector offset)
 
-  #+(and ecl ironclad-assembly little-endian)
+  #+(and ecl ironclad-unsafe-assembly little-endian)
   (ffi:c-inline (vector offset)
                 (t :unsigned-int)
                 :uint32-t
@@ -225,13 +225,13 @@ uint32_t r = (n << 24)
   #+(and sbcl big-endian)
   (sb-sys:sap-ref-32 (sb-sys:vector-sap vector) offset)
 
-  #+(and sbcl ironclad-assembly (or x86 x86-64))
+  #+(and sbcl ironclad-unsafe-assembly (or x86 x86-64))
   (swap32 (sb-sys:sap-ref-32 (sb-sys:vector-sap vector) offset))
 
-  #-(or (and ccl ironclad-assembly x86-64)
-        (and ecl ironclad-assembly little-endian)
+  #-(or (and ccl ironclad-unsafe-assembly x86-64)
+        (and ecl ironclad-unsafe-assembly little-endian)
         (and sbcl big-endian)
-        (and sbcl ironclad-assembly (or x86 x86-64)))
+        (and sbcl ironclad-unsafe-assembly (or x86 x86-64)))
   (dpb (ub16ref/be vector offset)
        (byte 16 16)
        (ub16ref/be vector (+ offset 2))))
@@ -240,10 +240,10 @@ uint32_t r = (n << 24)
   (declare (type (unsigned-byte 32) value)
            (type simple-octet-vector vector)
            (type index offset))
-  #+(and ccl ironclad-assembly x86-64)
+  #+(and ccl ironclad-unsafe-assembly x86-64)
   (%ub32set/be value vector offset)
 
-  #+(and ecl ironclad-assembly little-endian)
+  #+(and ecl ironclad-unsafe-assembly little-endian)
   (ffi:c-inline (vector offset value)
                 (t :unsigned-int :uint32-t)
                 :void
@@ -259,13 +259,13 @@ uint32_t r = (n << 24)
   #+(and sbcl big-endian)
   (setf (sb-sys:sap-ref-32 (sb-sys:vector-sap vector) offset) value)
 
-  #+(and sbcl ironclad-assembly (or x86 x86-64))
+  #+(and sbcl ironclad-unsafe-assembly (or x86 x86-64))
   (setf (sb-sys:sap-ref-32 (sb-sys:vector-sap vector) offset) (swap32 value))
 
-  #-(or (and ccl ironclad-assembly x86-64)
-        (and ecl ironclad-assembly little-endian)
+  #-(or (and ccl ironclad-unsafe-assembly x86-64)
+        (and ecl ironclad-unsafe-assembly little-endian)
         (and sbcl big-endian)
-        (and sbcl ironclad-assembly (or x86 x86-64)))
+        (and sbcl ironclad-unsafe-assembly (or x86 x86-64)))
   (setf (ub16ref/be vector (+ offset 2)) (logand value #xffff)
         (ub16ref/be vector offset) (ldb (byte 16 16) value))
 
@@ -274,10 +274,10 @@ uint32_t r = (n << 24)
 (defun ub64ref/le (vector offset)
   (declare (type simple-octet-vector vector)
            (type index offset))
-  #+(and ccl ironclad-assembly x86-64)
+  #+(and ccl ironclad-unsafe-assembly x86-64)
   (%ub64ref/le vector offset)
 
-  #+(and ecl ironclad-assembly little-endian uint64-t)
+  #+(and ecl ironclad-unsafe-assembly little-endian uint64-t)
   (ffi:c-inline (vector offset)
                 (t :unsigned-int)
                 :uint64-t
@@ -288,8 +288,8 @@ uint32_t r = (n << 24)
   #+(and sbcl little-endian 64-bit)
   (sb-sys:sap-ref-64 (sb-sys:vector-sap vector) offset)
 
-  #-(or (and ccl ironclad-assembly x86-64)
-        (and ecl ironclad-assembly little-endian uint64-t)
+  #-(or (and ccl ironclad-unsafe-assembly x86-64)
+        (and ecl ironclad-unsafe-assembly little-endian uint64-t)
         (and sbcl little-endian 64-bit))
   (dpb (ub32ref/le vector (+ offset 4))
        (byte 32 32)
@@ -299,10 +299,10 @@ uint32_t r = (n << 24)
   (declare (type (unsigned-byte 64) value)
            (type simple-octet-vector vector)
            (type index offset))
-  #+(and ccl ironclad-assembly x86-64)
+  #+(and ccl ironclad-unsafe-assembly x86-64)
   (%ub64set/le value vector offset)
 
-  #+(and ecl ironclad-assembly little-endian uint64-t)
+  #+(and ecl ironclad-unsafe-assembly little-endian uint64-t)
   (ffi:c-inline (vector offset value)
                 (t :unsigned-int :uint64-t)
                 :void
@@ -312,8 +312,8 @@ uint32_t r = (n << 24)
   #+(and sbcl little-endian 64-bit)
   (setf (sb-sys:sap-ref-64 (sb-sys:vector-sap vector) offset) value)
 
-  #-(or (and ccl ironclad-assembly x86-64)
-        (and ecl ironclad-assembly little-endian uint64-t)
+  #-(or (and ccl ironclad-unsafe-assembly x86-64)
+        (and ecl ironclad-unsafe-assembly little-endian uint64-t)
         (and sbcl little-endian 64-bit))
   (setf (ub32ref/le vector offset) (logand value #xffffffff)
         (ub32ref/le vector (+ offset 4)) (ldb (byte 32 32) value))
@@ -323,10 +323,10 @@ uint32_t r = (n << 24)
 (defun ub64ref/be (vector offset)
   (declare (type simple-octet-vector vector)
            (type index offset))
-  #+(and ccl ironclad-assembly x86-64)
+  #+(and ccl ironclad-unsafe-assembly x86-64)
   (%ub64ref/be vector offset)
 
-  #+(and ecl ironclad-assembly little-endian uint64-t)
+  #+(and ecl ironclad-unsafe-assembly little-endian uint64-t)
   (ffi:c-inline (vector offset)
                 (t :unsigned-int)
                 :uint64-t
@@ -347,13 +347,13 @@ uint64_t r = (n << 56)
   #+(and sbcl big-endian 64-bit)
   (sb-sys:sap-ref-64 (sb-sys:vector-sap vector) offset)
 
-  #+(and sbcl ironclad-assembly x86-64)
+  #+(and sbcl ironclad-unsafe-assembly x86-64)
   (swap64 (sb-sys:sap-ref-64 (sb-sys:vector-sap vector) offset))
 
-  #-(or (and ccl ironclad-assembly x86-64)
-        (and ecl ironclad-assembly little-endian uint64-t)
+  #-(or (and ccl ironclad-unsafe-assembly x86-64)
+        (and ecl ironclad-unsafe-assembly little-endian uint64-t)
         (and sbcl big-endian 64-bit)
-        (and sbcl ironclad-assembly x86-64))
+        (and sbcl ironclad-unsafe-assembly x86-64))
   (dpb (ub32ref/be vector offset)
        (byte 32 32)
        (ub32ref/be vector (+ offset 4))))
@@ -362,10 +362,10 @@ uint64_t r = (n << 56)
   (declare (type (unsigned-byte 64) value)
            (type simple-octet-vector vector)
            (type index offset))
-  #+(and ccl ironclad-assembly x86-64)
+  #+(and ccl ironclad-unsafe-assembly x86-64)
   (%ub64set/be value vector offset)
 
-  #+(and ecl ironclad-assembly little-endian uint64-t)
+  #+(and ecl ironclad-unsafe-assembly little-endian uint64-t)
   (ffi:c-inline (vector offset value)
                 (t :unsigned-int :uint64-t)
                 :void
@@ -385,13 +385,13 @@ uint64_t r = (n << 56)
   #+(and sbcl big-endian 64-bit)
   (setf (sb-sys:sap-ref-64 (sb-sys:vector-sap vector) offset) value)
 
-  #+(and sbcl ironclad-assembly x86-64)
+  #+(and sbcl ironclad-unsafe-assembly x86-64)
   (setf (sb-sys:sap-ref-64 (sb-sys:vector-sap vector) offset) (swap64 value))
 
-  #-(or (and ccl ironclad-assembly x86-64)
-        (and ecl ironclad-assembly little-endian uint64-t)
+  #-(or (and ccl ironclad-unsafe-assembly x86-64)
+        (and ecl ironclad-unsafe-assembly little-endian uint64-t)
         (and sbcl big-endian 64-bit)
-        (and sbcl ironclad-assembly x86-64))
+        (and sbcl ironclad-unsafe-assembly x86-64))
   (setf (ub32ref/be vector (+ offset 4)) (logand value #xffffffff)
         (ub32ref/be vector offset) (ldb (byte 32 32) value))
 
@@ -400,15 +400,15 @@ uint64_t r = (n << 56)
 
 ;;; efficient 32-bit arithmetic, which a lot of algorithms require
 
-(declaim #+ironclad-fast-mod32-arithmetic (inline mod32+)
+(declaim #+ironclad-unsafe-fast-mod32-arithmetic (inline mod32+)
          (ftype (function ((unsigned-byte 32) (unsigned-byte 32)) (unsigned-byte 32)) mod32+))
 
 (defun mod32+ (a b)
   (declare (type (unsigned-byte 32) a b))
-  #+(and ccl x86-64 ironclad-assembly)
+  #+(and ccl x86-64 ironclad-unsafe-assembly)
   (%mod32+ a b)
 
-  #+(and ecl ironclad-assembly)
+  #+(and ecl ironclad-unsafe-assembly)
   (ffi:c-inline (a b)
                 (:uint32-t :uint32-t)
                 :uint32-t
@@ -416,8 +416,8 @@ uint64_t r = (n << 56)
                 :one-liner t
                 :side-effects nil)
 
-  #-(or (and ccl x86-64 ironclad-assembly)
-        (and ecl ironclad-assembly))
+  #-(or (and ccl x86-64 ironclad-unsafe-assembly)
+        (and ecl ironclad-unsafe-assembly))
   (ldb (byte 32 0) (+ a b)))
 
 #+cmu
@@ -429,15 +429,15 @@ uint64_t r = (n << 56)
   `(logand #xffffffff (+ ,a ,b)))
 
 ;;; mostly needed for CAST*
-(declaim #+ironclad-fast-mod32-arithmetic (inline mod32-)
+(declaim #+ironclad-unsafe-fast-mod32-arithmetic (inline mod32-)
          (ftype (function ((unsigned-byte 32) (unsigned-byte 32)) (unsigned-byte 32)) mod32-))
 
 (defun mod32- (a b)
   (declare (type (unsigned-byte 32) a b))
-  #+(and ccl x86-64 ironclad-assembly)
+  #+(and ccl x86-64 ironclad-unsafe-assembly)
   (%mod32- a b)
 
-  #+(and ecl ironclad-assembly)
+  #+(and ecl ironclad-unsafe-assembly)
   (ffi:c-inline (a b)
                 (:uint32-t :uint32-t)
                 :uint32-t
@@ -445,8 +445,8 @@ uint64_t r = (n << 56)
                 :one-liner t
                 :side-effects nil)
 
-  #-(or (and ccl x86-64 ironclad-assembly)
-        (and ecl ironclad-assembly))
+  #-(or (and ccl x86-64 ironclad-unsafe-assembly)
+        (and ecl ironclad-unsafe-assembly))
   (ldb (byte 32 0) (- a b)))
 
 #+cmu
@@ -458,15 +458,15 @@ uint64_t r = (n << 56)
   `(ldb (byte 32 0) (- ,a ,b)))
 
 ;;; mostly needed for RC6
-(declaim #+ironclad-fast-mod32-arithmetic (inline mod32*)
+(declaim #+ironclad-unsafe-fast-mod32-arithmetic (inline mod32*)
          (ftype (function ((unsigned-byte 32) (unsigned-byte 32)) (unsigned-byte 32)) mod32*))
 
 (defun mod32* (a b)
   (declare (type (unsigned-byte 32) a b))
-  #+(and ccl x86-64 ironclad-assembly)
+  #+(and ccl x86-64 ironclad-unsafe-assembly)
   (%mod32* a b)
 
-  #+(and ecl ironclad-assembly)
+  #+(and ecl ironclad-unsafe-assembly)
   (ffi:c-inline (a b)
                 (:uint32-t :uint32-t)
                 :uint32-t
@@ -474,8 +474,8 @@ uint64_t r = (n << 56)
                 :one-liner t
                 :side-effects nil)
 
-  #-(or (and ccl x86-64 ironclad-assembly)
-        (and ecl ironclad-assembly))
+  #-(or (and ccl x86-64 ironclad-unsafe-assembly)
+        (and ecl ironclad-unsafe-assembly))
   (ldb (byte 32 0) (* a b)))
 
 #+cmu
@@ -486,16 +486,16 @@ uint64_t r = (n << 56)
 (define-compiler-macro mod32* (a b)
   `(ldb (byte 32 0) (* ,a ,b)))
 
-(declaim #+ironclad-fast-mod32-arithmetic (inline mod32ash)
+(declaim #+ironclad-unsafe-fast-mod32-arithmetic (inline mod32ash)
          (ftype (function ((unsigned-byte 32) (integer -31 31)) (unsigned-byte 32)) mod32ash))
 
 (defun mod32ash (num count)
   (declare (type (unsigned-byte 32) num)
            (type (integer -31 31) count))
-  #+(and ccl x86-64 ironclad-assembly)
+  #+(and ccl x86-64 ironclad-unsafe-assembly)
   (%mod32ash num count)
 
-  #+(and ecl ironclad-assembly)
+  #+(and ecl ironclad-unsafe-assembly)
   (ffi:c-inline (num count)
                 (:uint32-t :int8-t)
                 :uint32-t
@@ -503,8 +503,8 @@ uint64_t r = (n << 56)
                 :one-liner t
                 :side-effects nil)
 
-  #-(or (and ccl x86-64 ironclad-assembly)
-        (and ecl ironclad-assembly))
+  #-(or (and ccl x86-64 ironclad-unsafe-assembly)
+        (and ecl ironclad-unsafe-assembly))
   (ldb (byte 32 0) (ash num count)))
 
 #+sbcl
@@ -513,15 +513,15 @@ uint64_t r = (n << 56)
   ;;  http://www.caddr.com/macho/archives/sbcl-devel/2004-8/3877.html
   `(logand #xffffffff (ash ,num ,count)))
 
-(declaim #+ironclad-fast-mod32-arithmetic (inline mod32lognot)
+(declaim #+ironclad-unsafe-fast-mod32-arithmetic (inline mod32lognot)
          (ftype (function ((unsigned-byte 32)) (unsigned-byte 32)) mod32lognot))
 
 (defun mod32lognot (num)
   (declare (type (unsigned-byte 32) num))
-  #+(and ccl x86-64 ironclad-assembly)
+  #+(and ccl x86-64 ironclad-unsafe-assembly)
   (%mod32lognot num)
 
-  #+(and ecl ironclad-assembly)
+  #+(and ecl ironclad-unsafe-assembly)
   (ffi:c-inline (num)
                 (:uint32-t)
                 :uint32-t
@@ -529,21 +529,21 @@ uint64_t r = (n << 56)
                 :one-liner t
                 :side-effects nil)
 
-  #-(or (and ccl x86-64 ironclad-assembly)
-        (and ecl ironclad-assembly))
+  #-(or (and ccl x86-64 ironclad-unsafe-assembly)
+        (and ecl ironclad-unsafe-assembly))
   (ldb (byte 32 0) (lognot num)))
 
 #+sbcl
 (define-compiler-macro mod32lognot (num)
   `(ldb (byte 32 0) (lognot ,num)))
 
-(declaim #+ironclad-fast-mod32-arithmetic (inline rol32 ror32)
+(declaim #+ironclad-unsafe-fast-mod32-arithmetic (inline rol32 ror32)
          (ftype (function ((unsigned-byte 32) (unsigned-byte 5)) (unsigned-byte 32)) rol32 ror32))
 
 (defun rol32 (a s)
   (declare (type (unsigned-byte 32) a)
            (type (integer 0 32) s))
-  #+(and ccl x86-64 ironclad-assembly)
+  #+(and ccl x86-64 ironclad-unsafe-assembly)
   (%rol32 a s)
 
   #+cmu
@@ -551,7 +551,7 @@ uint64_t r = (n << 56)
                            #+big-endian (kernel:shift-towards-start a s)
                            (ash a (- s 32)))
 
-  #+(and ecl ironclad-assembly)
+  #+(and ecl ironclad-unsafe-assembly)
   (ffi:c-inline (a s)
                 (:uint32-t :uint8-t)
                 :uint32-t
@@ -562,19 +562,19 @@ uint64_t r = (n << 56)
   #+sbcl
   (sb-rotate-byte:rotate-byte s (byte 32 0) a)
 
-  #-(or (and ccl x86-64 ironclad-assembly)
+  #-(or (and ccl x86-64 ironclad-unsafe-assembly)
         cmu
-        (and ecl ironclad-assembly)
+        (and ecl ironclad-unsafe-assembly)
         sbcl)
   (logior (ldb (byte 32 0) (ash a s)) (ash a (- s 32))))
 
 (defun ror32 (a s)
   (declare (type (unsigned-byte 32) a)
            (type (integer 0 32) s))
-  #+(and ccl x86-64 ironclad-assembly)
+  #+(and ccl x86-64 ironclad-unsafe-assembly)
   (%ror32 a s)
 
-  #+(and ecl ironclad-assembly)
+  #+(and ecl ironclad-unsafe-assembly)
   (ffi:c-inline (a s)
                 (:uint32-t :uint8-t)
                 :uint32-t
@@ -585,20 +585,20 @@ uint64_t r = (n << 56)
   #+sbcl
   (sb-rotate-byte:rotate-byte (- s) (byte 32 0) a)
 
-  #-(or (and ccl x86-64 ironclad-assembly)
-        (and ecl ironclad-assembly)
+  #-(or (and ccl x86-64 ironclad-unsafe-assembly)
+        (and ecl ironclad-unsafe-assembly)
         sbcl)
   (rol32 a (- 32 s)))
 
-(declaim #+ironclad-fast-mod64-arithmetic (inline mod64+ mod64- mod64*)
+(declaim #+ironclad-unsafe-fast-mod64-arithmetic (inline mod64+ mod64- mod64*)
          (ftype (function ((unsigned-byte 64) (unsigned-byte 64)) (unsigned-byte 64)) mod64+))
 
 (defun mod64+ (a b)
   (declare (type (unsigned-byte 64) a b))
-  #+(and ccl x86-64 ironclad-assembly)
+  #+(and ccl x86-64 ironclad-unsafe-assembly)
   (%mod64+ a b)
 
-  #+(and ecl ironclad-assembly uint64-t)
+  #+(and ecl ironclad-unsafe-assembly uint64-t)
   (ffi:c-inline (a b)
                 (:uint64-t :uint64-t)
                 :uint64-t
@@ -606,8 +606,8 @@ uint64_t r = (n << 56)
                 :one-liner t
                 :side-effects nil)
 
-  #-(or (and ccl x86-64 ironclad-assembly)
-        (and ecl ironclad-assembly uint64-t))
+  #-(or (and ccl x86-64 ironclad-unsafe-assembly)
+        (and ecl ironclad-unsafe-assembly uint64-t))
   (ldb (byte 64 0) (+ a b)))
 
 #+sbcl
@@ -616,10 +616,10 @@ uint64_t r = (n << 56)
 
 (defun mod64- (a b)
   (declare (type (unsigned-byte 64) a b))
-  #+(and ccl x86-64 ironclad-assembly)
+  #+(and ccl x86-64 ironclad-unsafe-assembly)
   (%mod64- a b)
 
-  #+(and ecl ironclad-assembly uint64-t)
+  #+(and ecl ironclad-unsafe-assembly uint64-t)
   (ffi:c-inline (a b)
                 (:uint64-t :uint64-t)
                 :uint64-t
@@ -627,8 +627,8 @@ uint64_t r = (n << 56)
                 :one-liner t
                 :side-effects nil)
 
-  #-(or (and ccl x86-64 ironclad-assembly)
-        (and ecl ironclad-assembly uint64-t))
+  #-(or (and ccl x86-64 ironclad-unsafe-assembly)
+        (and ecl ironclad-unsafe-assembly uint64-t))
   (ldb (byte 64 0) (- a b)))
 
 #+sbcl
@@ -637,10 +637,10 @@ uint64_t r = (n << 56)
 
 (defun mod64* (a b)
   (declare (type (unsigned-byte 64) a b))
-  #+(and ccl x86-64 ironclad-assembly)
+  #+(and ccl x86-64 ironclad-unsafe-assembly)
   (%mod64* a b)
 
-  #+(and ecl ironclad-assembly uint64-t)
+  #+(and ecl ironclad-unsafe-assembly uint64-t)
   (ffi:c-inline (a b)
                 (:uint64-t :uint64-t)
                 :uint64-t
@@ -648,24 +648,24 @@ uint64_t r = (n << 56)
                 :one-liner t
                 :side-effects nil)
 
-  #-(or (and ccl x86-64 ironclad-assembly)
-        (and ecl ironclad-assembly uint64-t))
+  #-(or (and ccl x86-64 ironclad-unsafe-assembly)
+        (and ecl ironclad-unsafe-assembly uint64-t))
   (ldb (byte 64 0) (* a b)))
 
 #+sbcl
 (define-compiler-macro mod64* (a b)
   `(ldb (byte 64 0) (* ,a ,b)))
 
-(declaim #+ironclad-fast-mod64-arithmetic (inline mod64ash)
+(declaim #+ironclad-unsafe-fast-mod64-arithmetic (inline mod64ash)
          (ftype (function ((unsigned-byte 64) (integer -63 63)) (unsigned-byte 64)) mod64ash))
 
 (defun mod64ash (num count)
   (declare (type (unsigned-byte 64) num)
            (type (integer -63 63) count))
-  #+(and ccl x86-64 ironclad-assembly)
+  #+(and ccl x86-64 ironclad-unsafe-assembly)
   (%mod64ash num count)
 
-  #+(and ecl ironclad-assembly uint64-t)
+  #+(and ecl ironclad-unsafe-assembly uint64-t)
   (ffi:c-inline (num count)
                 (:uint64-t :int8-t)
                 :uint64-t
@@ -673,8 +673,8 @@ uint64_t r = (n << 56)
                 :one-liner t
                 :side-effects nil)
 
-  #-(or (and ccl x86-64 ironclad-assembly)
-        (and ecl ironclad-assembly uint64-t))
+  #-(or (and ccl x86-64 ironclad-unsafe-assembly)
+        (and ecl ironclad-unsafe-assembly uint64-t))
   (ldb (byte 64 0) (ash num count)))
 
 #+sbcl
@@ -683,15 +683,15 @@ uint64_t r = (n << 56)
   ;;  http://www.caddr.com/macho/archives/sbcl-devel/2004-8/3877.html
   `(logand #xffffffffffffffff (ash ,num ,count)))
 
-(declaim #+ironclad-fast-mod64-arithmetic (inline mod64lognot)
+(declaim #+ironclad-unsafe-fast-mod64-arithmetic (inline mod64lognot)
          (ftype (function ((unsigned-byte 64)) (unsigned-byte 64)) mod64lognot))
 
 (defun mod64lognot (num)
   (declare (type (unsigned-byte 64) num))
-  #+(and ccl x86-64 ironclad-assembly)
+  #+(and ccl x86-64 ironclad-unsafe-assembly)
   (%mod64lognot num)
 
-  #+(and ecl ironclad-assembly uint64-t)
+  #+(and ecl ironclad-unsafe-assembly uint64-t)
   (ffi:c-inline (num)
                 (:uint64-t)
                 :uint64-t
@@ -699,24 +699,24 @@ uint64_t r = (n << 56)
                 :one-liner t
                 :side-effects nil)
 
-  #-(or (and ccl x86-64 ironclad-assembly)
-        (and ecl ironclad-assembly uint64-t))
+  #-(or (and ccl x86-64 ironclad-unsafe-assembly)
+        (and ecl ironclad-unsafe-assembly uint64-t))
   (ldb (byte 64 0) (lognot num)))
 
 #+sbcl
 (define-compiler-macro mod64lognot (num)
   `(ldb (byte 64 0) (lognot ,num)))
 
-(declaim #+ironclad-fast-mod64-arithmetic (inline rol64 ror64)
+(declaim #+ironclad-unsafe-fast-mod64-arithmetic (inline rol64 ror64)
          (ftype (function ((unsigned-byte 64) (unsigned-byte 6)) (unsigned-byte 64)) rol64 ror64))
 
 (defun rol64 (a s)
   (declare (type (unsigned-byte 64) a)
            (type (integer 0 64) s))
-  #+(and ccl x86-64 ironclad-assembly)
+  #+(and ccl x86-64 ironclad-unsafe-assembly)
   (%rol64 a s)
 
-  #+(and ecl ironclad-assembly uint64-t)
+  #+(and ecl ironclad-unsafe-assembly uint64-t)
   (ffi:c-inline (a s)
                 (:uint64-t :uint8-t)
                 :uint64-t
@@ -727,18 +727,18 @@ uint64_t r = (n << 56)
   #+sbcl
   (sb-rotate-byte:rotate-byte s (byte 64 0) a)
 
-  #-(or (and ccl x86-64 ironclad-assembly)
-        (and ecl ironclad-assembly uint64-t)
+  #-(or (and ccl x86-64 ironclad-unsafe-assembly)
+        (and ecl ironclad-unsafe-assembly uint64-t)
         sbcl)
   (logior (ldb (byte 64 0) (ash a s)) (ash a (- s 64))))
 
 (defun ror64 (a s)
   (declare (type (unsigned-byte 64) a)
            (type (integer 0 64) s))
-  #+(and ccl x86-64 ironclad-assembly)
+  #+(and ccl x86-64 ironclad-unsafe-assembly)
   (%ror64 a s)
 
-  #+(and ecl ironclad-assembly uint64-t)
+  #+(and ecl ironclad-unsafe-assembly uint64-t)
   (ffi:c-inline (a s)
                 (:uint64-t :uint8-t)
                 :uint64-t
@@ -749,15 +749,15 @@ uint64_t r = (n << 56)
   #+sbcl
   (sb-rotate-byte:rotate-byte (- s) (byte 64 0) a)
 
-  #-(or (and ccl x86-64 ironclad-assembly)
-        (and ecl ironclad-assembly uint64-t)
+  #-(or (and ccl x86-64 ironclad-unsafe-assembly)
+        (and ecl ironclad-unsafe-assembly uint64-t)
         sbcl)
   (rol64 a (- 64 s)))
 
 
 ;;; 64-bit utilities
 
-(declaim #+ironclad-fast-mod32-arithmetic
+(declaim #+ironclad-unsafe-fast-mod32-arithmetic
          (inline %add-with-carry %subtract-with-borrow))
 
 ;;; The names are taken from sbcl and cmucl's bignum routines.
@@ -917,7 +917,7 @@ behavior."
                   (incf input-block1-start ,size)
                   (incf input-block2-start ,size)
                   (decf block-length ,size))))
-    #+(and sbcl x86-64 ironclad-assembly)
+    #+(and sbcl x86-64 ironclad-unsafe-assembly)
     (xor-bytes 16 (xor128 input-block1 input-block1-start
                           input-block2 input-block2-start
                           output-block output-block-start))
@@ -936,13 +936,13 @@ behavior."
 (define-compiler-macro xor-block (&whole form &environment env block-length input-block1 input-block1-start input-block2 input-block2-start output-block output-block-start)
   (declare (ignorable env block-length input-block1 input-block1-start input-block2 input-block2-start output-block output-block-start))
   (cond
-    #+(and sbcl x86-64 ironclad-assembly)
+    #+(and sbcl x86-64 ironclad-unsafe-assembly)
     ((and (constantp block-length env)
           (= block-length 16))
      `(xor128 ,input-block1 ,input-block1-start
               ,input-block2 ,input-block2-start
               ,output-block ,output-block-start))
-    #+(and sbcl x86-64 ironclad-assembly)
+    #+(and sbcl x86-64 ironclad-unsafe-assembly)
     ((and (constantp block-length env)
           (zerop (mod block-length 16)))
      (let ((i (gensym)))
@@ -983,7 +983,7 @@ behavior."
                       (incf input-block-start ,size)
                       (incf output-block-start ,size)
                       (decf block-length ,size))))
-    #+(and sbcl x86-64 ironclad-assembly)
+    #+(and sbcl x86-64 ironclad-unsafe-assembly)
     (copy-bytes 16 (mov128 input-block input-block-start
                            output-block output-block-start))
     #+(and sbcl x86-64)
@@ -1002,12 +1002,12 @@ behavior."
                                           output-block output-block-start)
   (declare (ignorable env block-length input-block input-block-start output-block output-block-start))
   (cond
-    #+(and sbcl x86-64 ironclad-assembly)
+    #+(and sbcl x86-64 ironclad-unsafe-assembly)
     ((and (constantp block-length env)
           (= block-length 16))
      `(mov128  ,input-block ,input-block-start
                ,output-block ,output-block-start))
-    #+(and sbcl x86-64 ironclad-assembly)
+    #+(and sbcl x86-64 ironclad-unsafe-assembly)
     ((and (constantp block-length env)
           (zerop (mod block-length 16)))
      (let ((i (gensym)))

@@ -337,7 +337,7 @@ addition chain (ecp_nistp521.c), far fewer multiplications than Fermat."
   (with-slots (x y z) p
     (declare (type integer x y z))
     (when (zerop z)
-      (error 'ironclad-error
+      (error 'ironclad-unsafe-error
              :format-control "The point at infinity can't be encoded."))
     (let* ((invz (ec-scalar-inv :secp521r1 z))
            (invz2 (secp521r1-mulmod invz invz))

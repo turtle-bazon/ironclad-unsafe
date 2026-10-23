@@ -579,7 +579,7 @@
      #x720AEF96 #xC83223F1 #x7363A51F #xC3A0396F)))
 
 
-#+#.(cl:if (cl:= ironclad::+tiger-wordsize+ 64) '(and) '(or))
+#+#.(cl:if (cl:= ironclad-unsafe::+tiger-wordsize+ 64) '(and) '(or))
 (defun update-tiger-block (regs block)
   (declare (type tiger-regs regs)
            (type tiger-state-block block)
@@ -664,7 +664,7 @@
             (tiger-regs-c regs) (mod64+ c (tiger-regs-c regs)))
       regs)))
         
-#+#.(cl:if (cl:= ironclad::+tiger-wordsize+ 32) '(and) '(or))
+#+#.(cl:if (cl:= ironclad-unsafe::+tiger-wordsize+ 32) '(and) '(or))
 (defun update-tiger-block (regs block)
   (declare (type tiger-regs regs)
            (type (simple-array (unsigned-byte 32) (16)) block)

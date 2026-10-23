@@ -2,7 +2,7 @@
 
 (in-package :crypto)
 
-#+(and ecl ironclad-assembly)
+#+(and ecl ironclad-unsafe-assembly)
 (progn
   (declaim (inline x-chacha-core))
   (defun x-chacha-core (n-rounds buffer state)

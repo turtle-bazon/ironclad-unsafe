@@ -50,17 +50,17 @@
 (defun ccm-check-parameters (nonce tag-length message-length)
   (let ((nonce-length (length nonce)))
     (unless (<= 7 nonce-length 13)
-      (error 'ironclad-error
+      (error 'ironclad-unsafe-error
              :format-control "CCM nonce must be 7 to 13 octets long, not ~D."
              :format-arguments (list nonce-length))))
   (unless (member tag-length '(4 6 8 10 12 14 16))
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "CCM tag length must be one of 4, 6, 8, 10, 12, 14 or 16, not ~D."
            :format-arguments (list tag-length)))
   (when (and message-length
              (or (minusp message-length)
                  (>= message-length (expt 256 (* 8 (- 15 (length nonce)))))))
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "CCM message length ~D out of range for a ~D-octet nonce."
            :format-arguments (list message-length (length nonce))))
   (values))
@@ -112,9 +112,9 @@ to be complete."
   "True when DATA can be handed to the assembly xor128 VOP, which
 assumes the heap layout of a simple vector."
   (declare (type (vector (unsigned-byte 8)) data))
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (typep data '(simple-array (unsigned-byte 8) (*)))
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   nil)
 
 (defun ccm-cbc-absorb-block (mode data offset simple)
@@ -129,7 +129,7 @@ for the whole message, instead of once per block."
            (type boolean simple))
   (let ((chain (ccm-chain mode)))
     (declare (type (simple-array (unsigned-byte 8) (16)) chain))
-    #+(and sbcl x86-64 ironclad-assembly)
+    #+(and sbcl x86-64 ironclad-unsafe-assembly)
     (progn
       (if simple
           (xor128 chain 0 data offset chain 0)
@@ -139,7 +139,7 @@ for the whole message, instead of once per block."
       ;; Encrypt the chain in place; the assembly encryptor reads the
       ;; whole block before it writes it back.
       (aes-encrypt-block (ccm-ecb mode) chain 0 chain 0))
-    #-(and sbcl x86-64 ironclad-assembly)
+    #-(and sbcl x86-64 ironclad-unsafe-assembly)
     (progn
       (declare (ignore simple))
       (dotimes (i 16)
@@ -218,7 +218,7 @@ on the first data block (or at finalization for empty messages)."
                           (1- q)))
            (b0 (make-array 16 :element-type '(unsigned-byte 8) :initial-element 0)))
       (unless message-length
-        (error 'ironclad-error
+        (error 'ironclad-unsafe-error
                :format-control "CCM :MESSAGE-LENGTH is required for incremental encryption; ENCRYPT-MESSAGE and DECRYPT-MESSAGE infer it automatically."))
       (setf (aref b0 0) flags)
       (replace b0 nonce :start1 1)
@@ -242,7 +242,7 @@ on the first data block (or at finalization for empty messages)."
     (ccm-begin-data mode)
     (ccm-pad-and-process-pending mode)
     (unless (= (ccm-data-length mode) (ccm-message-length mode))
-      (error 'ironclad-error
+      (error 'ironclad-unsafe-error
              :format-control "CCM processed ~D octets, but :MESSAGE-LENGTH declared ~D."
              :format-arguments (list (ccm-data-length mode) (ccm-message-length mode))))
     (setf (ccm-finalized-p mode) t))
@@ -262,7 +262,7 @@ on the first data block (or at finalization for empty messages)."
 
 (defmethod process-associated-data ((mode ccm) data &key (start 0) end)
   (if (encryption-started-p mode)
-      (error 'ironclad-error :format-control "All associated data must be processed before the encryption begins.")
+      (error 'ironclad-unsafe-error :format-control "All associated data must be processed before the encryption begins.")
       (let* ((end (or end (length data)))
              (buffer (ccm-ad-buffer mode)))
         (incf (ccm-ad-length mode) (- end start))

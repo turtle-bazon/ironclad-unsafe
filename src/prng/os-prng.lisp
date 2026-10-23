@@ -21,7 +21,7 @@
                                              :element-type '(unsigned-byte 8))))
               (read-sequence seq *os-prng-stream*))))
     (if (< n num-bytes)
-        (error 'ironclad-error :format-control "Failed to get random data.")
+        (error 'ironclad-unsafe-error :format-control "Failed to get random data.")
         seq))
 
   #+(and win32 sbcl)
@@ -34,7 +34,7 @@
                                     :address buffp
                                     :unsigned-long num-bytes
                                     :boolean))
-      (error 'ironclad-error :format-control "RtlGenRandom failed"))
+      (error 'ironclad-unsafe-error :format-control "RtlGenRandom failed"))
     (let ((copy (copy-seq buff)))
       (ccl:dispose-heap-ivector buff)
       (ccl:dispose-heap-ivector buffp)
@@ -43,14 +43,14 @@
   #+(and os-windows allegro)
   (let ((buff (make-array num-bytes :element-type '(unsigned-byte 8))))
     (when (zerop (rtl-gen-random buff num-bytes))
-      (error 'ironclad-error :format-control "RtlGenRandom failed"))
+      (error 'ironclad-unsafe-error :format-control "RtlGenRandom failed"))
     buff)
 
   #+(and mswindows lispworks)
   (let ((buff (sys:in-static-area (make-array num-bytes :element-type '(unsigned-byte 8)))))
     (unless (fli:with-dynamic-lisp-array-pointer (buff buff)
               (rtl-gen-random buff num-bytes))
-      (error 'ironclad-error :format-control "RtlGenRandom failed"))
+      (error 'ironclad-unsafe-error :format-control "RtlGenRandom failed"))
     (copy-seq buff))
 
   #-(or unix
@@ -58,7 +58,7 @@
         (and os-windows ccl)
         (and os-windows allegro)
         (and mswindows lispworks))
-  (error 'ironclad-error
+  (error 'ironclad-unsafe-error
          :format-control "OS-RANDOM-SEED is not supported on your platform."))
 
 (defmethod make-prng ((name (eql :os)) &key seed)

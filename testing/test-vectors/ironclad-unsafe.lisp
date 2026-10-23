@@ -1,5 +1,5 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
-;;;; ironclad.lisp -- tests for non-cryptography functionality
+;;;; ironclad-unsafe.lisp -- tests for non-cryptography functionality
 
 (in-package :crypto-tests)
 

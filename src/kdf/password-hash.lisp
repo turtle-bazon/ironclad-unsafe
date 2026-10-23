@@ -50,7 +50,7 @@ the password is valid."
       :digest (find-symbol (subseq combined-salt-and-digest
                                    (1+ (first positions))
                                    digest-separator-position)
-                           '#:ironclad)
+                           '#:ironclad-unsafe)
       :iterations (parse-integer combined-salt-and-digest
                                  :start (1+ digest-separator-position)
                                  :end (second positions))

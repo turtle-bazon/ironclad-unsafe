@@ -30,7 +30,7 @@
 
 (require 'asdf)
 (push (truename #p"./") asdf:*central-registry*)
-(asdf:load-system :ironclad)
+(asdf:load-system :ironclad-unsafe)
 
 (defpackage :bench-all
   (:use :cl))
@@ -85,7 +85,7 @@ for a quick run at the old speed; each extra trial costs up to
         (/ (* count *size*) elapsed))))
 
 (defun random-octets (n)
-  (ironclad:random-data n))
+  (ironclad-unsafe:random-data n))
 
 ;;; ------------------------------------------------------------------
 ;;; Result records
@@ -102,7 +102,7 @@ for a quick run at the old speed; each extra trial costs up to
         *results*))
 
 (defun record-lisp (category algorithm operation unit value)
-  (record category algorithm "ironclad" operation unit value))
+  (record category algorithm "ironclad-unsafe" operation unit value))
 
 (defun stringify (x)
   (string-downcase (princ-to-string x)))
@@ -133,37 +133,37 @@ dropped.  Anything else is a genuine failure and is reported."
 ;;; Symmetric primitives
 
 (defun benchmark-cipher (name)
-  (let* ((key-length (car (last (ironclad:key-lengths name))))
+  (let* ((key-length (car (last (ironclad-unsafe:key-lengths name))))
          (key (random-octets key-length))
-         (block-length (ironclad:block-length name))
+         (block-length (ironclad-unsafe:block-length name))
          (mode (if (= block-length 1) :stream :ecb))
-         (cipher (ironclad:make-cipher name :key key :mode mode))
+         (cipher (ironclad-unsafe:make-cipher name :key key :mode mode))
          (buffer (random-octets *size*))
          (rate (bytes-per-second
-                 (lambda () (ironclad:encrypt-in-place cipher buffer)))))
+                 (lambda () (ironclad-unsafe:encrypt-in-place cipher buffer)))))
     (record-lisp "cipher" (stringify name)
                  (format nil "encrypt ~D-byte buffer" *size*)
                  "bytes/s" rate)))
 
 (defun benchmark-mode (mode)
   (let* ((cipher-name :aes)
-         (key-length (car (last (ironclad:key-lengths cipher-name))))
+         (key-length (car (last (ironclad-unsafe:key-lengths cipher-name))))
          (key (random-octets key-length))
-         (iv (random-octets (ironclad:block-length cipher-name)))
-         (cipher (ironclad:make-cipher cipher-name :key key :mode mode
+         (iv (random-octets (ironclad-unsafe:block-length cipher-name)))
+         (cipher (ironclad-unsafe:make-cipher cipher-name :key key :mode mode
                                        :initialization-vector iv))
          (buffer (random-octets *size*))
          (rate (bytes-per-second
-                 (lambda () (ironclad:encrypt-in-place cipher buffer)))))
+                 (lambda () (ironclad-unsafe:encrypt-in-place cipher buffer)))))
     (record-lisp "cipher-mode" (stringify mode)
                  (format nil "AES encrypt ~D-byte buffer" *size*)
                  "bytes/s" rate)))
 
 (defun benchmark-digest (name)
-  (let* ((digest (ironclad:make-digest name))
+  (let* ((digest (ironclad-unsafe:make-digest name))
          (buffer (random-octets *size*))
          (rate (bytes-per-second
-                 (lambda () (ironclad:update-digest digest buffer)))))
+                 (lambda () (ironclad-unsafe:update-digest digest buffer)))))
     (record-lisp "digest" (stringify name)
                  (format nil "hash ~D-byte block" *size*)
                  "bytes/s" rate)))
@@ -186,13 +186,13 @@ dropped.  Anything else is a genuine failure and is reported."
   (let* ((key (mac-default-key name))
          (iv (random-octets 16))
          (mac (case name
-                (:cmac (ironclad:make-mac name key :aes))
-                (:gmac (ironclad:make-mac name key :aes iv))
-                (:hmac (ironclad:make-mac name key :sha256))
-                (otherwise (ironclad:make-mac name key))))
+                (:cmac (ironclad-unsafe:make-mac name key :aes))
+                (:gmac (ironclad-unsafe:make-mac name key :aes iv))
+                (:hmac (ironclad-unsafe:make-mac name key :sha256))
+                (otherwise (ironclad-unsafe:make-mac name key))))
          (buffer (random-octets *size*))
          (rate (bytes-per-second
-                 (lambda () (ironclad:update-mac mac buffer)))))
+                 (lambda () (ironclad-unsafe:update-mac mac buffer)))))
     (record-lisp "mac" (stringify name)
                  (format nil "MAC ~D-byte block" *size*)
                  "bytes/s" rate)))
@@ -207,10 +207,10 @@ dropped.  Anything else is a genuine failure and is reported."
                   :tag-length 16 :message-length *size*))
       (:chacha-poly (list :key key :initialization-vector iv))
       (:xchacha-poly (list :key key :initialization-vector (random-octets 24)))
-      (:etm (list :cipher (ironclad:make-cipher :aes :key key :mode :ctr
+      (:etm (list :cipher (ironclad-unsafe:make-cipher :aes :key key :mode :ctr
                                                 :initialization-vector
                                                 (random-octets 16))
-                  :mac (ironclad:make-mac :cmac key :aes)))
+                  :mac (ironclad-unsafe:make-mac :cmac key :aes)))
       (:eax (list :cipher-name :aes :key key :initialization-vector iv)))))
 
 (defun benchmark-aead (name)
@@ -219,9 +219,9 @@ dropped.  Anything else is a genuine failure and is reported."
              (message (random-octets *size*)))
         (let ((rate (bytes-per-second
                       (lambda ()
-                        (let ((mode (apply #'ironclad:make-authenticated-encryption-mode
+                        (let ((mode (apply #'ironclad-unsafe:make-authenticated-encryption-mode
                                            name args)))
-                          (ironclad:encrypt-message mode message))))))
+                          (ironclad-unsafe:encrypt-message mode message))))))
           (record-lisp "aead" (stringify name)
                        (format nil "encrypt ~D-byte message" *size*)
                        "bytes/s" rate)))
@@ -252,10 +252,10 @@ dropped.  Anything else is a genuine failure and is reported."
 
 (defun benchmark-kdf (kind)
   (handler-case
-      (let* ((kdf (apply #'ironclad:make-kdf kind (kdf-arguments kind)))
+      (let* ((kdf (apply #'ironclad-unsafe:make-kdf kind (kdf-arguments kind)))
              (args (kdf-derive-args kind))
              (rate (items-per-second
-                     (lambda () (apply #'ironclad:derive-key kdf args)))))
+                     (lambda () (apply #'ironclad-unsafe:derive-key kdf args)))))
         (record-lisp "kdf" (stringify kind) "derive-key" "ops/s" rate))
     (error (condition)
       (report-benchmark-error "kdf" kind condition))))
@@ -263,12 +263,12 @@ dropped.  Anything else is a genuine failure and is reported."
 (defun benchmark-prng (name)
   (handler-case
       (let* ((prng (if (eq name :os)
-                       (ironclad:make-prng name)
-                       (ironclad:make-prng name :seed :urandom)))
+                       (ironclad-unsafe:make-prng name)
+                       (ironclad-unsafe:make-prng name :seed :urandom)))
              (buffer-size 4096)
              (rate (bytes-per-second
                      (lambda ()
-                       (ironclad:random-data buffer-size prng)))))
+                       (ironclad-unsafe:random-data buffer-size prng)))))
         (record-lisp "prng" (stringify name)
                      (format nil "generate ~D bytes" buffer-size)
                      "bytes/s" rate))
@@ -298,8 +298,8 @@ dropped.  Anything else is a genuine failure and is reported."
 (defun generate-key-pair-for (kind)
   (let ((num-bits (cdr (assoc kind *num-bits-alist*))))
     (if num-bits
-        (ironclad:generate-key-pair kind :num-bits num-bits)
-        (ironclad:generate-key-pair kind))))
+        (ironclad-unsafe:generate-key-pair kind :num-bits num-bits)
+        (ironclad-unsafe:generate-key-pair kind))))
 
 (defun benchmark-keypair-gen (kind)
   (let ((rate (items-per-second
@@ -309,14 +309,14 @@ dropped.  Anything else is a genuine failure and is reported."
 (defun benchmark-signature-op (kind priv pub)
   (handler-case
       (let ((message (random-octets 32)))
-        (let ((signature (ironclad:sign-message priv message)))
-          (unless (ironclad:verify-signature pub message signature)
+        (let ((signature (ironclad-unsafe:sign-message priv message)))
+          (unless (ironclad-unsafe:verify-signature pub message signature)
             (error "signature roundtrip failed"))
           (let ((sign-rate (items-per-second
-                             (lambda () (ironclad:sign-message priv message))))
+                             (lambda () (ironclad-unsafe:sign-message priv message))))
                 (verify-rate (items-per-second
                                (lambda ()
-                                 (ironclad:verify-signature pub message signature)))))
+                                 (ironclad-unsafe:verify-signature pub message signature)))))
             (record-lisp "public-key" (stringify kind) "sign" "ops/s" sign-rate)
             (record-lisp "public-key" (stringify kind) "verify" "ops/s" verify-rate))))
     (error (condition)
@@ -324,18 +324,18 @@ dropped.  Anything else is a genuine failure and is reported."
 
 (defun benchmark-kem-op (kind priv pub)
   (handler-case
-      (multiple-value-bind (ciphertext secret) (ironclad:encapsulate-key pub)
-        (let ((secret2 (ironclad:decapsulate-key priv ciphertext)))
+      (multiple-value-bind (ciphertext secret) (ironclad-unsafe:encapsulate-key pub)
+        (let ((secret2 (ironclad-unsafe:decapsulate-key priv ciphertext)))
           (unless (equalp secret secret2)
             (error "KEM roundtrip failed"))
           (let ((encap-rate (items-per-second
                               (lambda ()
                                 (multiple-value-bind (ct ss)
-                                    (ironclad:encapsulate-key pub)
+                                    (ironclad-unsafe:encapsulate-key pub)
                                   (declare (ignore ct ss))))))
                 (decap-rate (items-per-second
                               (lambda ()
-                                (ironclad:decapsulate-key priv ciphertext)))))
+                                (ironclad-unsafe:decapsulate-key priv ciphertext)))))
             (record-lisp "public-key" (stringify kind) "encapsulate" "ops/s" encap-rate)
             (record-lisp "public-key" (stringify kind) "decapsulate" "ops/s" decap-rate))))
     (error (condition)
@@ -347,12 +347,12 @@ dropped.  Anything else is a genuine failure and is reported."
       ;; one pair cannot do Diffie-Hellman with a key from another.
       (when (not (eq kind :elgamal))
         (multiple-value-bind (priv2 pub2) (generate-key-pair-for kind)
-          (let ((shared1 (ironclad:diffie-hellman priv pub2))
-                (shared2 (ironclad:diffie-hellman priv2 pub)))
+          (let ((shared1 (ironclad-unsafe:diffie-hellman priv pub2))
+                (shared2 (ironclad-unsafe:diffie-hellman priv2 pub)))
             (unless (equalp shared1 shared2)
               (error "Diffie-Hellman roundtrip failed"))
             (let ((rate (items-per-second
-                          (lambda () (ironclad:diffie-hellman priv pub2)))))
+                          (lambda () (ironclad-unsafe:diffie-hellman priv pub2)))))
               (record-lisp "public-key" (stringify kind) "diffie-hellman" "ops/s" rate)))))
     (error (condition)
       (report-benchmark-error "public-key" kind condition))))
@@ -366,23 +366,23 @@ dropped.  Anything else is a genuine failure and is reported."
         ;; always pads.
         (let ((oaep (and (member kind '(:rsa :elgamal)) t)))
           (let ((ciphertext (if oaep
-                                (ironclad:encrypt-message pub message :oaep oaep)
-                                (ironclad:encrypt-message pub message))))
+                                (ironclad-unsafe:encrypt-message pub message :oaep oaep)
+                                (ironclad-unsafe:encrypt-message pub message))))
             (let ((plaintext (if oaep
-                                  (ironclad:decrypt-message priv ciphertext :oaep oaep)
-                                  (ironclad:decrypt-message priv ciphertext))))
+                                  (ironclad-unsafe:decrypt-message priv ciphertext :oaep oaep)
+                                  (ironclad-unsafe:decrypt-message priv ciphertext))))
               (unless (equalp plaintext message)
                 (error "encryption roundtrip failed"))
               (let ((encrypt-rate (items-per-second
                                     (lambda ()
                                       (if oaep
-                                          (ironclad:encrypt-message pub message :oaep oaep)
-                                          (ironclad:encrypt-message pub message)))))
+                                          (ironclad-unsafe:encrypt-message pub message :oaep oaep)
+                                          (ironclad-unsafe:encrypt-message pub message)))))
                     (decrypt-rate (items-per-second
                                    (lambda ()
                                      (if oaep
-                                         (ironclad:decrypt-message priv ciphertext :oaep oaep)
-                                         (ironclad:decrypt-message priv ciphertext))))))
+                                         (ironclad-unsafe:decrypt-message priv ciphertext :oaep oaep)
+                                         (ironclad-unsafe:decrypt-message priv ciphertext))))))
                 (record-lisp "public-key" (stringify kind) "encrypt" "ops/s" encrypt-rate)
                 (record-lisp "public-key" (stringify kind) "decrypt" "ops/s" decrypt-rate))))))
     (error (condition)
@@ -403,42 +403,42 @@ dropped.  Anything else is a genuine failure and is reported."
   (dolist (kem '(:dhkem-x25519 :dhkem-x448 :dhkem-p256 :dhkem-p384 :dhkem-p521))
     (handler-case
         (multiple-value-bind (sk-r pk-r)
-            (ironclad:hpke-derive-keypair kem (ironclad:random-data 32))
-          (let ((ikm (ironclad:random-data 32))
-                (info (ironclad:random-data 16))
+            (ironclad-unsafe:hpke-derive-keypair kem (ironclad-unsafe:random-data 32))
+          (let ((ikm (ironclad-unsafe:random-data 32))
+                (info (ironclad-unsafe:random-data 16))
                 (message (random-octets 64))
                 (aad (random-octets 8)))
             (let ((keypair-rate (items-per-second
                                   (lambda ()
                                     (multiple-value-bind (sk pk)
-                                        (ironclad:hpke-derive-keypair kem ikm)
+                                        (ironclad-unsafe:hpke-derive-keypair kem ikm)
                                       (declare (ignore sk pk))))))
                   (sender-setup-rate (items-per-second
                                       (lambda ()
                                         (multiple-value-bind (enc sender)
-                                            (ironclad:hpke-setup-sender
+                                            (ironclad-unsafe:hpke-setup-sender
                                               kem :hkdf-sha256 :aes-128-gcm pk-r info)
                                           (declare (ignore enc sender))))))
                   (recipient-setup-rate (items-per-second
                                           (lambda ()
                                             (let ((enc (nth-value 0
-                                                            (ironclad:hpke-setup-sender
+                                                            (ironclad-unsafe:hpke-setup-sender
                                                               kem :hkdf-sha256 :aes-128-gcm
                                                               pk-r info))))
                                               (nth-value 0
-                                                (ironclad:hpke-setup-recipient
+                                                (ironclad-unsafe:hpke-setup-recipient
                                                   kem :hkdf-sha256 :aes-128-gcm enc sk-r info)))))))
               (multiple-value-bind (enc sender)
-                  (ironclad:hpke-setup-sender kem :hkdf-sha256 :aes-128-gcm pk-r info)
-                (let ((recipient (ironclad:hpke-setup-recipient
+                  (ironclad-unsafe:hpke-setup-sender kem :hkdf-sha256 :aes-128-gcm pk-r info)
+                (let ((recipient (ironclad-unsafe:hpke-setup-recipient
                                    kem :hkdf-sha256 :aes-128-gcm enc sk-r info)))
-                  (let* ((ciphertext (ironclad:hpke-seal sender aad message))
+                  (let* ((ciphertext (ironclad-unsafe:hpke-seal sender aad message))
                          (seal-rate (items-per-second
                                       (lambda ()
-                                        (ironclad:hpke-seal sender aad message))))
+                                        (ironclad-unsafe:hpke-seal sender aad message))))
                          (open-rate (items-per-second
                                       (lambda ()
-                                        (ironclad:hpke-open recipient aad ciphertext)))))
+                                        (ironclad-unsafe:hpke-open recipient aad ciphertext)))))
                     (record-lisp "hpke" (stringify kem) "derive-keypair" "ops/s" keypair-rate)
                     (record-lisp "hpke" (stringify kem) "setup-sender" "ops/s" sender-setup-rate)
                     (record-lisp "hpke" (stringify kem) "setup-recipient" "ops/s" recipient-setup-rate)
@@ -708,7 +708,7 @@ dropped.  Anything else is a genuine failure and is reported."
     (dolist (result *results*)
       (when (and (string= (getf result :category) "public-key")
                  (string= (getf result :algorithm) canonical-name)
-                 (string= (getf result :source) "ironclad"))
+                 (string= (getf result :source) "ironclad-unsafe"))
         (record "public-key" alias-name (getf result :source)
                 (getf result :operation) (getf result :unit)
                 (getf result :value))))))
@@ -799,12 +799,12 @@ dropped.  Anything else is a genuine failure and is reported."
 (defun find-lisp-result (key)
   (find-if (lambda (result)
              (and (equalp (result-key result) key)
-                  (string= (getf result :source) "ironclad")))
+                  (string= (getf result :source) "ironclad-unsafe")))
            *results*))
 
 (defun find-c-results (key)
   (remove-if (lambda (result)
-               (string= (getf result :source) "ironclad"))
+               (string= (getf result :source) "ironclad-unsafe"))
              (remove-if-not (lambda (result)
                               (equalp (result-key result) key))
                             *results*)))
@@ -877,42 +877,42 @@ dropped.  Anything else is a genuine failure and is reported."
 
 (defun run-all ()
   (when (selected "ciphers")
-    (dolist (name (ironclad:list-all-ciphers))
+    (dolist (name (ironclad-unsafe:list-all-ciphers))
       (format t "cipher ~a~%" name)
       (finish-output)
       (benchmark-cipher name)))
   (when (selected "cipher-modes")
-    (dolist (mode (ironclad:list-all-modes))
+    (dolist (mode (ironclad-unsafe:list-all-modes))
       (format t "cipher-mode ~a~%" mode)
       (finish-output)
       (benchmark-mode mode)))
   (when (selected "digests")
-    (dolist (name (ironclad:list-all-digests))
+    (dolist (name (ironclad-unsafe:list-all-digests))
       (format t "digest ~a~%" name)
       (finish-output)
       (benchmark-digest name)))
   (when (selected "macs")
-    (dolist (name (ironclad:list-all-macs))
+    (dolist (name (ironclad-unsafe:list-all-macs))
       (format t "mac ~a~%" name)
       (finish-output)
       (benchmark-mac name)))
   (when (selected "aeads")
-    (dolist (name (ironclad:list-all-authenticated-encryption-modes))
+    (dolist (name (ironclad-unsafe:list-all-authenticated-encryption-modes))
       (format t "aead ~a~%" name)
       (finish-output)
       (benchmark-aead name)))
   (when (selected "kdfs")
-    (dolist (kind (ironclad:list-all-kdfs))
+    (dolist (kind (ironclad-unsafe:list-all-kdfs))
       (format t "kdf ~a~%" kind)
       (finish-output)
       (benchmark-kdf kind)))
   (when (selected "prngs")
-    (dolist (name (ironclad:list-all-prngs))
+    (dolist (name (ironclad-unsafe:list-all-prngs))
       (format t "prng ~a~%" name)
       (finish-output)
       (benchmark-prng name)))
   (when (selected "public-key")
-    (let* ((all-kinds (ironclad:list-all-key-pair-kinds))
+    (let* ((all-kinds (ironclad-unsafe:list-all-key-pair-kinds))
            (canonical (remove-duplicates (mapcar #'canonical-kind all-kinds))))
       (dolist (kind canonical)
         (format t "public-key ~a~%" kind)
@@ -933,7 +933,7 @@ dropped.  Anything else is a genuine failure and is reported."
     (finish-output)
     (add-openssl-digest-results)
     (add-openssl-aead-results)
-    (dolist (name (ironclad:list-all-ciphers))
+    (dolist (name (ironclad-unsafe:list-all-ciphers))
       (when (assoc name *openssl-throughput-map*)
         (let* ((openssl-alg (cdr (assoc name *openssl-throughput-map*)))
                (rate (openssl-throughput openssl-alg)))
@@ -945,7 +945,7 @@ dropped.  Anything else is a genuine failure and is reported."
     (dolist (pair *openssl-public-key-map*)
       (add-openssl-public-key-results (car pair))))
   (dolist (kind (remove-duplicates (mapcar #'canonical-kind
-                                        (ironclad:list-all-key-pair-kinds))))
+                                        (ironclad-unsafe:list-all-key-pair-kinds))))
     (add-local-c-results kind))
   (write-raw)
   (write-table)

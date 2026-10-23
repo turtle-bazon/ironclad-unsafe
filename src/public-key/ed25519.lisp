@@ -147,9 +147,9 @@ A and B are 32-bit field limbs, BORROW is 0 or 1."
   (declare (type ed25519-fe a b)
            (type (simple-array (unsigned-byte 32) (16)) r)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (ed25519-fe-mul-raw-asm r a b)
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
     (dotimes (k 16)
       (setf (aref r k) 0))
@@ -271,9 +271,9 @@ conditional subtract of Q suffices."
   (declare (type ed25519-fe a)
            (type (simple-array (unsigned-byte 32) (16)) r)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (ed25519-fe-sqr-raw-asm r a)
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
     (dotimes (k 16)
       (setf (aref r k) 0))
@@ -331,7 +331,7 @@ conditional subtract of Q suffices."
 Uses 254 squarings and 11 multiplications."
   (declare (type ed25519-fe z)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (let ((n 0)
         (scratch (make-array 208 :element-type '(unsigned-byte 64))))
     (declare (type integer n)
@@ -349,7 +349,7 @@ Uses 254 squarings and 11 multiplications."
       (dotimes (i 5)
         (setf m (+ m (ash (aref scratch (+ 37 i)) (* 51 i)))))
       (ed25519-fe-from-int (mod m +ed25519-q+))))
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (let ((t0 (ed25519-fe-zero)) (t1 (ed25519-fe-zero))
         (t2 (ed25519-fe-zero)) (t3 (ed25519-fe-zero))
         (out (ed25519-fe-zero)))
@@ -384,7 +384,7 @@ Uses 254 squarings and 11 multiplications."
   "Field element z^(2^252-3), used to recover x when decompressing a point."
   (declare (type ed25519-fe z)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (let ((n 0)
         (scratch (make-array 208 :element-type '(unsigned-byte 64))))
     (declare (type integer n)
@@ -400,7 +400,7 @@ Uses 254 squarings and 11 multiplications."
       (dotimes (i 5)
         (setf m (+ m (ash (aref scratch (+ 37 i)) (* 51 i)))))
       (ed25519-fe-from-int (mod m +ed25519-q+))))
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (ed25519-fe-from-int
    (expt-mod (ed25519-fe-to-int z) (/ (- +ed25519-q+ 5) 8) +ed25519-q+)))
 
@@ -619,7 +619,7 @@ Uses 254 squarings and 11 multiplications."
            (type integer e))
   (when (minusp e)
     (error "negative scalars not supported by ed25519-scalar-mult-general"))
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (if (< e (ash 1 256))
       ;; Radix-2^51 double-and-add, all in one VOP.  The point and the
       ;; working area live in the single scratch vector (the layout is
@@ -651,7 +651,7 @@ Uses 254 squarings and 11 multiplications."
                        :w (ed25519-fe-from-int (mod (ed25519-r51-coord scratch 291)
                                                     +ed25519-q+))))
       (ed25519-scalar-mult-general-lisp p e))
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (ed25519-scalar-mult-general-lisp p e))
 
 (defun ed25519-scalar-mult-general-lisp (p e)
@@ -760,7 +760,7 @@ No consing of intermediate points - uses 4 pre-allocated point objects."
 32 unified additions, no doublings."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer k))
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (let ((table (ed25519-ensure-r51-table))
         (twod (ed25519-r51-twod))
         (scratch (make-array 208 :element-type '(unsigned-byte 64))))
@@ -782,7 +782,7 @@ No consing of intermediate points - uses 4 pre-allocated point objects."
                                                 +ed25519-q+))
                    :w (ed25519-fe-from-int (mod (ed25519-r51-coord scratch 52)
                                                 +ed25519-q+))))
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (let ((table (ed25519-ensure-base-table))
         (acc (make-instance 'ed25519-point
                             :x (ed25519-fe-zero) :y (ed25519-fe-zero)

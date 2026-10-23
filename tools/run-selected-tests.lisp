@@ -2,7 +2,7 @@
 ;;; run-selected-tests.lisp -- run Ironclad tests selectively with progress markers
 ;;;
 ;;; This file is normally loaded by tools/run-cross-lisp-tests.sh after
-;;; :ironclad/tests has been loaded.
+;;; :ironclad-unsafe/tests has been loaded.
 ;;;
 ;;; Select tests by setting IRONCLAD_TESTS to a whitespace- or comma-separated
 ;;; list of test names or case-insensitive substrings:
@@ -20,13 +20,13 @@
 (unless (find-package :regression-test)
   (ql:quickload :rt))
 
-(unless (find-package :ironclad-tests)
-  (asdf:load-system :ironclad/tests))
+(unless (find-package :ironclad-unsafe-tests)
+  (asdf:load-system :ironclad-unsafe/tests))
 
-(defpackage #:ironclad-test-runner
+(defpackage #:ironclad-unsafe-test-runner
   (:use #:cl))
 
-(in-package #:ironclad-test-runner)
+(in-package #:ironclad-unsafe-test-runner)
 
 (defun selected-patterns ()
   "Return the requested test name patterns as a list of strings."

@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; rc6.lisp -- implementation of the RC6 block cipher
 
-(in-package :ironclad)
+(in-package :ironclad-unsafe)
 
 (defconstant +rc6/32-p+ #xb7e15163)
 (defconstant +rc6/32-q+ #x9e3779b9)

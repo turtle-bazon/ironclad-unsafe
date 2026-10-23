@@ -39,7 +39,7 @@ hexadecimal digits into a byte array."
     (declare (type (simple-array (unsigned-byte 8) (*)) key))
     (flet ((char-to-digit (char)
              (or (digit-char-p char 16)
-                 (error 'ironclad-error
+                 (error 'ironclad-unsafe-error
                         :format-control "~A is not a hex digit"
                         :format-arguments (list char)))))
       (loop for i from 0
@@ -62,7 +62,7 @@ STRING contains any character whose CHAR-CODE is greater than 255."
     (loop for i from start below end do
           (let ((byte (char-code (char string i))))
             (unless (< byte 256)
-              (error 'ironclad-error
+              (error 'ironclad-unsafe-error
                      :format-control "~A is not an ASCII character"
                      :format-arguments (list (char string i))))
             (setf (aref vec i) byte))

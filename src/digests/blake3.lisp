@@ -202,11 +202,11 @@ CV holds 8 words; BLOCK holds 16 little-endian words from START."
 
 (defun %make-blake3-digest (&key (output-length 32) key context)
   (unless (and (integerp output-length) (plusp output-length))
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "BLAKE3 output length must be a positive integer, not ~A."
            :format-arguments (list output-length)))
   (when (and key context)
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "BLAKE3 accepts only one of :KEY and :CONTEXT."))
   (let ((state (%make-blake3-state)))
     (setf (blake3-output-length state) output-length)
@@ -327,7 +327,7 @@ CV holds 8 words; BLOCK holds 16 little-endian words from START."
           do (let ((b (pop stack))
                    (a (pop stack)))
                (unless (= (car a) (car b))
-                 (error 'ironclad-error
+                 (error 'ironclad-unsafe-error
                         :format-control "BLAKE3 subtree size mismatch during merge."))
                (push (cons (* 2 (car a))
                            (blake3-parent-bytes state (cdr a) (cdr b)))

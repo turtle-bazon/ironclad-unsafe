@@ -30,10 +30,10 @@ test cheap -- McEliece key generation is the slow part -- while still
 covering the rate at which the defect actually occurs."
   (let ((failures 0))
     (dotimes (k keys)
-      (multiple-value-bind (priv pub) (ironclad:generate-key-pair kind)
+      (multiple-value-bind (priv pub) (ironclad-unsafe:generate-key-pair kind)
         (dotimes (i trials)
-          (multiple-value-bind (ciphertext secret) (ironclad:encapsulate-key pub)
-            (unless (equalp secret (ironclad:decapsulate-key priv ciphertext))
+          (multiple-value-bind (ciphertext secret) (ironclad-unsafe:encapsulate-key pub)
+            (unless (equalp secret (ironclad-unsafe:decapsulate-key priv ciphertext))
               (incf failures))))))
     (when (plusp failures)
       (error "~d/~d ~a encaps/decaps roundtrips returned the wrong shared secret"
@@ -58,34 +58,34 @@ covering the rate at which the defect actually occurs."
                    (aref bytes (+ offset 3)) (ldb (byte 8 0) value))))
       (and
        ;; LMS h=5 has 32 one-time signatures; counter 32 is exhausted.
-       (multiple-value-bind (priv pub) (ironclad:generate-key-pair :lms-sha256-h5-w8)
+       (multiple-value-bind (priv pub) (ironclad-unsafe:generate-key-pair :lms-sha256-h5-w8)
          (declare (ignore pub))
-         (let* ((sk-bytes (getf (ironclad:destructure-private-key priv) :bytes))
+         (let* ((sk-bytes (getf (ironclad-unsafe:destructure-private-key priv) :bytes))
                 (exhausted (copy-seq sk-bytes)))
            (set-big-endian-u32 exhausted 48 32)
-           (let ((key (ironclad:make-private-key :lms-sha256-h5-w8 :bytes exhausted)))
-             (handler-case (progn (ironclad:sign-message key msg) nil)
-               (ironclad:stateful-key-exhausted () t)))))
+           (let ((key (ironclad-unsafe:make-private-key :lms-sha256-h5-w8 :bytes exhausted)))
+             (handler-case (progn (ironclad-unsafe:sign-message key msg) nil)
+               (ironclad-unsafe:stateful-key-exhausted () t)))))
        ;; HSS 2xh5-w8 has a top-level h=5 tree; counter 32 is exhausted.
-       (multiple-value-bind (priv pub) (ironclad:generate-key-pair :hss-sha256-2xh5-w8)
+       (multiple-value-bind (priv pub) (ironclad-unsafe:generate-key-pair :hss-sha256-2xh5-w8)
          (declare (ignore pub))
-         (let* ((sk-bytes (getf (ironclad:destructure-private-key priv) :bytes))
+         (let* ((sk-bytes (getf (ironclad-unsafe:destructure-private-key priv) :bytes))
                 (exhausted (copy-seq sk-bytes)))
            (set-big-endian-u32 exhausted 48 32)
-           (let ((key (ironclad:make-private-key :hss-sha256-2xh5-w8 :bytes exhausted)))
-             (handler-case (progn (ironclad:sign-message key msg) nil)
-               (ironclad:stateful-key-exhausted () t)))))))))
+           (let ((key (ironclad-unsafe:make-private-key :hss-sha256-2xh5-w8 :bytes exhausted)))
+             (handler-case (progn (ironclad-unsafe:sign-message key msg) nil)
+               (ironclad-unsafe:stateful-key-exhausted () t)))))))))
 
 (rtest:deftest :lms-hss-state-exhaustion
   (lms-hss-state-exhaustion-test)
   t)
 
 (defun xmss-state-exhaustion-test ()
-  (multiple-value-bind (priv pub) (ironclad:generate-key-pair :xmss-sha256-h10)
+  (multiple-value-bind (priv pub) (ironclad-unsafe:generate-key-pair :xmss-sha256-h10)
     (declare (ignore pub))
     (let* ((msg (make-array 32 :element-type '(unsigned-byte 8)
                            :initial-element 7))
-           (sk-bytes (getf (ironclad:destructure-private-key priv) :bytes)))
+           (sk-bytes (getf (ironclad-unsafe:destructure-private-key priv) :bytes)))
       (and
        ;; 1024 = 0x00000400, one past the final XMSS index.
        (let ((exhausted (copy-seq sk-bytes)))
@@ -93,9 +93,9 @@ covering the rate at which the defect actually occurs."
                (aref exhausted 1) 0
                (aref exhausted 2) 4
                (aref exhausted 3) 0)
-         (let ((key (ironclad:make-private-key :xmss-sha256-h10 :bytes exhausted)))
-           (handler-case (progn (ironclad:sign-message key msg) nil)
-             (ironclad:stateful-key-exhausted () t))))
+         (let ((key (ironclad-unsafe:make-private-key :xmss-sha256-h10 :bytes exhausted)))
+           (handler-case (progn (ironclad-unsafe:sign-message key msg) nil)
+             (ironclad-unsafe:stateful-key-exhausted () t))))
        ;; The final index (1023) must still sign once and then become exhausted.
        (let ((last (copy-seq sk-bytes)))
          ;; 1023 = 0x000003FF.
@@ -103,10 +103,10 @@ covering the rate at which the defect actually occurs."
                (aref last 1) 0
                (aref last 2) 3
                (aref last 3) 255)
-         (let ((key (ironclad:make-private-key :xmss-sha256-h10 :bytes last)))
-           (ironclad:sign-message key msg)
-           (handler-case (progn (ironclad:sign-message key msg) nil)
-             (ironclad:stateful-key-exhausted () t))))))))
+         (let ((key (ironclad-unsafe:make-private-key :xmss-sha256-h10 :bytes last)))
+           (ironclad-unsafe:sign-message key msg)
+           (handler-case (progn (ironclad-unsafe:sign-message key msg) nil)
+             (ironclad-unsafe:stateful-key-exhausted () t))))))))
 
 (rtest:deftest :xmss-state-exhaustion
   (xmss-state-exhaustion-test)
@@ -142,32 +142,32 @@ covering the rate at which the defect actually occurs."
 (rtest:deftest :ecies-tamper
   ;; Flipping any byte of ephemeral key, IV, ciphertext or tag must
   ;; fail (invalid point or bad tag), never decrypt.
-  (multiple-value-bind (priv pub) (ironclad:generate-key-pair :secp256r1)
-    (let* ((msg (ironclad:random-data 32))
-           (ct (ironclad:encrypt-message pub msg))
+  (multiple-value-bind (priv pub) (ironclad-unsafe:generate-key-pair :secp256r1)
+    (let* ((msg (ironclad-unsafe:random-data 32))
+           (ct (ironclad-unsafe:encrypt-message pub msg))
            (ok t))
       (dotimes (i (length ct))
         (let ((bad (copy-seq ct)))
           (setf (aref bad i) (logxor (aref bad i) 1))
-          (handler-case (progn (ironclad:decrypt-message priv bad) (setf ok nil))
-            (ironclad:ironclad-error () nil))))
+          (handler-case (progn (ironclad-unsafe:decrypt-message priv bad) (setf ok nil))
+            (ironclad-unsafe:ironclad-unsafe-error () nil))))
       ;; ... and the untouched message still verifies, as does a
       ;; decryption with mismatched info/salt.
       (and ok
-           (equalp (ironclad:decrypt-message priv ct) msg)
-           (handler-case (progn (ironclad:decrypt-message
-                                 priv ct :info (ironclad:random-data 4)) nil)
-             (ironclad:ironclad-error () t)))))
+           (equalp (ironclad-unsafe:decrypt-message priv ct) msg)
+           (handler-case (progn (ironclad-unsafe:decrypt-message
+                                 priv ct :info (ironclad-unsafe:random-data 4)) nil)
+             (ironclad-unsafe:ironclad-unsafe-error () t)))))
   t)
 
 (rtest:deftest :ecies-wrong-key
-  (multiple-value-bind (priv1 pub1) (ironclad:generate-key-pair :secp256r1)
+  (multiple-value-bind (priv1 pub1) (ironclad-unsafe:generate-key-pair :secp256r1)
     (declare (ignore priv1))
-    (multiple-value-bind (priv2 pub2) (ironclad:generate-key-pair :secp256r1)
+    (multiple-value-bind (priv2 pub2) (ironclad-unsafe:generate-key-pair :secp256r1)
       (declare (ignore pub2))
-      (let ((ct (ironclad:encrypt-message pub1 (ironclad:random-data 16))))
-        (handler-case (progn (ironclad:decrypt-message priv2 ct) nil)
-          (ironclad:ironclad-error () t)))))
+      (let ((ct (ironclad-unsafe:encrypt-message pub1 (ironclad-unsafe:random-data 16))))
+        (handler-case (progn (ironclad-unsafe:decrypt-message priv2 ct) nil)
+          (ironclad-unsafe:ironclad-unsafe-error () t)))))
   t)
 
 (rtest:deftest :curve25519-point-encoding
@@ -179,15 +179,15 @@ covering the rate at which the defect actually occurs."
   ;; happened to be in the argument register.  Check the public key
   ;; against the value from the test vectors, which is computed with
   ;; the same scalar multiplication but a different encoding path.
-  (let* ((sk (ironclad:hex-string-to-byte-array
+  (let* ((sk (ironclad-unsafe:hex-string-to-byte-array
               "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c6a"))
-         (expected (ironclad:hex-string-to-byte-array
+         (expected (ironclad-unsafe:hex-string-to-byte-array
                     "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a"))
-         (actual (ironclad:curve25519-public-key sk)))
+         (actual (ironclad-unsafe:curve25519-public-key sk)))
     (and (= 32 (length actual))
          (equalp expected actual)
          ;; Encoding the same point twice must give the same answer.
-         (equalp actual (ironclad:curve25519-public-key sk))))
+         (equalp actual (ironclad-unsafe:curve25519-public-key sk))))
   t)
 
 (rtest:deftest :goldilocks-reduction
@@ -196,7 +196,7 @@ covering the rate at which the defect actually occurs."
   ;; half of a value back into the low half instead of by a division.
   ;; Check the reduction against the general remainder, for values of
   ;; every size, and around the boundaries of the folds.
-  (let* ((q ironclad::+goldilocks-q+)
+  (let* ((q ironclad-unsafe::+goldilocks-q+)
          (ok t)
          (values (list 0 1 -1 q (1+ q) (- (1+ q)) (1- q)
                       (ash 1 448) (1- (ash 1 448)) (1+ (ash 1 448))
@@ -204,7 +204,7 @@ covering the rate at which the defect actually occurs."
                       (1+ (ash 1 672)) (ash 1 896) (1- (ash 1 896))
                       (+ q (ash 1 224)) (- (+ q (ash 1 224))))))
     (dolist (v values)
-      (unless (= (mod v q) (ironclad::goldilocks-reduce v))
+      (unless (= (mod v q) (ironclad-unsafe::goldilocks-reduce v))
         (setf ok nil)))
     ;; And for values of random size.
     (loop repeat 2000 do
@@ -212,9 +212,9 @@ covering the rate at which the defect actually occurs."
                         repeat (random 12)
                         do (setf acc (+ (ash acc 64) (random (expt 2 64))))
                         finally (return acc))))
-        (unless (and (= (mod v q) (ironclad::goldilocks-reduce v))
-                     (= (mod (- v) q) (ironclad::goldilocks-reduce (- v)))
-                     (= (mod (* v q) q) (ironclad::goldilocks-reduce (* v q))))
+        (unless (and (= (mod v q) (ironclad-unsafe::goldilocks-reduce v))
+                     (= (mod (- v) q) (ironclad-unsafe::goldilocks-reduce (- v)))
+                     (= (mod (* v q) q) (ironclad-unsafe::goldilocks-reduce (* v q))))
           (setf ok nil))))
     ok)
   t)
@@ -222,36 +222,36 @@ covering the rate at which the defect actually occurs."
 (defun check-goldilocks-pair (a b)
   "Check the sum, the difference and the product of the field
 elements A and B against the integer arithmetic."
-  (let* ((q ironclad::+goldilocks-q+)
-         (ai (ironclad::goldilocks-fe-to-int a))
-         (bi (ironclad::goldilocks-fe-to-int b)))
-    (and (= (ironclad::goldilocks-fe-to-int (ironclad::goldilocks-fe-add a b))
+  (let* ((q ironclad-unsafe::+goldilocks-q+)
+         (ai (ironclad-unsafe::goldilocks-fe-to-int a))
+         (bi (ironclad-unsafe::goldilocks-fe-to-int b)))
+    (and (= (ironclad-unsafe::goldilocks-fe-to-int (ironclad-unsafe::goldilocks-fe-add a b))
             (mod (+ ai bi) q))
-         (= (ironclad::goldilocks-fe-to-int (ironclad::goldilocks-fe-sub a b))
+         (= (ironclad-unsafe::goldilocks-fe-to-int (ironclad-unsafe::goldilocks-fe-sub a b))
             (mod (- ai bi) q))
-         (= (ironclad::goldilocks-fe-to-int (ironclad::goldilocks-fe-mul a b))
+         (= (ironclad-unsafe::goldilocks-fe-to-int (ironclad-unsafe::goldilocks-fe-mul a b))
             (mod (* ai bi) q)))))
 
 (rtest:deftest :goldilocks-field
   ;; The field of Ed448 and Curve448 in limbs of 56 bits.  Check the
   ;; sum, the difference and the product of two elements against the
   ;; integer arithmetic.
-  (let ((q ironclad::+goldilocks-q+)
+  (let ((q ironclad-unsafe::+goldilocks-q+)
         (ok t))
     ;; The edges of the field.
     (dolist (v (list 0 1 2 (1- q) (- q 2) (ash 1 447) (1- (ash 1 447))
                    (- (ash 1 447)) (1+ (ash 1 223))))
-      (let ((a (ironclad::goldilocks-fe-from-int (mod v q))))
-        (unless (= (mod v q) (ironclad::goldilocks-fe-to-int a))
+      (let ((a (ironclad-unsafe::goldilocks-fe-from-int (mod v q))))
+        (unless (= (mod v q) (ironclad-unsafe::goldilocks-fe-to-int a))
           (setf ok nil))
         (unless (and (check-goldilocks-pair a a)
                      (check-goldilocks-pair a
-                                           (ironclad::goldilocks-fe-one)))
+                                           (ironclad-unsafe::goldilocks-fe-one)))
           (setf ok nil))))
     ;; And elements of random size.
     (loop repeat 500 do
-      (let ((a (ironclad::goldilocks-fe-from-int (random q)))
-            (b (ironclad::goldilocks-fe-from-int
+      (let ((a (ironclad-unsafe::goldilocks-fe-from-int (random q)))
+            (b (ironclad-unsafe::goldilocks-fe-from-int
                     (loop with acc = 0
                           repeat (random 8)
                           do (setf acc (+ (ash acc 64) (random (expt 2 64))))
@@ -266,25 +266,25 @@ elements A and B against the integer arithmetic."
   ;; The field of P-224 in limbs of 32 bits.  Check the product of two
   ;; elements, and the reduction of a product, against the integer
   ;; arithmetic.
-  (let ((q ironclad::+secp224r1-p+)
+  (let ((q ironclad-unsafe::+secp224r1-p+)
         (ok t))
     (flet ((element (n)
-             (ironclad::secp224r1-fe-from-int (mod n q)))
+             (ironclad-unsafe::secp224r1-fe-from-int (mod n q)))
            (product (a b)
-             (ironclad::secp224r1-fe-mul a b)))
+             (ironclad-unsafe::secp224r1-fe-mul a b)))
       ;; The edges of the field.
       (dolist (v (list 0 1 2 (1- q) (- q 2) (ash 1 223) (1- (ash 1 223))
                      (- (ash 1 223))))
         (let ((a (element v)))
-          (unless (= (mod v q) (ironclad::secp224r1-fe-to-int a))
+          (unless (= (mod v q) (ironclad-unsafe::secp224r1-fe-to-int a))
             (setf ok nil))
-          (unless (and (= (ironclad::secp224r1-fe-to-int (product a a))
+          (unless (and (= (ironclad-unsafe::secp224r1-fe-to-int (product a a))
                           (mod (* (mod v q) (mod v q)) q))
-                     (= (ironclad::secp224r1-fe-to-int
-                         (ironclad::secp224r1-fe-add a a))
+                     (= (ironclad-unsafe::secp224r1-fe-to-int
+                         (ironclad-unsafe::secp224r1-fe-add a a))
                         (mod (* 2 (mod v q)) q))
-                     (= (ironclad::secp224r1-fe-to-int
-                         (ironclad::secp224r1-fe-sub a (ironclad::secp224r1-fe-zero)))
+                     (= (ironclad-unsafe::secp224r1-fe-to-int
+                         (ironclad-unsafe::secp224r1-fe-sub a (ironclad-unsafe::secp224r1-fe-zero)))
                         (mod v q)))
             (setf ok nil))))
       ;; And elements of random size.
@@ -294,19 +294,19 @@ elements A and B against the integer arithmetic."
                               do (setf acc (+ (ash acc 32) (random (expt 2 32))))
                               finally (return acc))))
               (b (element (random q))))
-          (unless (and (= (ironclad::secp224r1-fe-to-int (product a b))
-                          (mod (* (ironclad::secp224r1-fe-to-int a)
-                                  (ironclad::secp224r1-fe-to-int b))
+          (unless (and (= (ironclad-unsafe::secp224r1-fe-to-int (product a b))
+                          (mod (* (ironclad-unsafe::secp224r1-fe-to-int a)
+                                  (ironclad-unsafe::secp224r1-fe-to-int b))
                                q))
-                     (= (ironclad::secp224r1-fe-to-int
-                         (ironclad::secp224r1-fe-add a b))
-                        (mod (+ (ironclad::secp224r1-fe-to-int a)
-                                (ironclad::secp224r1-fe-to-int b))
+                     (= (ironclad-unsafe::secp224r1-fe-to-int
+                         (ironclad-unsafe::secp224r1-fe-add a b))
+                        (mod (+ (ironclad-unsafe::secp224r1-fe-to-int a)
+                                (ironclad-unsafe::secp224r1-fe-to-int b))
                              q))
-                     (= (ironclad::secp224r1-fe-to-int
-                         (ironclad::secp224r1-fe-sub a b))
-                        (mod (- (ironclad::secp224r1-fe-to-int a)
-                                (ironclad::secp224r1-fe-to-int b))
+                     (= (ironclad-unsafe::secp224r1-fe-to-int
+                         (ironclad-unsafe::secp224r1-fe-sub a b))
+                        (mod (- (ironclad-unsafe::secp224r1-fe-to-int a)
+                                (ironclad-unsafe::secp224r1-fe-to-int b))
                              q)))
             (setf ok nil))))
       ok))
@@ -316,15 +316,15 @@ elements A and B against the integer arithmetic."
   ;; The point arithmetic of P-224 in limbs.  Check the double and the
   ;; sum against the integer arithmetic.  The points are compared up to
   ;; a common factor in Z, which is what the projective equality does.
-  (let ((q ironclad::+secp224r1-p+)
+  (let ((q ironclad-unsafe::+secp224r1-p+)
         (ok t))
     (flet ((element (n)
-             (ironclad::secp224r1-fe-from-int (mod n q)))
+             (ironclad-unsafe::secp224r1-fe-from-int (mod n q)))
            (point (x y z)
-             (make-instance 'ironclad::secp224r1-point
-                            :x (ironclad::secp224r1-fe-to-int x)
-                            :y (ironclad::secp224r1-fe-to-int y)
-                            :z (ironclad::secp224r1-fe-to-int z)))
+             (make-instance 'ironclad-unsafe::secp224r1-point
+                            :x (ironclad-unsafe::secp224r1-fe-to-int x)
+                            :y (ironclad-unsafe::secp224r1-fe-to-int y)
+                            :z (ironclad-unsafe::secp224r1-fe-to-int z)))
            (same-p (xa ya za xb yb zb)
              (and (= (mod (* xa (* zb zb)) q) (mod (* xb (* za za)) q))
                   (= (mod (* ya (* zb zb) zb) q)
@@ -338,33 +338,33 @@ elements A and B against the integer arithmetic."
               (z2 (element (1+ (random (1- q))))))
           ;; The double.
           (multiple-value-bind (dx dy dz)
-              (ironclad::secp224r1-point-double-limbs x1 y1 z1)
-            (let ((r (ironclad::ec-double (point x1 y1 z1))))
-              (unless (same-p (ironclad::secp224r1-fe-to-int dx)
-                              (ironclad::secp224r1-fe-to-int dy)
-                              (ironclad::secp224r1-fe-to-int dz)
-                              (slot-value r 'ironclad::x)
-                              (slot-value r 'ironclad::y)
-                              (slot-value r 'ironclad::z))
+              (ironclad-unsafe::secp224r1-point-double-limbs x1 y1 z1)
+            (let ((r (ironclad-unsafe::ec-double (point x1 y1 z1))))
+              (unless (same-p (ironclad-unsafe::secp224r1-fe-to-int dx)
+                              (ironclad-unsafe::secp224r1-fe-to-int dy)
+                              (ironclad-unsafe::secp224r1-fe-to-int dz)
+                              (slot-value r 'ironclad-unsafe::x)
+                              (slot-value r 'ironclad-unsafe::y)
+                              (slot-value r 'ironclad-unsafe::z))
                 (setf ok nil))))
           ;; The sum.
           (multiple-value-bind (sx sy sz)
-              (ironclad::secp224r1-point-add-limbs x1 y1 z1 x2 y2 z2)
-            (let ((r (ironclad::ec-add (point x1 y1 z1) (point x2 y2 z2))))
-              (unless (same-p (ironclad::secp224r1-fe-to-int sx)
-                              (ironclad::secp224r1-fe-to-int sy)
-                              (ironclad::secp224r1-fe-to-int sz)
-                              (slot-value r 'ironclad::x)
-                              (slot-value r 'ironclad::y)
-                              (slot-value r 'ironclad::z))
+              (ironclad-unsafe::secp224r1-point-add-limbs x1 y1 z1 x2 y2 z2)
+            (let ((r (ironclad-unsafe::ec-add (point x1 y1 z1) (point x2 y2 z2))))
+              (unless (same-p (ironclad-unsafe::secp224r1-fe-to-int sx)
+                              (ironclad-unsafe::secp224r1-fe-to-int sy)
+                              (ironclad-unsafe::secp224r1-fe-to-int sz)
+                              (slot-value r 'ironclad-unsafe::x)
+                              (slot-value r 'ironclad-unsafe::y)
+                              (slot-value r 'ironclad-unsafe::z))
                 (setf ok nil))))))
       ok))
   t)
 
 (rtest:deftest :ecdsa-reject-degenerate-signatures
-  (multiple-value-bind (priv pub) (ironclad:generate-key-pair :ecdsa)
-    (let* ((msg (ironclad:random-data 32))
-           (sig (ironclad:sign-message priv msg))
+  (multiple-value-bind (priv pub) (ironclad-unsafe:generate-key-pair :ecdsa)
+    (let* ((msg (ironclad-unsafe:random-data 32))
+           (sig (ironclad-unsafe:sign-message priv msg))
            (half (/ (length sig) 2))
            (sig-r0 (copy-seq sig))
            (sig-s0 (copy-seq sig)))
@@ -372,54 +372,54 @@ elements A and B against the integer arithmetic."
       (fill sig-s0 0 :start half)
       ;; Degenerate (r = 0 / s = 0) signatures must verify as NIL,
       ;; not signal an error; the genuine signature must verify.
-      (and (null (ironclad:verify-signature pub msg sig-r0))
-           (null (ironclad:verify-signature pub msg sig-s0))
-           (ironclad:verify-signature pub msg sig))))
+      (and (null (ironclad-unsafe:verify-signature pub msg sig-r0))
+           (null (ironclad-unsafe:verify-signature pub msg sig-s0))
+           (ironclad-unsafe:verify-signature pub msg sig))))
   t)
 
 (rtest:deftest :ecdsa-reject-bad-keys
   (flet ((fails-p (thunk)
            (handler-case (progn (funcall thunk) nil)
-             (ironclad:ironclad-error () t))))
-    (let ((zeroes (ironclad:hex-string-to-byte-array
+             (ironclad-unsafe:ironclad-unsafe-error () t))))
+    (let ((zeroes (ironclad-unsafe:hex-string-to-byte-array
                    (concatenate 'string "04" (make-string 64 :initial-element #\0)
                                 (make-string 64 :initial-element #\0)))))
       (and
        ;; malformed and off-curve points rejected at construction
-       (fails-p (lambda () (ironclad:make-public-key :secp256r1
-                                                     :y (ironclad:hex-string-to-byte-array "04"))))
-       (fails-p (lambda () (ironclad:make-public-key :secp256r1 :y zeroes)))
+       (fails-p (lambda () (ironclad-unsafe:make-public-key :secp256r1
+                                                     :y (ironclad-unsafe:hex-string-to-byte-array "04"))))
+       (fails-p (lambda () (ironclad-unsafe:make-public-key :secp256r1 :y zeroes)))
        ;; private scalar 0 and >= N rejected ...
-       (fails-p (lambda () (ironclad:make-private-key :secp256r1
-                                                      :x (ironclad:hex-string-to-byte-array
+       (fails-p (lambda () (ironclad-unsafe:make-private-key :secp256r1
+                                                      :x (ironclad-unsafe:hex-string-to-byte-array
                                                           (make-string 64 :initial-element #\0)))))
-       (fails-p (lambda () (ironclad:make-private-key :secp256r1
-                                                      :x (ironclad:integer-to-octets
-                                                          (ironclad:ecdsa-curve-order :secp256r1)
+       (fails-p (lambda () (ironclad-unsafe:make-private-key :secp256r1
+                                                      :x (ironclad-unsafe:integer-to-octets
+                                                          (ironclad-unsafe:ecdsa-curve-order :secp256r1)
                                                           :n-bits 256 :big-endian t))))
        ;; ... while N-1 is accepted and usable
-       (let* ((sk (ironclad:make-private-key
+       (let* ((sk (ironclad-unsafe:make-private-key
                    :secp256r1
-                   :x (ironclad:integer-to-octets
-                       (1- (ironclad:ecdsa-curve-order :secp256r1))
+                   :x (ironclad-unsafe:integer-to-octets
+                       (1- (ironclad-unsafe:ecdsa-curve-order :secp256r1))
                        :n-bits 256 :big-endian t)))
-              (pk (ironclad:make-public-key
+              (pk (ironclad-unsafe:make-public-key
                    :secp256r1
-                   :y (getf (ironclad:destructure-private-key sk) :y)))
-              (msg (ironclad:random-data 32)))
-         (ironclad:verify-signature pk msg (ironclad:sign-message sk msg))))))
+                   :y (getf (ironclad-unsafe:destructure-private-key sk) :y)))
+              (msg (ironclad-unsafe:random-data 32)))
+         (ironclad-unsafe:verify-signature pk msg (ironclad-unsafe:sign-message sk msg))))))
   t)
 
 (rtest:deftest :ecdsa-compressed-pubkey-roundtrip
-  (multiple-value-bind (priv pub) (ironclad:generate-key-pair :ecdsa :curve :secp384r1)
-    (let* ((msg (ironclad:random-data 48))
-           (sig (ironclad:sign-message priv msg))
-           (raw (getf (ironclad:destructure-public-key pub) :y))
-           (reimported (ironclad:make-public-key
+  (multiple-value-bind (priv pub) (ironclad-unsafe:generate-key-pair :ecdsa :curve :secp384r1)
+    (let* ((msg (ironclad-unsafe:random-data 48))
+           (sig (ironclad-unsafe:sign-message priv msg))
+           (raw (getf (ironclad-unsafe:destructure-public-key pub) :y))
+           (reimported (ironclad-unsafe:make-public-key
                         :ecdsa :curve :secp384r1
-                        :y (ironclad:ec-encode-point-compressed
-                            (ironclad:ec-decode-point :secp384r1 raw)))))
-      (ironclad:verify-signature reimported msg sig)))
+                        :y (ironclad-unsafe:ec-encode-point-compressed
+                            (ironclad-unsafe:ec-decode-point :secp384r1 raw)))))
+      (ironclad-unsafe:verify-signature reimported msg sig)))
   t)
 (rtest:deftest :falcon-keymat (run-test-vector-file :falcon-512-keymat *falcon-keymat-tests*) t)
 (rtest:deftest :falcon-signature (run-test-vector-file :falcon *public-key-signature-tests*) t)

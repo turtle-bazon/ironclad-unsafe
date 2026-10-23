@@ -2,7 +2,7 @@
 ;;;; cast5.lisp -- implementation of rfc2144 CAST5 algorithm
 
 (in-package :crypto)
-(in-ironclad-readtable)
+(in-ironclad-unsafe-readtable)
 
 
 ;;; s-boxes

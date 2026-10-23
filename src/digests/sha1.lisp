@@ -47,9 +47,9 @@
            #.(burn-baby-burn))
   ;; FIXME: There must be a better way to do this
   ;; per-implementation/architecture specialization.
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (%update-sha1-block regs block)
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (let ((a (sha1-regs-a regs)) (b (sha1-regs-b regs))
         (c (sha1-regs-c regs)) (d (sha1-regs-d regs))
         (e (sha1-regs-e regs)))
@@ -93,7 +93,7 @@
                #-cmu
                (ldb (byte 32 0)
                     (logior (logand x y) (logand x z) (logand y z)))))
-        #+ironclad-fast-mod32-arithmetic
+        #+ironclad-unsafe-fast-mod32-arithmetic
         (declare (inline f1 f2 f3))
         ;; core of the algorithm
         (sha1-rounds block f1 +k1+ 0 19 a b c d e)
@@ -109,7 +109,7 @@
         regs))))
 
 ;; ugh.
-#+(and ironclad-fast-mod32-arithmetic (not (and sbcl (or x86 x86-64))))
+#+(and ironclad-unsafe-fast-mod32-arithmetic (not (and sbcl (or x86 x86-64))))
 (declaim (inline expand-block))
 
 (defun expand-block (block)

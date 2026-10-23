@@ -34,7 +34,7 @@
    #+abcl gray-streams:fundamental-binary-input-stream
    #+(or ecl clisp) gray:fundamental-binary-input-stream
    #-(or lispworks sbcl openmcl cmu allegro abcl ecl clisp)
-   (error 'ironclad-error :format-control "octet streams not supported in this implementation")))
+   (error 'ironclad-unsafe-error :format-control "octet streams not supported in this implementation")))
 
 (defvar *binary-output-stream-class*
   (quote
@@ -46,7 +46,7 @@
    #+abcl gray-streams:fundamental-binary-output-stream
    #+(or ecl clisp) gray:fundamental-binary-output-stream
    #-(or lispworks sbcl openmcl cmu allegro abcl ecl clisp)
-   (error 'ironclad-error :format-control "octet streams not supported in this implementation")))
+   (error 'ironclad-unsafe-error :format-control "octet streams not supported in this implementation")))
 
 ;;; FIXME: how to do CMUCL support for this?
 (defvar *stream-element-type-function*
@@ -59,7 +59,7 @@
    #+abcl cl:stream-element-type
    #+(or ecl clisp) cl:stream-element-type
    #-(or lispworks sbcl openmcl cmu allegro abcl ecl clisp)
-   (error 'ironclad-error :format-control "octet streams not supported in this implementation")))
+   (error 'ironclad-unsafe-error :format-control "octet streams not supported in this implementation")))
 
 (defvar *stream-read-byte-function*
   (quote
@@ -71,7 +71,7 @@
    #+abcl gray-streams:stream-read-byte
    #+(or ecl clisp) gray:stream-read-byte
    #-(or lispworks sbcl openmcl cmu allegro abcl ecl clisp)
-   (error 'ironclad-error :format-control "octet streams not supported in this implementation")))
+   (error 'ironclad-unsafe-error :format-control "octet streams not supported in this implementation")))
 
 (defvar *stream-write-byte-function*
   (quote
@@ -83,7 +83,7 @@
    #+abcl gray-streams:stream-write-byte
    #+(or ecl clisp) gray:stream-write-byte
    #-(or lispworks sbcl openmcl cmu allegro abcl ecl clisp)
-   (error 'ironclad-error :format-control "octet streams not supported in this implementation")))
+   (error 'ironclad-unsafe-error :format-control "octet streams not supported in this implementation")))
 
 (defvar *stream-read-sequence-function*
   (quote
@@ -95,7 +95,7 @@
    #+abcl gray-streams:stream-read-sequence
    #+(or ecl clisp) gray:stream-read-sequence
    #-(or lispworks sbcl openmcl cmu allegro abcl ecl clisp)
-   (error 'ironclad-error :format-control "octet streams not supported in this implementation")))
+   (error 'ironclad-unsafe-error :format-control "octet streams not supported in this implementation")))
 
 (defvar *stream-write-sequence-function*
   (quote
@@ -107,7 +107,7 @@
    #+abcl gray-streams:stream-write-sequence
    #+(or ecl clisp) gray:stream-write-sequence
    #-(or lispworks sbcl openmcl cmu allegro abcl ecl clisp)
-   (error 'ironclad-error :format-control "octet streams not supported in this implementation")))
+   (error 'ironclad-unsafe-error :format-control "octet streams not supported in this implementation")))
 
 (defvar *stream-finish-output-function*
   (quote
@@ -119,7 +119,7 @@
    #+abcl gray-streams:stream-finish-output
    #+(or ecl clisp) gray:stream-finish-output
    #-(or lispworks sbcl openmcl cmu allegro abcl ecl clisp)
-   (error 'ironclad-error :format-control "octet streams not supported in this implementation")))
+   (error 'ironclad-unsafe-error :format-control "octet streams not supported in this implementation")))
 
 (defvar *stream-force-output-function*
   (quote
@@ -131,7 +131,7 @@
    #+abcl gray-streams:stream-force-output
    #+(or ecl clisp) gray:stream-force-output
    #-(or lispworks sbcl openmcl cmu allegro abcl ecl clisp)
-   (error 'ironclad-error :format-control "octet streams not supported in this implementation")))
+   (error 'ironclad-unsafe-error :format-control "octet streams not supported in this implementation")))
 
 (defvar *stream-clear-output-function*
   (quote
@@ -143,7 +143,7 @@
    #+abcl gray-streams:stream-clear-output
    #+(or ecl clisp) gray:stream-clear-output
    #-(or lispworks sbcl openmcl cmu allegro abcl ecl clisp)
-   (error 'ironclad-error :format-control "octet streams not supported in this implementation")))
+   (error 'ironclad-unsafe-error :format-control "octet streams not supported in this implementation")))
 )
 
 
@@ -480,7 +480,7 @@ of a string output-stream."
 (defun make-encrypting-stream (stream cipher mode key &key initialization-vector (direction :output))
   (declare (type stream-direction direction))
   (unless (member mode '(ctr :ctr cfb :cfb cfb8 :cfb8 ofb :ofb stream :stream))
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "Encrypting streams support only CTR, CFB, CFB8, OFB and STREAM modes"))
   (let* ((context (make-cipher cipher :mode mode :key key
                                :initialization-vector initialization-vector))
@@ -495,7 +495,7 @@ of a string output-stream."
 (defun make-decrypting-stream (stream cipher mode key &key initialization-vector (direction :input))
   (declare (type stream-direction direction))
   (unless (member mode '(ctr :ctr cfb :cfb cfb8 :cfb8 ofb :ofb stream :stream))
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "Decrypting streams support only CTR, CFB, CFB8, OFB and STREAM modes"))
   (let* ((context (make-cipher cipher :mode mode :key key
                                :initialization-vector initialization-vector))

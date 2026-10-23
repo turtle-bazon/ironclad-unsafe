@@ -65,13 +65,13 @@
                                         97 97 97 97 97 97 97 97 97 97 97 97 97 97
                                         97 97 97 97 97 97 97 97 97 97 97 97 97 97
                                         97 97 97 97 97 97 97 97 97 97))))
-                          (incremental-digest (ironclad:make-digest ',digest))
+                          (incremental-digest (ironclad-unsafe:make-digest ',digest))
                           (incremental-result
                             (dolist (s sequences
-                                       (ironclad:produce-digest incremental-digest))
-                              (ironclad:update-digest incremental-digest s)))
+                                       (ironclad-unsafe:produce-digest incremental-digest))
+                              (ironclad-unsafe:update-digest incremental-digest s)))
                           (one-shot-result
-                            (ironclad:digest-sequence ',digest
+                            (ironclad-unsafe:digest-sequence ',digest
                                                       (apply 'concatenate
                                                              '(simple-array (unsigned-byte 8) (*))
                                                              sequences))))
@@ -101,7 +101,7 @@
 (rtest:deftest digests.crypto-package
   (every #'(lambda (s)
              (eq (nth-value 1 (find-symbol (symbol-name s)
-                                           (find-package :ironclad)))
+                                           (find-package :ironclad-unsafe)))
                  :external))
          (crypto:list-all-digests))
   t)
@@ -157,9 +157,9 @@
 ;; SP 800-185: cSHAKE with empty function name and customization
 ;; string degrades to SHAKE entirely.
 (rtest:deftest :cshake-empty-matches-shake
-  (let ((input (ironclad:ascii-string-to-byte-array "abc")))
-    (and (equalp (ironclad:digest-sequence (ironclad:make-digest :cshake128 :output-length 16) input)
-                 (ironclad:digest-sequence :shake128 input))
-         (equalp (ironclad:digest-sequence (ironclad:make-digest :cshake256 :output-length 32) input)
-                 (ironclad:digest-sequence :shake256 input))))
+  (let ((input (ironclad-unsafe:ascii-string-to-byte-array "abc")))
+    (and (equalp (ironclad-unsafe:digest-sequence (ironclad-unsafe:make-digest :cshake128 :output-length 16) input)
+                 (ironclad-unsafe:digest-sequence :shake128 input))
+         (equalp (ironclad-unsafe:digest-sequence (ironclad-unsafe:make-digest :cshake256 :output-length 32) input)
+                 (ironclad-unsafe:digest-sequence :shake256 input))))
   t)

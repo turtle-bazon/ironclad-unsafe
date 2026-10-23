@@ -2,7 +2,7 @@
 ;;;; sm4.lisp -- implementation of SM4 (GB/T 32907-2016)
 
 (in-package :crypto)
-(in-ironclad-readtable)
+(in-ironclad-unsafe-readtable)
 
 
 ;;;

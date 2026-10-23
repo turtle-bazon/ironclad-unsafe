@@ -15,7 +15,7 @@
           '(vector (unsigned-byte 8))))
 
 (defun run-kdf-test (kdf password salt iteration-count key-length expected-key)
-  (let ((key (ironclad:derive-key kdf password salt iteration-count key-length)))
+  (let ((key (ironclad-unsafe:derive-key kdf password salt iteration-count key-length)))
     (not (mismatch key expected-key))))
 
 (defvar *pbkdf1-key*
@@ -24,7 +24,7 @@
           '(vector (unsigned-byte 8))))
 
 (rtest:deftest pbkdf1
-    (run-kdf-test (crypto:make-kdf 'crypto:pbkdf1 :digest 'ironclad:sha1)
+    (run-kdf-test (crypto:make-kdf 'crypto:pbkdf1 :digest 'ironclad-unsafe:sha1)
                   *password* *salt* 1000 16 *pbkdf1-key*)
   t)
 
@@ -47,12 +47,12 @@
           '(vector (unsigned-byte 8))))
 
 (rtest:deftest pbkdf2
-    (run-kdf-test (crypto:make-kdf 'crypto:pbkdf2 :digest 'ironclad:sha1)
+    (run-kdf-test (crypto:make-kdf 'crypto:pbkdf2 :digest 'ironclad-unsafe:sha1)
                   *password* *salt* 2048 24 *pbkdf2-key*)
   t)
 
 (rtest:deftest pbkdf2-convenience
-    (ironclad:pbkdf2-check-password
+    (ironclad-unsafe:pbkdf2-check-password
      *password*
      "PBKDF2$SHA256:1000$78578e5a5d63cb06$aa2ae650dc866dc4de4fc3c8f06eddac1abc3011a99402fbc46d7e131fac06d5")
   t)
@@ -66,7 +66,7 @@
 
 (rtest:deftest pbkdf1-invalid-iteration-count
   (handler-case
-      (ironclad:derive-key (ironclad:make-kdf 'ironclad:pbkdf1 :digest 'ironclad:sha1)
+      (ironclad-unsafe:derive-key (ironclad-unsafe:make-kdf 'ironclad-unsafe:pbkdf1 :digest 'ironclad-unsafe:sha1)
                            *password* *salt* -1 24)
     (type-error () :ok)
     (:no-error () :error))
@@ -74,7 +74,7 @@
 
 (rtest:deftest pbkdf1-invalid-key-length
   (handler-case
-      (ironclad:derive-key (ironclad:make-kdf 'ironclad:pbkdf1 :digest 'ironclad:sha1)
+      (ironclad-unsafe:derive-key (ironclad-unsafe:make-kdf 'ironclad-unsafe:pbkdf1 :digest 'ironclad-unsafe:sha1)
                            *password* *salt* 2048 -1)
     (type-error () :ok)
     (:no-error () :error))
@@ -82,7 +82,7 @@
 
 (rtest:deftest pbkdf2-invalid-iteration-count
   (handler-case
-      (ironclad:derive-key (ironclad:make-kdf 'ironclad:pbkdf2 :digest 'ironclad:sha1)
+      (ironclad-unsafe:derive-key (ironclad-unsafe:make-kdf 'ironclad-unsafe:pbkdf2 :digest 'ironclad-unsafe:sha1)
                            *password* *salt* -1 24)
     (type-error () :ok)
     (:no-error () :error))
@@ -90,7 +90,7 @@
 
 (rtest:deftest pbkdf2-invalid-key-length
   (handler-case
-      (ironclad:derive-key (ironclad:make-kdf 'ironclad:pbkdf2 :digest 'ironclad:sha1)
+      (ironclad-unsafe:derive-key (ironclad-unsafe:make-kdf 'ironclad-unsafe:pbkdf2 :digest 'ironclad-unsafe:sha1)
                            *password* *salt* 2048 -1)
     (type-error () :ok)
     (:no-error () :error))

@@ -254,7 +254,7 @@ multiplications, all in the limb field."
   (with-slots (x y z) p
     (declare (type integer x y z))
     (when (zerop z)
-      (error 'ironclad-error
+      (error 'ironclad-unsafe-error
              :format-control "The point at infinity can't be encoded."))
     (let* ((invz (ec-scalar-inv :secp224r1 z))
            (invz2 (mod (* invz invz) +secp224r1-p+))
@@ -528,9 +528,9 @@ and the result is below twice the prime."
   (declare (type secp224r1-felem out)
            (type secp224r1-wide in)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn (secp224r1-fe-reduce-limbs-asm out in) out)
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (let ((o (make-array 5 :element-type 'integer :initial-element 0)))
     ;; The multiples of the prime that make the differences positive.
     (setf (aref o 0) (+ (secp224r1-wide-get in 0) (ash 1 127) (ash 1 15))
@@ -573,9 +573,9 @@ IN is below twice the prime, so the prime is subtracted once at
 most."
   (declare (type secp224r1-felem out in)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn (secp224r1-fe-contract-limbs-asm out in) out)
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (let* ((n (secp224r1-felem-to-int in))
          (m (if (>= n +secp224r1-p+) (- n +secp224r1-p+) n)))
     (declare (type integer n m))
@@ -703,9 +703,9 @@ reduced."
   (declare (type secp224r1-wide c)
            (type secp224r1-fe a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn (secp224r1-fe-mul-limbs-asm c a b) c)
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn (secp224r1-felem-mul c a b) c))
 
 (defun secp224r1-fe-add! (r a b)

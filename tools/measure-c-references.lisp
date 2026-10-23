@@ -8,7 +8,7 @@
 
 (require :asdf)
 (push (truename #p"./") asdf:*central-registry*)
-(asdf:load-system :ironclad)
+(asdf:load-system :ironclad-unsafe)
 
 (defpackage :measure-c
   (:use :cl))

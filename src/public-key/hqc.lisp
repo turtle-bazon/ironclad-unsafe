@@ -449,8 +449,8 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
 ;;;
 
 (defvar *hqc-use-pclmul*
-  #+(and sbcl x86-64 ironclad-assembly) (pclmulqdq-supported-p)
-  #-(and sbcl x86-64 ironclad-assembly) nil)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly) (pclmulqdq-supported-p)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly) nil)
 
 (defun hqc-base-mul-serial (c a b)
   "Constant-time bit-serial carryless 64x64 -> 128-bit product into C[0..1]."
@@ -477,14 +477,14 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
   (declare (type (simple-array (unsigned-byte 64) (*)) c)
            (type (unsigned-byte 64) a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-assembly)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (if *hqc-use-pclmul*
       (multiple-value-bind (l h) (hqc-clmul64 a b)
         (setf (aref c 0) l
               (aref c 1) h)
         (values))
       (hqc-base-mul-serial c a b))
-  #-(and sbcl x86-64 ironclad-assembly)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (hqc-base-mul-serial c a b))
 
 (declaim (inline hqc-karatsuba-add1 hqc-karatsuba-add2 hqc-vec-reduce))

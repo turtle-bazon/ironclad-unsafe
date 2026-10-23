@@ -9,8 +9,8 @@
 ;;;; caller's stack frame.  Never pass a stack-allocated array to a
 ;;;; VOP; keep such scratch vectors in the heap.
 
-#+(and sbcl (or x86 x86-64) ironclad-assembly)
-(defpackage :ironclad-vm
+#+(and sbcl (or x86 x86-64) ironclad-unsafe-assembly)
+(defpackage :ironclad-unsafe-vm
   ;; more recent SBCL exports various symbols making this package
   ;; definition more concise. This is the backward-compatible way.
   (:use #:common-lisp
@@ -27,10 +27,10 @@
                 #+x86-64 #:rax-offset #+x86-64 #:rcx-offset
        #+x86-64 #:rdx-offset))
 
-#+(and sbcl (or x86 x86-64) ironclad-assembly)
-(in-package :ironclad-vm)
+#+(and sbcl (or x86 x86-64) ironclad-unsafe-assembly)
+(in-package :ironclad-unsafe-vm)
 
-#+(and sbcl x86 ironclad-assembly)
+#+(and sbcl x86 ironclad-unsafe-assembly)
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun ea (displacement &optional base index (scale 1))
     (sb-vm::make-ea :dword
@@ -42,9 +42,9 @@
   (defmacro dword-inst (name &rest operands)
     `(inst ,name ,@operands)))
 
-#+(and sbcl x86-64 ironclad-assembly)
+#+(and sbcl x86-64 ironclad-unsafe-assembly)
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  #+ironclad-sb-vm-ea
+  #+ironclad-unsafe-sb-vm-ea
   (progn ; Newer SBCL (>= 1.4.11)
     (setf (fdefinition 'ea) (fdefinition 'sb-vm::ea))
     (setf (fdefinition 'dword-ea) (fdefinition 'ea))
@@ -58,7 +58,7 @@
              `(inst bswap (sb-vm::reg-in-size ,@operands :dword))))
         (t
          `(inst ,name :dword ,@operands)))))
-  #-ironclad-sb-vm-ea
+  #-ironclad-unsafe-sb-vm-ea
   (progn ; Older SBCL (< 1.4.11)
     (defun ea (displacement &optional base index (scale 1))
       (sb-vm::make-ea :qword
@@ -79,14 +79,14 @@
                                     ,operand))
                              operands)))))
 
-#+(and sbcl (or x86 x86-64) ironclad-assembly)
+#+(and sbcl (or x86 x86-64) ironclad-unsafe-assembly)
 (progn
 
 ;;; Carryless 64x64 -> 128 multiplication.  Used by the GF(2) polynomial
 ;;; multipliers in HQC (and available to other bit-oriented code).
 #+x86-64
 (define-vop (hqc-clmul64)
-  (:translate ironclad::hqc-clmul64)
+  (:translate ironclad-unsafe::hqc-clmul64)
   (:policy :fast-safe)
   (:args (a :scs (unsigned-reg))
          (b :scs (unsigned-reg)))
@@ -148,14 +148,14 @@
         (inst jmp :nz loop)))))
 
 (define-vop (fill-block-ub8-le fill-block-ub8)
-  (:translate ironclad::fill-block-ub8-le)
+  (:translate ironclad-unsafe::fill-block-ub8-le)
   (:arg-types simple-array-unsigned-byte-32
               simple-array-unsigned-byte-8
               positive-fixnum)
   (:variant nil 64 nil))
 
 (define-vop (fill-block-ub8-be fill-block-ub8)
-  (:translate ironclad::fill-block-ub8-be)
+  (:translate ironclad-unsafe::fill-block-ub8-be)
   (:arg-types simple-array-unsigned-byte-32
               simple-array-unsigned-byte-8
               positive-fixnum)
@@ -163,7 +163,7 @@
 
 #+x86-64
 (define-vop (fill-block-ub8-le/64 fill-block-ub8)
-  (:translate ironclad::fill-block-ub8-le/64)
+  (:translate ironclad-unsafe::fill-block-ub8-le/64)
   (:arg-types simple-array-unsigned-byte-64
               simple-array-unsigned-byte-8
               positive-fixnum)
@@ -172,14 +172,14 @@
 
 #+x86-64
 (define-vop (fill-block-ub8-be/64 fill-block-ub8)
-  (:translate ironclad::fill-block-ub8-be/64)
+  (:translate ironclad-unsafe::fill-block-ub8-be/64)
   (:arg-types simple-array-unsigned-byte-64
               simple-array-unsigned-byte-8
               positive-fixnum)
   (:variant t 128 t))
 
 (define-vop (expand-block)
-  (:translate ironclad::expand-block)
+  (:translate ironclad-unsafe::expand-block)
   (:policy :fast-safe)
   (:args (block :scs (descriptor-reg)))
   (:arg-types simple-array-unsigned-byte-32)
@@ -204,7 +204,7 @@
         (inst jmp :le loop)))))
 
 (define-vop (sha256-expand-block)
-  (:translate ironclad::sha256-expand-block)
+  (:translate ironclad-unsafe::sha256-expand-block)
   (:policy :fast-safe)
   (:args (block :scs (descriptor-reg)))
   (:arg-types simple-array-unsigned-byte-32)
@@ -254,7 +254,7 @@
 ;;; though.  The code is also probably not scheduled optimally.
 #+x86-64
 (define-vop (update-sha1-block)
-  (:translate ironclad::%update-sha1-block)
+  (:translate ironclad-unsafe::%update-sha1-block)
   (:policy :fast-safe)
   (:args (regs :scs (descriptor-reg) :target result)
          (block :scs (descriptor-reg)))
@@ -311,11 +311,11 @@
                  (dword-inst lea e (ea k3 t1 e))
                  (dword-inst add e t2))
                (sha1-rounds (start end f)
-                 (let ((xvars (ironclad::make-circular-list a b c d e)))
+                 (let ((xvars (ironclad-unsafe::make-circular-list a b c d e)))
                    (loop for i from start upto end
                          for vars on xvars by #'cddddr
                          do (multiple-value-bind (a b c d e)
-                                (apply #'values (ironclad::circular-list-subseq vars 0 5))
+                                (apply #'values (ironclad-unsafe::circular-list-subseq vars 0 5))
                               (funcall f a b c d e i))))))
         (dword-inst mov a (block/reg-ea regs 0))
         (dword-inst mov b (block/reg-ea regs 1))
@@ -335,7 +335,7 @@
 
 #+x86-64
 (define-vop (salsa-core-fast)
-  (:translate ironclad::x-salsa-core)
+  (:translate ironclad-unsafe::x-salsa-core)
   (:policy :fast-safe)
   (:args (buffer :scs (descriptor-reg))
          (state :scs (descriptor-reg)))
@@ -420,7 +420,7 @@
 
 #+x86-64
 (define-vop (chacha-core-fast)
-  (:translate ironclad::x-chacha-core)
+  (:translate ironclad-unsafe::x-chacha-core)
   (:policy :fast-safe)
   (:args (buffer :scs (descriptor-reg))
          (state :scs (descriptor-reg)))
@@ -508,7 +508,7 @@
 
 #+x86-64
 (define-vop (pclmulqdq-support-p)
-  (:translate ironclad::pclmulqdq-support-p)
+  (:translate ironclad-unsafe::pclmulqdq-support-p)
   (:policy :fast-safe)
   (:conditional :c)
   (:temporary (:sc unsigned-reg :offset rax-offset) eax)
@@ -524,7 +524,7 @@
 
 #+x86-64
 (define-vop (aes-ni-support-p)
-  (:translate ironclad::aes-ni-support-p)
+  (:translate ironclad-unsafe::aes-ni-support-p)
   (:policy :fast-safe)
   (:conditional :c)
   (:temporary (:sc unsigned-reg :offset rax-offset) eax)
@@ -540,7 +540,7 @@
 (define-vop (bmi2-support-p)
   ;; CPUID leaf 7, subleaf 0: EBX bit 8 is BMI2.  The result is the
   ;; carry flag, as for the other CPUID probes.
-  (:translate ironclad::bmi2-support-p)
+  (:translate ironclad-unsafe::bmi2-support-p)
   (:policy :fast-safe)
   (:conditional :c)
   (:temporary (:sc unsigned-reg :offset rax-offset) eax)
@@ -555,7 +555,7 @@
 #+x86-64
 (define-vop (adx-support-p)
   ;; CPUID leaf 7, subleaf 0: EBX bit 19 is ADX.
-  (:translate ironclad::adx-support-p)
+  (:translate ironclad-unsafe::adx-support-p)
   (:policy :fast-safe)
   (:conditional :c)
   (:temporary (:sc unsigned-reg :offset rax-offset) eax)
@@ -571,7 +571,7 @@
 (define-vop (avx2-cpu-support-p)
   ;; CPUID leaf 7, subleaf 0: EBX bit 5 is AVX2.  The operating system
   ;; must also enable the YMM state; that is checked separately.
-  (:translate ironclad::avx2-cpu-support-p)
+  (:translate ironclad-unsafe::avx2-cpu-support-p)
   (:policy :fast-safe)
   (:conditional :c)
   (:temporary (:sc unsigned-reg :offset rax-offset) eax)
@@ -585,7 +585,7 @@
 
 #+x86-64
 (define-vop (sha-ni-support-p)
-  (:translate ironclad::sha-ni-support-p)
+  (:translate ironclad-unsafe::sha-ni-support-p)
   (:policy :fast-safe)
   (:conditional :c)
   (:temporary (:sc unsigned-reg :offset rax-offset) eax)
@@ -631,7 +631,7 @@
 ;;;; the state is repacked on entry and exit.
 
 (define-vop (sha256ni-compress-block)
-  (:translate ironclad::sha256ni-compress-block)
+  (:translate ironclad-unsafe::sha256ni-compress-block)
   (:policy :fast-safe)
   (:args (state :scs (descriptor-reg))
          (block :scs (descriptor-reg))
@@ -920,7 +920,7 @@
 
 #+x86-64
 (define-vop (aes-ni-generate-round-keys)
-  (:translate ironclad::aes-ni-generate-round-keys)
+  (:translate ironclad-unsafe::aes-ni-generate-round-keys)
   (:policy :fast-safe)
   (:args (key :scs (descriptor-reg))
          (key-length :scs (unsigned-reg))
@@ -1175,7 +1175,7 @@
 
 #+x86-64
 (define-vop (aes-ni-encrypt)
-  (:translate ironclad::aes-ni-encrypt)
+  (:translate ironclad-unsafe::aes-ni-encrypt)
   (:policy :fast-safe)
   (:args (plaintext :scs (descriptor-reg))
          (plaintext-start :scs (unsigned-reg))
@@ -1241,7 +1241,7 @@
 
 #+x86-64
 (define-vop (aes-ni-decrypt)
-  (:translate ironclad::aes-ni-decrypt)
+  (:translate ironclad-unsafe::aes-ni-decrypt)
   (:policy :fast-safe)
   (:args (ciphertext :scs (descriptor-reg))
          (ciphertext-start :scs (unsigned-reg))
@@ -1307,7 +1307,7 @@
 
 #+x86-64
 (define-vop (fast-blake2s-mixing)
-  (:translate ironclad::fast-blake2s-mixing)
+  (:translate ironclad-unsafe::fast-blake2s-mixing)
   (:policy :fast-safe)
   (:args (va :scs (unsigned-reg) :target ra)
          (vb :scs (unsigned-reg) :target rb)
@@ -1351,7 +1351,7 @@
 
 #+x86-64
 (define-vop (gmac-mul-fast)
-  (:translate ironclad::gmac-mul-fast)
+  (:translate ironclad-unsafe::gmac-mul-fast)
   (:policy :fast-safe)
   (:args (accumulator :scs (descriptor-reg))
          (key :scs (descriptor-reg)))
@@ -1419,7 +1419,7 @@
 
 #+x86-64
 (define-vop (xor128)
-  (:translate ironclad::xor128)
+  (:translate ironclad-unsafe::xor128)
   (:policy :fast-safe)
   (:args (in1 :scs (descriptor-reg))
          (start-in1 :scs (unsigned-reg))
@@ -1446,7 +1446,7 @@
 
 #+x86-64
 (define-vop (mov128)
-  (:translate ironclad::mov128)
+  (:translate ironclad-unsafe::mov128)
   (:policy :fast-safe)
   (:args (in :scs (descriptor-reg))
          (start-in :scs (unsigned-reg))
@@ -1466,7 +1466,7 @@
       (inst movdqu (buffer-mem out start-out) x0))))
 
 (define-vop (swap32)
-  (:translate ironclad::swap32)
+  (:translate ironclad-unsafe::swap32)
   (:policy :fast-safe)
   (:args (n :scs (unsigned-reg) :target r))
   (:arg-types unsigned-num)
@@ -1478,7 +1478,7 @@
 
 #+x86-64
 (define-vop (swap64)
-  (:translate ironclad::swap64)
+  (:translate ironclad-unsafe::swap64)
   (:policy :fast-safe)
   (:args (n :scs (unsigned-reg) :target r))
   (:arg-types unsigned-num)
@@ -1489,7 +1489,7 @@
     (inst bswap r)))
 
 (define-vop (inc-counter-block)
-  (:translate ironclad::inc-counter-block)
+  (:translate ironclad-unsafe::inc-counter-block)
   (:policy :fast-safe)
   (:args (size :scs (unsigned-reg) :target idx)
          (counter :scs (descriptor-reg)))
@@ -1504,9 +1504,9 @@
       (emit-label start)
       #.(let ((disp '(- (* n-word-bytes vector-data-offset)
                         other-pointer-lowtag 1)))
-          #+ironclad-sb-vm-ea
+          #+ironclad-unsafe-sb-vm-ea
           `(inst adc :byte (ea ,disp counter idx) 0)
-          #-ironclad-sb-vm-ea
+          #-ironclad-unsafe-sb-vm-ea
           `(inst adc (sb-vm::make-ea :byte :base counter :index idx :disp ,disp) 0))
       (inst jmp :nc end)
       (inst dec idx)
@@ -1515,7 +1515,7 @@
 
 #+x86-64
 (define-vop (secp256r1-mul-raw-asm)
-  (:translate ironclad::secp256r1-fe-mul-raw-asm)
+  (:translate ironclad-unsafe::secp256r1-fe-mul-raw-asm)
   (:policy :fast-safe)
   (:args (c :scs (descriptor-reg))
          (a :scs (descriptor-reg))
@@ -1580,7 +1580,7 @@
   ;; column of four products sum to under 2^66 and the high halves to
   ;; under 2^50, so the carry of the first is all that the second
   ;; needs.
-  (:translate ironclad::secp224r1-fe-mul-limbs-asm)
+  (:translate ironclad-unsafe::secp224r1-fe-mul-limbs-asm)
   (:policy :fast-safe)
   (:args (c :scs (descriptor-reg))
          (a :scs (descriptor-reg))
@@ -1626,7 +1626,7 @@
   ;; with the shifts of sixteen and forty bits; and the carries are
   ;; propagated.  Every value is below 2^128, so a pair of words is
   ;; its whole value.
-  (:translate ironclad::secp224r1-fe-reduce-limbs-asm)
+  (:translate ironclad-unsafe::secp224r1-fe-reduce-limbs-asm)
   (:policy :fast-safe)
   (:args (r :scs (descriptor-reg))
          (c :scs (descriptor-reg)))
@@ -1746,7 +1746,7 @@
   ;; the high two limbs all ones, and the low part not zero; then a
   ;; negative first limb is carried, which can happen once; and the
   ;; carries are propagated.
-  (:translate ironclad::secp224r1-fe-contract-limbs-asm)
+  (:translate ironclad-unsafe::secp224r1-fe-contract-limbs-asm)
   (:policy :fast-safe)
   (:args (r :scs (descriptor-reg))
          (in :scs (descriptor-reg)))
@@ -1830,7 +1830,7 @@
 
 #+x86-64
 (define-vop (ed25519-mul-raw-asm)
-  (:translate ironclad::ed25519-fe-mul-raw-asm)
+  (:translate ironclad-unsafe::ed25519-fe-mul-raw-asm)
   (:policy :fast-safe)
   (:args (c :scs (descriptor-reg))
          (a :scs (descriptor-reg))
@@ -1889,7 +1889,7 @@
   ;; clears the flags; the carry of the addition of the low halves is
   ;; the only thing that is needed of the flags, and it is used right
   ;; away.
-  (:translate ironclad::goldilocks-fe-mul-raw-asm)
+  (:translate ironclad-unsafe::goldilocks-fe-mul-raw-asm)
   (:policy :fast-safe)
   (:args (c :scs (descriptor-reg))
          (a :scs (descriptor-reg))
@@ -1949,7 +1949,7 @@
   ;; least the prime exactly when the addition of 2^224 + 1 reaches
   ;; 2^448.  The addition is made in the high half of C, which is
   ;; free by then, so that the value itself is left alone.
-  (:translate ironclad::goldilocks-fe-reduce-asm)
+  (:translate ironclad-unsafe::goldilocks-fe-reduce-asm)
   (:policy :fast-safe)
   (:args (c :scs (descriptor-reg)))
   (:arg-types simple-array-unsigned-byte-64)
@@ -2042,7 +2042,7 @@
 
 #+x86-64
 (define-vop (ed25519-sqr-raw-asm)
-  (:translate ironclad::ed25519-fe-sqr-raw-asm)
+  (:translate ironclad-unsafe::ed25519-fe-sqr-raw-asm)
   (:policy :fast-safe)
   (:args (c :scs (descriptor-reg))
          (a :scs (descriptor-reg)))
@@ -2083,6 +2083,56 @@
 
 
 #+x86-64
+(define-vop (secp256r1-double-asm)
+  ;; PLACEHOLDER: copies src to dst. Full implementation in progress.
+  (:translate ironclad-unsafe::secp256r1-double-asm)
+  (:policy :fast-safe)
+  (:args (dx :scs (descriptor-reg))
+         (dy :scs (descriptor-reg))
+         (dz :scs (descriptor-reg))
+         (sx :scs (descriptor-reg))
+         (sy :scs (descriptor-reg))
+         (sz :scs (descriptor-reg))
+         (A :scs (descriptor-reg))
+         (B :scs (descriptor-reg))
+         (C :scs (descriptor-reg))
+         (D :scs (descriptor-reg))
+         (E :scs (descriptor-reg))
+         (F :scs (descriptor-reg))
+         (G :scs (descriptor-reg))
+         (H :scs (descriptor-reg))
+         (P :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg) tmp tmp2 carry borrow lo hi)
+  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+  (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      ;; Copy src to dst (placeholder)
+      (dotimes (i 8)
+        (dword-inst mov tmp (dword-ea (+ data-offset (* 4 i)) sx))
+        (dword-inst mov (dword-ea (+ data-offset (* 4 i)) dx) tmp)
+        (dword-inst mov tmp (dword-ea (+ data-offset (* 4 i)) sy))
+        (dword-inst mov (dword-ea (+ data-offset (* 4 i)) dy) tmp)
+        (dword-inst mov tmp (dword-ea (+ data-offset (* 4 i)) sz))
+        (dword-inst mov (dword-ea (+ data-offset (* 4 i)) dz) tmp)))))
+
+#+x86-64
 (define-vop (secp256r1-fe-add-asm)
   ;; R := (A + B) mod P, for reduced residues in eight 32-bit limbs.
   ;;
@@ -2097,7 +2147,7 @@
   ;; that no flag of an arithmetic instruction is read but the one
   ;; that the test sets.  The limbs are read with the 32-bit move,
   ;; for the 64-bit one would read the neighbour as well.
-  (:translate ironclad::secp256r1-fe-add-asm)
+  (:translate ironclad-unsafe::secp256r1-fe-add-asm)
   (:policy :fast-safe)
   (:args (r :scs (descriptor-reg))
          (a :scs (descriptor-reg))
@@ -2164,7 +2214,7 @@
   ;;
   ;; The difference is negative when the subtraction borrowed, and the
   ;; prime is added to it then.
-  (:translate ironclad::secp256r1-fe-sub-asm)
+  (:translate ironclad-unsafe::secp256r1-fe-sub-asm)
   (:policy :fast-safe)
   (:args (r :scs (descriptor-reg))
          (a :scs (descriptor-reg))
@@ -2211,8 +2261,8 @@
 
 #+x86-64
 (define-vop (secp256r1-reduce-asm)
-  (:translate ironclad::secp256r1-fe-reduce-asm)
-  (:translate ironclad::secp256r1-fe-reduce-asm)
+  (:translate ironclad-unsafe::secp256r1-fe-reduce-asm)
+  (:translate ironclad-unsafe::secp256r1-fe-reduce-asm)
   (:policy :fast-safe)
   (:args (r :scs (descriptor-reg))
          (q :scs (descriptor-reg))
@@ -2375,7 +2425,7 @@
   ;;
   ;; The result is identical to SECP256R1-REDUCE-ASM: the total of the
   ;; list sums and the overflow word are the same in both versions.
-  (:translate ironclad::secp256r1-fe-reduce-fast-asm)
+  (:translate ironclad-unsafe::secp256r1-fe-reduce-fast-asm)
   (:policy :fast-safe)
   (:args (r :scs (descriptor-reg))
          (q :scs (descriptor-reg))
@@ -2561,7 +2611,7 @@
 
 #+x86-64
 (define-vop (secp256r1-sqr-raw-asm)
-  (:translate ironclad::secp256r1-fe-sqr-raw-asm)
+  (:translate ironclad-unsafe::secp256r1-fe-sqr-raw-asm)
   (:policy :fast-safe)
   (:args (c :scs (descriptor-reg))
          (a :scs (descriptor-reg)))
@@ -2602,7 +2652,7 @@
 
 #+x86-64
 (define-vop (secp256r1-sha256ni-msg1)
-  (:translate ironclad::sha256ni-msg1)
+  (:translate ironclad-unsafe::sha256ni-msg1)
   (:policy :fast-safe)
   (:args (x :scs (descriptor-reg))
          (y :scs (descriptor-reg)))
@@ -2623,7 +2673,7 @@
 
 #+x86-64
 (define-vop (secp256r1-sha256ni-msg2)
-  (:translate ironclad::sha256ni-msg2)
+  (:translate ironclad-unsafe::sha256ni-msg2)
   (:policy :fast-safe)
   (:args (x :scs (descriptor-reg))
          (y :scs (descriptor-reg)))
@@ -2644,7 +2694,7 @@
 
 #+x86-64
 (define-vop (sha256ni-compress-block-amd)
-  (:translate ironclad::sha256ni-compress-block-amd)
+  (:translate ironclad-unsafe::sha256ni-compress-block-amd)
   (:policy :fast-safe)
   (:args (state :scs (descriptor-reg))
          (block :scs (descriptor-reg))
@@ -2933,7 +2983,7 @@
 
 #+x86-64
 (define-vop (aes-ni-generate-round-keys)
-  (:translate ironclad::aes-ni-generate-round-keys)
+  (:translate ironclad-unsafe::aes-ni-generate-round-keys)
   (:policy :fast-safe)
   (:args (key :scs (descriptor-reg))
          (key-length :scs (unsigned-reg))
@@ -3188,7 +3238,7 @@
 
 #+x86-64
 (define-vop (aes-ni-encrypt)
-  (:translate ironclad::aes-ni-encrypt)
+  (:translate ironclad-unsafe::aes-ni-encrypt)
   (:policy :fast-safe)
   (:args (plaintext :scs (descriptor-reg))
          (plaintext-start :scs (unsigned-reg))
@@ -3254,7 +3304,7 @@
 
 #+x86-64
 (define-vop (aes-ni-decrypt)
-  (:translate ironclad::aes-ni-decrypt)
+  (:translate ironclad-unsafe::aes-ni-decrypt)
   (:policy :fast-safe)
   (:args (ciphertext :scs (descriptor-reg))
          (ciphertext-start :scs (unsigned-reg))
@@ -3320,7 +3370,7 @@
 
 #+x86-64
 (define-vop (fast-blake2s-mixing)
-  (:translate ironclad::fast-blake2s-mixing)
+  (:translate ironclad-unsafe::fast-blake2s-mixing)
   (:policy :fast-safe)
   (:args (va :scs (unsigned-reg) :target ra)
          (vb :scs (unsigned-reg) :target rb)
@@ -3364,7 +3414,7 @@
 
 #+x86-64
 (define-vop (gmac-mul-fast)
-  (:translate ironclad::gmac-mul-fast)
+  (:translate ironclad-unsafe::gmac-mul-fast)
   (:policy :fast-safe)
   (:args (accumulator :scs (descriptor-reg))
          (key :scs (descriptor-reg)))
@@ -3432,7 +3482,7 @@
 
 #+x86-64
 (define-vop (xor128)
-  (:translate ironclad::xor128)
+  (:translate ironclad-unsafe::xor128)
   (:policy :fast-safe)
   (:args (in1 :scs (descriptor-reg))
          (start-in1 :scs (unsigned-reg))
@@ -3459,7 +3509,7 @@
 
 #+x86-64
 (define-vop (mov128)
-  (:translate ironclad::mov128)
+  (:translate ironclad-unsafe::mov128)
   (:policy :fast-safe)
   (:args (in :scs (descriptor-reg))
          (start-in :scs (unsigned-reg))
@@ -3479,7 +3529,7 @@
       (inst movdqu (buffer-mem out start-out) x0))))
 
 (define-vop (swap32)
-  (:translate ironclad::swap32)
+  (:translate ironclad-unsafe::swap32)
   (:policy :fast-safe)
   (:args (n :scs (unsigned-reg) :target r))
   (:arg-types unsigned-num)
@@ -3491,7 +3541,7 @@
 
 #+x86-64
 (define-vop (swap64)
-  (:translate ironclad::swap64)
+  (:translate ironclad-unsafe::swap64)
   (:policy :fast-safe)
   (:args (n :scs (unsigned-reg) :target r))
   (:arg-types unsigned-num)
@@ -3502,7 +3552,7 @@
     (inst bswap r)))
 
 (define-vop (inc-counter-block)
-  (:translate ironclad::inc-counter-block)
+  (:translate ironclad-unsafe::inc-counter-block)
   (:policy :fast-safe)
   (:args (size :scs (unsigned-reg) :target idx)
          (counter :scs (descriptor-reg)))
@@ -3517,9 +3567,9 @@
       (emit-label start)
       #.(let ((disp '(- (* n-word-bytes vector-data-offset)
                         other-pointer-lowtag 1)))
-          #+ironclad-sb-vm-ea
+          #+ironclad-unsafe-sb-vm-ea
           `(inst adc :byte (ea ,disp counter idx) 0)
-          #-ironclad-sb-vm-ea
+          #-ironclad-unsafe-sb-vm-ea
           `(inst adc (sb-vm::make-ea :byte :base counter :index idx :disp ,disp) 0))
       (inst jmp :nc end)
       (inst dec idx)
@@ -3528,7 +3578,7 @@
 
 #+x86-64
 (define-vop (secp256r1-mul-raw-asm)
-  (:translate ironclad::secp256r1-fe-mul-raw-asm)
+  (:translate ironclad-unsafe::secp256r1-fe-mul-raw-asm)
   (:policy :fast-safe)
   (:args (c :scs (descriptor-reg))
          (a :scs (descriptor-reg))
@@ -3576,7 +3626,7 @@
 
 #+x86-64
 (define-vop (secp256r1-reduce-asm)
-  (:translate ironclad::secp256r1-fe-reduce-asm)
+  (:translate ironclad-unsafe::secp256r1-fe-reduce-asm)
   (:policy :fast-safe)
   (:args (r :scs (descriptor-reg))
          (q :scs (descriptor-reg))
@@ -3728,7 +3778,7 @@
 
 #+x86-64
 (define-vop (secp256r1-sqr-raw-asm)
-  (:translate ironclad::secp256r1-fe-sqr-raw-asm)
+  (:translate ironclad-unsafe::secp256r1-fe-sqr-raw-asm)
   (:policy :fast-safe)
   (:args (c :scs (descriptor-reg))
          (a :scs (descriptor-reg)))
@@ -3769,7 +3819,7 @@
 
 #+x86-64
 (define-vop (secp256r1-sha256ni-msg1)
-  (:translate ironclad::sha256ni-msg1)
+  (:translate ironclad-unsafe::sha256ni-msg1)
   (:policy :fast-safe)
   (:args (x :scs (descriptor-reg))
          (y :scs (descriptor-reg)))
@@ -3790,7 +3840,7 @@
 
 #+x86-64
 (define-vop (secp256r1-sha256ni-msg2)
-  (:translate ironclad::sha256ni-msg2)
+  (:translate ironclad-unsafe::sha256ni-msg2)
   (:policy :fast-safe)
   (:args (x :scs (descriptor-reg))
          (y :scs (descriptor-reg)))
@@ -3811,7 +3861,7 @@
 
 #+x86-64
 (define-vop (secp256r1-sha256ni-rnds2)
-  (:translate ironclad::sha256ni-rnds2)
+  (:translate ironclad-unsafe::sha256ni-rnds2)
   (:policy :fast-safe)
   (:args (x :scs (descriptor-reg))
          (y :scs (descriptor-reg)))
@@ -3832,7 +3882,7 @@
 
 #+x86-64
 (define-vop (secp256r1-sha256ni-rnds2-3)
-  (:translate ironclad::sha256ni-rnds2-3)
+  (:translate ironclad-unsafe::sha256ni-rnds2-3)
   (:policy :fast-safe)
   (:args (kw :scs (descriptor-reg))
          (dst :scs (descriptor-reg))
@@ -3852,7 +3902,7 @@
 
 #+x86-64
 (define-vop (secp256r1-sha256ni-paddd)
-  (:translate ironclad::sha256ni-paddd)
+  (:translate ironclad-unsafe::sha256ni-paddd)
   (:policy :fast-safe)
   (:args (dst :scs (descriptor-reg))
          (src :scs (descriptor-reg)))
@@ -3869,7 +3919,7 @@
 
 #+x86-64
 (define-vop (secp256r1-sha256ni-pshufd-0e)
-  (:translate ironclad::sha256ni-pshufd-0e)
+  (:translate ironclad-unsafe::sha256ni-pshufd-0e)
   (:policy :fast-safe)
   (:args (dst :scs (descriptor-reg)))
   (:arg-types simple-array-unsigned-byte-32)
@@ -3883,7 +3933,7 @@
 
 #+x86-64
 (define-vop (secp256r1-sha256ni-pshufb)
-  (:translate ironclad::sha256ni-pshufb)
+  (:translate ironclad-unsafe::sha256ni-pshufb)
   (:policy :fast-safe)
   (:args (dst :scs (descriptor-reg))
          (mask :scs (descriptor-reg)))
@@ -3900,7 +3950,7 @@
 
 #+x86-64
 (define-vop (secp256r1-sha256ni-palignr-4)
-  (:translate ironclad::sha256ni-palignr-4)
+  (:translate ironclad-unsafe::sha256ni-palignr-4)
   (:policy :fast-safe)
   (:args (dst :scs (descriptor-reg))
          (src :scs (descriptor-reg)))

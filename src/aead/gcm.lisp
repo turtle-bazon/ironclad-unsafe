@@ -47,7 +47,7 @@
 
 (defmethod process-associated-data ((mode gcm) data &key (start 0) end)
   (if (encryption-started-p mode)
-      (error 'ironclad-error :format-control "All associated data must be processed before the encryption begins.")
+      (error 'ironclad-unsafe-error :format-control "All associated data must be processed before the encryption begins.")
       (let* ((end (or end (length data)))
              (length (- end start)))
         (incf (gcm-ad-length mode) length)

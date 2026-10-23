@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; cpu-features.lisp -- report the CPU features Ironclad detects.
 ;;;;
-;;;; Usage:  sbcl --script tools/cpu-features.lisp [path-to-ironclad-source]
+;;;; Usage:  sbcl --script tools/cpu-features.lisp [path-to-ironclad-unsafe-source]
 ;;;;
 ;;;; The default source tree is the checkout this file lives in.  The
 ;;;; script only loads the library and prints what was detected; it
@@ -16,7 +16,7 @@
 
 (format t "~&source tree: ~A~%" *source*)
 (push (truename *source*) asdf:*central-registry*)
-(asdf:load-system :ironclad)
+(asdf:load-system :ironclad-unsafe)
 
 (defun probe (name)
   (let ((sym (find-symbol name "IRONCLAD")))

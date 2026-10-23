@@ -27,7 +27,7 @@
        (setf (slot-value kdf 'digest)
              (funcall (the function (get digest-name '%make-digest)))))
       (t
-       (error 'ironclad-error
+       (error 'ironclad-unsafe-error
               :format-control "Digest ~A not supported for PBKDF1"
               :format-arguments (list digest))))
     kdf))

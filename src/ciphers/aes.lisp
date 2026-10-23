@@ -5,7 +5,7 @@
 ;;; key sizes is supported.
 
 (in-package :crypto)
-(in-ironclad-readtable)
+(in-ironclad-unsafe-readtable)
 
 
 ;;; FIXME: is it work it to combine these into one large array and
@@ -861,13 +861,13 @@
         (n-rounds (n-rounds context)))
     (declare (type aes-round-keys round-keys))
     (declare (type (integer 0 14) n-rounds))
-    (if #+(and sbcl x86-64 ironclad-assembly) (aes-ni-supported-p)
-        #-(and sbcl x86-64 ironclad-assembly) nil
-        #+(and sbcl x86-64 ironclad-assembly)
+    (if #+(and sbcl x86-64 ironclad-unsafe-assembly) (aes-ni-supported-p)
+        #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
+        #+(and sbcl x86-64 ironclad-unsafe-assembly)
         (aes-ni-encrypt plaintext plaintext-start
                         ciphertext ciphertext-start
                         round-keys n-rounds)
-        #-(and sbcl x86-64 ironclad-assembly) nil
+        #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
         (with-words ((s0 s1 s2 s3) plaintext plaintext-start)
           ;; the "optimized implementation" also had a fully unrolled version
           ;; of this loop hanging around. it might be worthwhile to translate
@@ -911,13 +911,13 @@
         (n-rounds (n-rounds context)))
     (declare (type aes-round-keys round-keys))
     (declare (type (unsigned-byte 16) n-rounds))
-    (if #+(and sbcl x86-64 ironclad-assembly) (aes-ni-supported-p)
-        #-(and sbcl x86-64 ironclad-assembly) nil
-        #+(and sbcl x86-64 ironclad-assembly)
+    (if #+(and sbcl x86-64 ironclad-unsafe-assembly) (aes-ni-supported-p)
+        #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
+        #+(and sbcl x86-64 ironclad-unsafe-assembly)
         (aes-ni-decrypt ciphertext ciphertext-start
                         plaintext plaintext-start
                         round-keys n-rounds)
-        #-(and sbcl x86-64 ironclad-assembly) nil
+        #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
         (with-words ((s0 s1 s2 s3) ciphertext ciphertext-start)
           (let ((t0 0) (t1 0) (t2 0) (t3 0)
                 (round-key-offset 0))
@@ -954,8 +954,8 @@
 ) ; MACROLET
 
 (defmethod schedule-key ((cipher aes) key)
-  (if #+(and sbcl x86-64 ironclad-assembly) (aes-ni-supported-p)
-      #-(and sbcl x86-64 ironclad-assembly) nil
+  (if #+(and sbcl x86-64 ironclad-unsafe-assembly) (aes-ni-supported-p)
+      #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
       (let ((encryption-keys (allocate-round-keys key))
             (decryption-keys (allocate-round-keys key))
             (n-rounds (ecase (length key)
@@ -963,7 +963,7 @@
                         (24 12)
                         (32 14))))
         (declare (type aes-round-keys encryption-keys decryption-keys))
-        #+(and sbcl x86-64 ironclad-assembly)
+        #+(and sbcl x86-64 ironclad-unsafe-assembly)
         (aes-ni-generate-round-keys key (length key)
                                     encryption-keys decryption-keys)
         (setf (encryption-round-keys cipher) encryption-keys

@@ -2,7 +2,7 @@
 ;;;; kuznyechik.lisp -- implementation of the Kuznyechik block cipher (GOST R 34.12-2015)
 
 (in-package :crypto)
-(in-ironclad-readtable)
+(in-ironclad-unsafe-readtable)
 
 
 ;;;

@@ -2,7 +2,7 @@
 ;;;; streebog.lisp -- implementation of Streebog (GOST R 34.11-2012)
 
 (in-package :crypto)
-(in-ironclad-readtable)
+(in-ironclad-unsafe-readtable)
 
 
 ;;;

@@ -60,19 +60,19 @@
     (assert (zerop r))
     (let ((z (make-array 16 :element-type '(unsigned-byte 8) :initial-element 0))
           (i 0))
-      (if #+(and sbcl x86-64 ironclad-assembly) (pclmulqdq-supported-p)
-          #-(and sbcl x86-64 ironclad-assembly) nil
+      (if #+(and sbcl x86-64 ironclad-unsafe-assembly) (pclmulqdq-supported-p)
+          #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
           (let ((y (make-array 16 :element-type '(unsigned-byte 8) :initial-element 0)))
             (dotimes (j q)
               (replace y x :start2 i)
-              (ironclad::gmac-swap-16 y)
-              (ironclad::xor-block 16 z 0 y 0 z 0)
-              (ironclad::gmac-mul z h)
+              (ironclad-unsafe::gmac-swap-16 y)
+              (ironclad-unsafe::xor-block 16 z 0 y 0 z 0)
+              (ironclad-unsafe::gmac-mul z h)
               (incf i 16))
-            (ironclad::gmac-swap-16 z))
+            (ironclad-unsafe::gmac-swap-16 z))
           (dotimes (j q)
-            (ironclad::xor-block 16 z 0 x i z 0)
-            (ironclad::gmac-mul z h)
+            (ironclad-unsafe::xor-block 16 z 0 x i z 0)
+            (ironclad-unsafe::gmac-mul z h)
             (incf i 16)))
       z)))
 
@@ -110,8 +110,8 @@
     (error 'invalid-mac-parameter
            :mac-name 'gmac
            :message "GMAC only supports 128-bit block ciphers"))
-  (if #+(and sbcl x86-64 ironclad-assembly) (pclmulqdq-supported-p)
-      #-(and sbcl x86-64 ironclad-assembly) nil
+  (if #+(and sbcl x86-64 ironclad-unsafe-assembly) (pclmulqdq-supported-p)
+      #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
       (let ((cipher (if (or cipher-name (null (gmac-cipher mac)))
                         (make-cipher cipher-name :key key :mode :ecb)
                         (reinitialize-instance (gmac-cipher mac) :key key :mode :ecb)))
@@ -167,10 +167,10 @@
 (defun gmac-mul (accumulator key)
   (declare (type (simple-array (unsigned-byte 8) (16)) accumulator)
            (optimize (speed 3) (space 0) (safety 0) (debug 0)))
-  (if #+(and sbcl x86-64 ironclad-assembly) (pclmulqdq-supported-p)
-      #-(and sbcl x86-64 ironclad-assembly) nil
-      #+(and sbcl x86-64 ironclad-assembly) (gmac-mul-fast accumulator key)
-      #-(and sbcl x86-64 ironclad-assembly) nil
+  (if #+(and sbcl x86-64 ironclad-unsafe-assembly) (pclmulqdq-supported-p)
+      #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
+      #+(and sbcl x86-64 ironclad-unsafe-assembly) (gmac-mul-fast accumulator key)
+      #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
       (let ((x 0)
             (z0 0)
             (z1 0)
@@ -218,8 +218,8 @@
 
     ;; Process the buffer
     (when (= buffer-length 16)
-      (when #+(and sbcl x86-64 ironclad-assembly) (pclmulqdq-supported-p)
-            #-(and sbcl x86-64 ironclad-assembly) nil
+      (when #+(and sbcl x86-64 ironclad-unsafe-assembly) (pclmulqdq-supported-p)
+            #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
         (gmac-swap-16 buffer))
       (xor-block 16 accumulator 0 buffer 0 accumulator 0)
       (gmac-mul accumulator key)
@@ -227,8 +227,8 @@
       (setf buffer-length 0))
 
     ;; Process the data
-    (if #+(and sbcl x86-64 ironclad-assembly) (pclmulqdq-supported-p)
-        #-(and sbcl x86-64 ironclad-assembly) nil
+    (if #+(and sbcl x86-64 ironclad-unsafe-assembly) (pclmulqdq-supported-p)
+        #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
         (loop while (> remaining 16) do
           (setf (ub64ref/le buffer 8) (ub64ref/be data start)
                 (ub64ref/le buffer 0) (ub64ref/be data (+ start 8)))
@@ -268,16 +268,16 @@
     ;; Process the buffer
     (when (plusp buffer-length)
       (fill buffer 0 :start buffer-length)
-      (when #+(and sbcl x86-64 ironclad-assembly) (pclmulqdq-supported-p)
-            #-(and sbcl x86-64 ironclad-assembly) nil
+      (when #+(and sbcl x86-64 ironclad-unsafe-assembly) (pclmulqdq-supported-p)
+            #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
         (gmac-swap-16 buffer))
       (xor-block 16 accumulator 0 buffer 0 accumulator 0)
       (gmac-mul accumulator key)
       (incf total-length buffer-length))
 
     ;; Padding
-    (if #+(and sbcl x86-64 ironclad-assembly) (pclmulqdq-supported-p)
-        #-(and sbcl x86-64 ironclad-assembly) nil
+    (if #+(and sbcl x86-64 ironclad-unsafe-assembly) (pclmulqdq-supported-p)
+        #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
         (setf (ub64ref/le buffer 0) (mod64* 8 encrypted-data-length)
               (ub64ref/le buffer 8) (mod64* 8 (- total-length encrypted-data-length)))
         (setf (ub64ref/be buffer 0) (mod64* 8 (- total-length encrypted-data-length))
@@ -286,8 +286,8 @@
     (gmac-mul accumulator key)
 
     ;; Produce the tag
-    (when #+(and sbcl x86-64 ironclad-assembly) (pclmulqdq-supported-p)
-          #-(and sbcl x86-64 ironclad-assembly) nil
+    (when #+(and sbcl x86-64 ironclad-unsafe-assembly) (pclmulqdq-supported-p)
+          #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
       (gmac-swap-16 accumulator))
     (xor-block 16 accumulator 0 iv 0 accumulator 0)
     accumulator))

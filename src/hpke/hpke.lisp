@@ -130,14 +130,14 @@
      (let ((ss (diffie-hellman (make-private-key curve :x sk)
                                (make-public-key curve :y pk))))
        (when (every #'zerop ss)
-         (error 'ironclad-error
+         (error 'ironclad-unsafe-error
                 :format-control "HPKE DH output is all zero."))
        ss))))
 
 (defun hpke-check-bytes (bytes length what)
   (unless (and (typep bytes '(simple-array (unsigned-byte 8) (*)))
                (= (length bytes) length))
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "HPKE ~A has wrong length (expected ~A bytes)."
            :format-arguments (list what length)))
   bytes)
@@ -164,7 +164,7 @@
                        (when (and (< 0 sk) (< sk order))
                          (return (values (hpke-i2osp sk nsk)
                                          (hpke-pk-from-sk curve (hpke-i2osp sk nsk)))))))
-                finally (error 'ironclad-error
+                finally (error 'ironclad-unsafe-error
                                :format-control "HPKE DeriveKeyPair failed."))
           (let ((sk (hpke-labeled-expand digest (hpke-kem-suite-id kem-id)
                                           dkp-prk (ascii-string-to-byte-array "sk")
@@ -287,13 +287,13 @@
   (let ((got-psk (plusp (length psk)))
         (got-psk-id (plusp (length psk-id))))
     (unless (eq got-psk got-psk-id)
-      (error 'ironclad-error
+      (error 'ironclad-unsafe-error
              :format-control "HPKE inconsistent PSK inputs."))
     (when (and got-psk (member mode '(:base :auth)))
-      (error 'ironclad-error
+      (error 'ironclad-unsafe-error
              :format-control "HPKE PSK input provided when not needed."))
     (unless (or got-psk (member mode '(:base :auth)))
-      (error 'ironclad-error
+      (error 'ironclad-unsafe-error
              :format-control "HPKE missing required PSK input."))))
 
 (defun hpke-key-schedule (kem kdf aead mode shared-secret info psk psk-id)
@@ -342,7 +342,7 @@
 (defun hpke-bump-seq (ctx nn)
   (let ((seq (hpke-context-seq ctx)))
     (when (>= seq (1- (ash 1 (* 8 nn))))
-      (error 'ironclad-error
+      (error 'ironclad-unsafe-error
              :format-control "HPKE message limit reached."))
     (setf (hpke-context-seq ctx) (1+ seq))
     seq))
@@ -352,7 +352,7 @@
       (hpke-aead-info aead)
     (declare (ignore nk nn))
     (unless mode-name
-      (error 'ironclad-error
+      (error 'ironclad-unsafe-error
              :format-control "HPKE export-only suite cannot seal."))
     (let ((mode (if cipher
                     (make-authenticated-encryption-mode mode-name
@@ -370,7 +370,7 @@
       (hpke-aead-info aead)
     (declare (ignore nk nn))
     (unless mode-name
-      (error 'ironclad-error
+      (error 'ironclad-unsafe-error
              :format-control "HPKE export-only suite cannot open."))
     (when (< (length ct) 16)
       (return-from hpke-aead-open nil))
@@ -387,7 +387,7 @@
       (handler-case
           (decrypt-message mode (subseq ct 0 (- (length ct) 16))
                            :associated-data aad)
-        (ironclad-error () nil)))))
+        (ironclad-unsafe-error () nil)))))
 
 (defun hpke-setup-sender (kem kdf aead pk-r info &key
                           (psk (hpke-empty-octets)) (psk-id (hpke-empty-octets))
@@ -396,10 +396,10 @@
   "Returns (enc sender-context).  EPHEMERAL-KEYPAIR is an (skE pkE) list
 overriding fresh randomness (deterministic testing)."
   (when (and sk-s (member mode '(:base :psk)))
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "HPKE sender key provided for non-auth mode."))
   (when (and (null sk-s) (member mode '(:auth :auth-psk)))
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "HPKE auth mode needs a sender key."))
   (multiple-value-bind (shared-secret enc)
       (if sk-s
@@ -429,10 +429,10 @@ overriding fresh randomness (deterministic testing)."
                              pk-s (mode (if pk-s :auth :base)))
   "Returns a recipient context."
   (when (and pk-s (member mode '(:base :psk)))
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "HPKE sender key provided for non-auth mode."))
   (when (and (null pk-s) (member mode '(:auth :auth-psk)))
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "HPKE auth mode needs a sender key."))
   (let ((shared-secret (if pk-s
                            (hpke-kem-auth-decap kem enc sk-r pk-s)
@@ -461,7 +461,7 @@ returns PT or NIL on failure."))
   (destructuring-bind (kem kdf aead mode) (hpke-context-suite context)
     (declare (ignore kem kdf mode))
     (when (eq aead :export-only)
-      (error 'ironclad-error
+      (error 'ironclad-unsafe-error
              :format-control "HPKE export-only suite cannot seal."))
     (multiple-value-bind (nk nn mode-name cipher)
         (hpke-aead-info aead)
@@ -474,7 +474,7 @@ returns PT or NIL on failure."))
   (destructuring-bind (kem kdf aead mode) (hpke-context-suite context)
     (declare (ignore kem kdf mode))
     (when (eq aead :export-only)
-      (error 'ironclad-error
+      (error 'ironclad-unsafe-error
              :format-control "HPKE export-only suite cannot open."))
     (multiple-value-bind (nk nn mode-name cipher)
         (hpke-aead-info aead)

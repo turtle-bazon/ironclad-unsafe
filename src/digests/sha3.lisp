@@ -149,7 +149,7 @@ the content on normal form exit."
                 (type keccak-lane ,@(mapcar #'car bindings)))
        (macrolet ((state-aref (state x y &environment env)
                     (let ((entry (assoc state ',mappings)))
-                      (unless entry (error 'ironclad-error
+                      (unless entry (error 'ironclad-unsafe-error
                                            :format-control "Strange: ~S!"
                                            :format-arguments (list state)))
                       (aref (cdr entry)
@@ -175,7 +175,7 @@ the content on normal form exit."
                 (type keccak-lane ,@(mapcar #'car bindings)))
        (macrolet ((temp-state-aref (temp x y &environment env)
                     (let ((entry (assoc temp ',mappings)))
-                      (unless entry (error 'ironclad-error
+                      (unless entry (error 'ironclad-unsafe-error
                                            :format-control "Strange: ~S!"
                                            :format-arguments (list temp)))
                       (aref (cdr entry)
@@ -199,7 +199,7 @@ the content on normal form exit."
                 (type keccak-lane ,@(mapcar #'car bindings)))
        (macrolet ((temp-row-aref (row x &environment env)
                     (let ((entry (assoc row ',mappings)))
-                      (unless entry (error 'ironclad-error
+                      (unless entry (error 'ironclad-unsafe-error
                                            :format-control "Strange: ~S!"
                                            :format-arguments (list row)))
                       (aref (cdr entry)

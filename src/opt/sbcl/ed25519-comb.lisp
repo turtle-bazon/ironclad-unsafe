@@ -29,10 +29,10 @@
 ;;;; Every field-element offset below is a byte offset from the scratch
 ;;;; base, so the emitted code can use constant displacements.
 
-#+(and x86-64 ironclad-assembly)
-(in-package :ironclad-vm)
+#+(and x86-64 ironclad-unsafe-assembly)
+(in-package :ironclad-unsafe-vm)
 
-#+(and x86-64 ironclad-assembly)
+#+(and x86-64 ironclad-unsafe-assembly)
 (progn
   (defconstant +c-scalar+  0)    ; 32 x 8 bytes
   (defconstant +c-twod+    256)  ; five limbs
@@ -60,7 +60,7 @@
   (defconstant +c-acc1+    1488)
   (defconstant +c-scratch-bytes+ 1648))
 
-#+(and x86-64 ironclad-assembly)
+#+(and x86-64 ironclad-unsafe-assembly)
 (defmacro ed25519-with-fe-ops ((p-scr tmp1 tmp2 rax-tmp rdx-tmp
                                 mulacc hacc c19) &body body)
   "Expand to LABELS defining FE-ADD, FE-SUB and FE-MUL on the scratch
@@ -143,9 +143,9 @@ five 64-bit limbs at a byte offset from P-SCR."
           (inst add (ea (+ dst 8) ,p-scr) ,tmp2)))
      ,@body))
 
-#+(and x86-64 ironclad-assembly)
+#+(and x86-64 ironclad-unsafe-assembly)
 (define-vop (ed25519-comb-asm)
-  (:translate ironclad::ed25519-comb-asm)
+  (:translate ironclad-unsafe::ed25519-comb-asm)
   (:policy :fast-safe)
   (:args (table :scs (descriptor-reg))
          (scratch :scs (descriptor-reg)))
@@ -228,9 +228,9 @@ five 64-bit limbs at a byte offset from P-SCR."
           (inst mov rax-tmp (ea (+ +c-acc0+ (* 8 k)) p-scr))
           (inst mov :qword (ea (+ +c-result+ (* 8 k)) p-scr) rax-tmp))))))
 
-#+(and x86-64 ironclad-assembly)
+#+(and x86-64 ironclad-unsafe-assembly)
 (define-vop (ed25519-inv-asm)
-  (:translate ironclad::ed25519-inv-asm)
+  (:translate ironclad-unsafe::ed25519-inv-asm)
   (:policy :fast-safe)
   (:args (scratch :scs (descriptor-reg)))
   (:arg-types simple-array-unsigned-byte-64)
@@ -294,7 +294,7 @@ five 64-bit limbs at a byte offset from P-SCR."
 ;;;     2368  zero, 2*d, and the field-element temporaries
 ;;;     2808  multiply working area
 
-#+(and x86-64 ironclad-assembly)
+#+(and x86-64 ironclad-unsafe-assembly)
 (progn
   (defconstant +g-scalar+  0)     ; 256 words
   (defconstant +g-p+       2048)
@@ -315,9 +315,9 @@ five 64-bit limbs at a byte offset from P-SCR."
   (defconstant +g-c19+     3032)  ; the constant 19
   (defconstant +g-scratch-bytes+ 3040))
 
-#+(and x86-64 ironclad-assembly)
+#+(and x86-64 ironclad-unsafe-assembly)
 (define-vop (ed25519-gen-mult-asm)
-  (:translate ironclad::ed25519-gen-mult-asm)
+  (:translate ironclad-unsafe::ed25519-gen-mult-asm)
   (:policy :fast-safe)
   (:args (point :scs (descriptor-reg))
          (scratch :scs (descriptor-reg)))
@@ -408,9 +408,9 @@ five 64-bit limbs at a byte offset from P-SCR."
 ;;; z^(2^252-3), the exponent needed to decompress an ed25519 point.
 ;;; Same scratch layout and field routines as the inversion above.
 
-#+(and x86-64 ironclad-assembly)
+#+(and x86-64 ironclad-unsafe-assembly)
 (define-vop (ed25519-pow22523-asm)
-  (:translate ironclad::ed25519-pow22523-asm)
+  (:translate ironclad-unsafe::ed25519-pow22523-asm)
   (:policy :fast-safe)
   (:args (scratch :scs (descriptor-reg)))
   (:arg-types simple-array-unsigned-byte-64)

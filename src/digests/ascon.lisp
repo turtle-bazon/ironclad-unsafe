@@ -141,7 +141,7 @@
 
 (defun %make-ascon-xof128-digest (&key (output-length 32))
   (unless (and (integerp output-length) (plusp output-length))
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "Ascon-XOF128 output length must be a positive integer, not ~A."
            :format-arguments (list output-length)))
   (let ((state (%ascon-init-state +ascon-xof-iv+)))

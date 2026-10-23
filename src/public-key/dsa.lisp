@@ -95,14 +95,14 @@
            :kind 'dsa
            :parameter 'num-bits
            :description "modulus size"))
-  (let* ((n (cond ((< num-bits 512) (error 'ironclad-error
+  (let* ((n (cond ((< num-bits 512) (error 'ironclad-unsafe-error
                                            :format-control "NUM-BITS is too small for a DSA key."))
                   ((<= num-bits 1024) 160)
                   ((<= num-bits 2048) 224)
                   ((<= num-bits 3072) 256)
                   ((<= num-bits 7680) 384)
                   ((<= num-bits 15360) 512)
-                  (t (error 'ironclad-error
+                  (t (error 'ironclad-unsafe-error
                             :format-control "NUM-BITS is too big for a DSA key."))))
          (q (generate-prime n))
          (p (loop for z = (logior (ash 1 (- num-bits n 1))

@@ -1,10 +1,10 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 
-(asdf:defsystem :ironclad-text
+(asdf:defsystem :ironclad-unsafe-text
   :components
   ((:module :src
             :serial t
             :components
             ((:file "text")
              )))
-  :depends-on (:ironclad :flexi-streams))
+  :depends-on (:ironclad-unsafe :flexi-streams))

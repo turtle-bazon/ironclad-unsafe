@@ -1,5 +1,5 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
-(cl:defpackage :ironclad
+(cl:defpackage :ironclad-unsafe
   (:use :cl)
   (:nicknames :crypto)
   (:export
@@ -193,7 +193,7 @@
    #:generate-safe-prime #:find-generator
 
    ;; conditions
-   #:ironclad-error #:initialization-vector-not-supplied
+   #:ironclad-unsafe-error #:initialization-vector-not-supplied
    #:invalid-initialization-vector #:invalid-key-length
    #:unsupported-cipher #:unsupported-mode #:unsupported-padding
    #:unsupported-digest
@@ -278,56 +278,56 @@
     `(make-array ,(length array-data) :element-type ',array-element-type
                 :initial-contents ',array-data)))
 
-(defparameter *ironclad-readtable*
+(defparameter *ironclad-unsafe-readtable*
   (let ((readtable (copy-readtable nil)))
     (set-dispatch-macro-character #\# #\@ #'array-reader readtable)
     readtable))
 
-(defmacro in-ironclad-readtable ()
+(defmacro in-ironclad-unsafe-readtable ()
   `(eval-when (:compile-toplevel :load-toplevel :execute)
-     (setq *readtable* *ironclad-readtable*)))
+     (setq *readtable* *ironclad-unsafe-readtable*)))
 
-(defun ironclad-implementation-features ()
+(defun ironclad-unsafe-implementation-features ()
   #+sbcl
   (list* sb-c:*backend-byte-order*
          (if (= sb-vm:n-word-bits 32)
              :32-bit
              :64-bit)
-         :ironclad-fast-mod32-arithmetic
+         :ironclad-unsafe-fast-mod32-arithmetic
          (cond ((member :x86-64 *features*)
-                (list* :ironclad-fast-mod64-arithmetic
+                (list* :ironclad-unsafe-fast-mod64-arithmetic
                        (let ((sym (find-symbol "EA" :sb-vm)))
                          (when (and sym (fboundp sym))
-                           '(:ironclad-sb-vm-ea)))))
+                           '(:ironclad-unsafe-sb-vm-ea)))))
                ((member :arm64 *features*)
-                '(:ironclad-fast-mod64-arithmetic))))
+                '(:ironclad-unsafe-fast-mod64-arithmetic))))
   #+cmu
   (list (c:backend-byte-order c:*target-backend*)
         (if (= vm:word-bits 32)
             :32-bit
             :64-bit)
-        :ironclad-fast-mod32-arithmetic)
+        :ironclad-unsafe-fast-mod32-arithmetic)
   #+lispworks
   (list ;; Disable due to problem reports from Lispworks users and
         ;; non-obviousness of the fix.
         #+nil
         (when (not (member :lispworks4 *features*))
-          '(:ironclad-md5-lispworks-int32)))
+          '(:ironclad-unsafe-md5-lispworks-int32)))
   #+openmcl
   (list* (when (member :x86-64 *features*)
-           '(:ironclad-fast-mod32-arithmetic
-             :ironclad-fast-mod64-arithmetic)))
+           '(:ironclad-unsafe-fast-mod32-arithmetic
+             :ironclad-unsafe-fast-mod64-arithmetic)))
   #+ecl
-  (list :ironclad-fast-mod32-arithmetic
-        :ironclad-fast-mod64-arithmetic)
+  (list :ironclad-unsafe-fast-mod32-arithmetic
+        :ironclad-unsafe-fast-mod64-arithmetic)
   #-(or sbcl cmu lispworks openmcl ecl)
   nil)
 
-(dolist (f (ironclad-implementation-features))
+(dolist (f (ironclad-unsafe-implementation-features))
   (pushnew f *features*))
 
 ;; Enable assembly optimizations, unless we are either in ECL using only the
 ;; bytecode compiler or in an older version of CCL.
 #-(or ecl-bytecmp
       (and ccl (not ccl-1.12)))
-(pushnew :ironclad-assembly *features*)
+(pushnew :ironclad-unsafe-assembly *features*)

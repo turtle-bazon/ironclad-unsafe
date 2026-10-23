@@ -45,7 +45,7 @@
 (require :asdf)
 (push (truename #p"./") asdf:*central-registry*)
 ;; Load the library, so that the packages the sources mention exist.
-(asdf:load-system :ironclad)
+(asdf:load-system :ironclad-unsafe)
 
 (defpackage :check-argument-counts
   (:use :cl))

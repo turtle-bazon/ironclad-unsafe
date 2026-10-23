@@ -6,7 +6,7 @@
 ;;; remain, so this is not the prettiest Common Lisp code ever.
 
 (in-package :crypto)
-(in-ironclad-readtable)
+(in-ironclad-unsafe-readtable)
 
 
 ;;; the sboxes of DES

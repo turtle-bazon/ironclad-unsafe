@@ -2,7 +2,7 @@
 ;;;; crc32.lisp
 
 (in-package :crypto)
-(in-ironclad-readtable)
+(in-ironclad-unsafe-readtable)
 
 (declaim (type (simple-array (unsigned-byte 32) (256))
                +crc32-table+ +crc32c-table+))

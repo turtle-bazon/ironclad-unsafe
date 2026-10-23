@@ -25,59 +25,59 @@
 ;;; The cache
 ;;; ------------------------------------------------------------------
 
-(defvar *ironclad-cpu-features* nil
+(defvar *ironclad-unsafe-cpu-features* nil
   "The list of CPU features available on this machine, as keywords.
 Filled in by IRONCLAD-INITIALIZE-CPU-FEATURES when the system is loaded.")
 
-(defvar *ironclad-cpu-features-ready-p* nil
+(defvar *ironclad-unsafe-cpu-features-ready-p* nil
   "True once the CPU has been probed.")
 
-(defun ironclad-cpu-features ()
+(defun ironclad-unsafe-cpu-features ()
   "Return the list of CPU features available on this machine."
-  (unless *ironclad-cpu-features-ready-p*
-    (ironclad-initialize-cpu-features))
-  *ironclad-cpu-features*)
+  (unless *ironclad-unsafe-cpu-features-ready-p*
+    (ironclad-unsafe-initialize-cpu-features))
+  *ironclad-unsafe-cpu-features*)
 
-(defun ironclad-cpu-feature-p (feature)
+(defun ironclad-unsafe-cpu-feature-p (feature)
   "True when FEATURE is available on this machine.
 FEATURE is a keyword, e.g. :BMI2 or :AVX2."
   (declare (type keyword feature))
-  (and (member feature (ironclad-cpu-features) :test #'eq) t))
+  (and (member feature (ironclad-unsafe-cpu-features) :test #'eq) t))
 
 ;;; ------------------------------------------------------------------
 ;;; Detection
 ;;; ------------------------------------------------------------------
 
-(defvar *ironclad-aes-ni-p* nil)
-(defvar *ironclad-pclmulqdq-p* nil)
-(defvar *ironclad-sha-ni-p* nil)
-(defvar *ironclad-bmi2-p* nil)
-(defvar *ironclad-adx-p* nil)
-(defvar *ironclad-avx2-p* nil)
-(defvar *ironclad-avx512-p* nil)
+(defvar *ironclad-unsafe-aes-ni-p* nil)
+(defvar *ironclad-unsafe-pclmulqdq-p* nil)
+(defvar *ironclad-unsafe-sha-ni-p* nil)
+(defvar *ironclad-unsafe-bmi2-p* nil)
+(defvar *ironclad-unsafe-adx-p* nil)
+(defvar *ironclad-unsafe-avx2-p* nil)
+(defvar *ironclad-unsafe-avx512-p* nil)
 
-(defun ironclad-initialize-cpu-features ()
+(defun ironclad-unsafe-initialize-cpu-features ()
   "Probe the CPU and cache the result.  Called once, at load time."
-  (let ((features (ironclad-detect-cpu-features)))
-    (setf *ironclad-cpu-features* features
-          *ironclad-cpu-features-ready-p* t
-          *ironclad-aes-ni-p* (and (member :aes features :test #'eq) t)
-          *ironclad-pclmulqdq-p* (and (member :pclmulqdq features :test #'eq) t)
-          *ironclad-sha-ni-p* (and (member :sha-ni features :test #'eq) t)
-          *ironclad-bmi2-p* (and (member :bmi2 features :test #'eq) t)
-          *ironclad-adx-p* (and (member :adx features :test #'eq) t)
-          *ironclad-avx2-p* (and (member :avx2 features :test #'eq) t)
-          *ironclad-avx512-p* (and (member :avx512f features :test #'eq) t)))
-  *ironclad-cpu-features*)
+  (let ((features (ironclad-unsafe-detect-cpu-features)))
+    (setf *ironclad-unsafe-cpu-features* features
+          *ironclad-unsafe-cpu-features-ready-p* t
+          *ironclad-unsafe-aes-ni-p* (and (member :aes features :test #'eq) t)
+          *ironclad-unsafe-pclmulqdq-p* (and (member :pclmulqdq features :test #'eq) t)
+          *ironclad-unsafe-sha-ni-p* (and (member :sha-ni features :test #'eq) t)
+          *ironclad-unsafe-bmi2-p* (and (member :bmi2 features :test #'eq) t)
+          *ironclad-unsafe-adx-p* (and (member :adx features :test #'eq) t)
+          *ironclad-unsafe-avx2-p* (and (member :avx2 features :test #'eq) t)
+          *ironclad-unsafe-avx512-p* (and (member :avx512f features :test #'eq) t)))
+  *ironclad-unsafe-cpu-features*)
 
-(defun ironclad-detect-cpu-features ()
+(defun ironclad-unsafe-detect-cpu-features ()
   "Return the list of features of the CPU we are running on, as keywords."
-  (let ((flags (ironclad-linux-cpu-flags)))
+  (let ((flags (ironclad-unsafe-linux-cpu-flags)))
     (if flags
-        (ironclad-features-from-flags flags)
-        (ironclad-features-from-cpuid))))
+        (ironclad-unsafe-features-from-flags flags)
+        (ironclad-unsafe-features-from-cpuid))))
 
-(defun ironclad-features-from-flags (flags)
+(defun ironclad-unsafe-features-from-flags (flags)
   "Return the features of FLAGS, a list of keywords as found in the
 \"flags\" line of /proc/cpuinfo."
   (let ((features nil))
@@ -90,7 +90,7 @@ FEATURE is a keyword, e.g. :BMI2 or :AVX2."
 
 ;;; The OS check for the YMM state, needed on the systems where the
 ;;; CPUID probe is the only source of information.
-(defun ironclad-avx2-os-supported-p ()
+(defun ironclad-unsafe-avx2-os-supported-p ()
   "True when the OS enables the YMM register state."
   #+linux
   (let ((flags nil))
@@ -111,13 +111,13 @@ FEATURE is a keyword, e.g. :BMI2 or :AVX2."
   #-(or linux darwin)
   nil)
 
-(defun ironclad-features-from-cpuid ()
+(defun ironclad-unsafe-features-from-cpuid ()
   "Return the features of the CPU, as reported by the CPUID probes.
 This is the fallback for the systems without a usable /proc/cpuinfo.
 Note that the CPUID probes do not know whether the OS enables the
 extended processor state, so on those systems the AVX2 check has to be
 supplemented by IRONCLAD-AVX2-OS-SUPPORTED-P."
-  #+ironclad-assembly
+  #+ironclad-unsafe-assembly
   (progn
     (let ((features nil))
       (dolist (probe '((:aes . aes-ni-support-p)
@@ -129,17 +129,17 @@ supplemented by IRONCLAD-AVX2-OS-SUPPORTED-P."
         (when (funcall (cdr probe))
           (push (car probe) features)))
       (when (and (member :avx2 features :test #'eq)
-                 (not (ironclad-avx2-os-supported-p)))
+                 (not (ironclad-unsafe-avx2-os-supported-p)))
         (setf features (remove :avx2 features :test #'eq)))
       (nreverse features)))
-  #-ironclad-assembly
+  #-ironclad-unsafe-assembly
   (progn
     nil))
 
 ;;; The features listed in the "flags" (or "Features") line of
 ;;; /proc/cpuinfo, as a list of keywords.  NIL when the file cannot be
 ;;; read or does not contain such a line.
-(defun ironclad-linux-cpu-flags ()
+(defun ironclad-unsafe-linux-cpu-flags ()
   "Return the CPU flags reported by /proc/cpuinfo as a list of keywords,
 or NIL when the file is unavailable."
   (let ((result nil))
@@ -148,10 +148,10 @@ or NIL when the file is unavailable."
         (loop for line = (read-line stream nil nil)
               while (and line (not result))
               when (or (search "flags" line) (search "Features" line))
-              do (setf result (ironclad-parse-cpu-flags line)))))
+              do (setf result (ironclad-unsafe-parse-cpu-flags line)))))
     result))
 
-(defun ironclad-parse-cpu-flags (line)
+(defun ironclad-unsafe-parse-cpu-flags (line)
   "Split LINE into its whitespace separated words and return them as
 keywords, with underscores turned into hyphens."
   (let ((words nil)
@@ -178,37 +178,37 @@ keywords, with underscores turned into hyphens."
 (defun aes-ni-supported-p ()
   "True when the CPU implements the AES-NI instruction set."
   (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
-  *ironclad-aes-ni-p*)
+  *ironclad-unsafe-aes-ni-p*)
 
 (defun pclmulqdq-supported-p ()
   "True when the CPU implements the PCLMULQDQ instruction."
   (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
-  *ironclad-pclmulqdq-p*)
+  *ironclad-unsafe-pclmulqdq-p*)
 
 (defun sha-ni-supported-p ()
   "True when the CPU implements the SHA-NI instruction set."
   (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
-  *ironclad-sha-ni-p*)
+  *ironclad-unsafe-sha-ni-p*)
 
 (defun bmi2-supported-p ()
   "True when the CPU implements the BMI2 instruction set."
   (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
-  *ironclad-bmi2-p*)
+  *ironclad-unsafe-bmi2-p*)
 
 (defun adx-supported-p ()
   "True when the CPU implements the ADX instruction set."
   (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
-  *ironclad-adx-p*)
+  *ironclad-unsafe-adx-p*)
 
 (defun avx2-supported-p ()
   "True when the CPU implements AVX2 and the OS enables its state."
   (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
-  *ironclad-avx2-p*)
+  *ironclad-unsafe-avx2-p*)
 
 (defun avx512-supported-p ()
   "True when the CPU implements AVX-512F and the OS enables its state."
   (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
-  *ironclad-avx512-p*)
+  *ironclad-unsafe-avx512-p*)
 
 ;;; ------------------------------------------------------------------
 ;;; Vendor
@@ -233,7 +233,7 @@ keywords, with underscores turned into hyphens."
 ;;; Assembler support
 ;;; ------------------------------------------------------------------
 
-(defun ironclad-instruction-known-p (name)
+(defun ironclad-unsafe-instruction-known-p (name)
   "True when the assembler of this SBCL knows the instruction NAME.
 NAME is a string, e.g. \"MULX\" or \"VPADDQ\"."
   (declare (type string name))
@@ -255,4 +255,4 @@ NAME is a string, e.g. \"MULX\" or \"VPADDQ\"."
 ;;; ------------------------------------------------------------------
 
 (eval-when (:load-toplevel)
-  (ironclad-initialize-cpu-features))
+  (ironclad-unsafe-initialize-cpu-features))

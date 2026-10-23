@@ -22,7 +22,7 @@
 
 (defmethod process-associated-data ((mode etm) data &key (start 0) end)
   (if (encryption-started-p mode)
-      (error 'ironclad-error :format-control "All associated data must be processed before the encryption begins.")
+      (error 'ironclad-unsafe-error :format-control "All associated data must be processed before the encryption begins.")
       (let* ((end (or end (length data))))
         (update-mac (etm-mac mode) data :start start :end end))))
 

@@ -2,7 +2,7 @@
 ;;;; sm3.lisp -- implementation of SM3 (GM/T 0004-2012)
 
 (in-package :crypto)
-(in-ironclad-readtable)
+(in-ironclad-unsafe-readtable)
 
 
 ;;;

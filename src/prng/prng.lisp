@@ -20,7 +20,7 @@
         ((typep seed 'simple-octet-vector)
          (prng-reseed seed prng)
          (incf (slot-value prng 'reseed-count)))
-        (t (error 'ironclad-error :format-control "SEED must be an octet vector, pathname indicator, :random or :urandom"))))
+        (t (error 'ironclad-unsafe-error :format-control "SEED must be an octet vector, pathname indicator, :random or :urandom"))))
     prng))
 
 (defun random-data (num-bytes &optional (prng *prng*))
@@ -47,7 +47,7 @@ replacement for COMMON-LISP:RANDOM."
      (let* ((log-limit (integer-length limit))
             (num-bytes (ceiling log-limit 8))
             (mask (1- (ash 1 log-limit))))
-       (loop for random = (logand (ironclad:octets-to-integer
+       (loop for random = (logand (ironclad-unsafe:octets-to-integer
                                    (prng-random-data num-bytes prng))
                                   mask)
           until (< random limit)
@@ -66,7 +66,7 @@ replacement for COMMON-LISP:RANDOM."
   #+unix(let ((path (cond
                       ((eq source :random) #P"/dev/random")
                       ((eq source :urandom) #P"/dev/urandom")
-                      (t (error 'ironclad-error :format-control "Source must be either :random or :urandom"))))
+                      (t (error 'ironclad-unsafe-error :format-control "Source must be either :random or :urandom"))))
               (seq (make-array num-bytes :element-type '(unsigned-byte 8))))
           (with-open-file (seed-file path :element-type '(unsigned-byte 8))
             (assert (>= (read-sequence seq seed-file) num-bytes))
@@ -75,19 +75,19 @@ replacement for COMMON-LISP:RANDOM."
   #+(and os-windows ccl) (multiple-value-bind (buff buffp)
                              (ccl:make-heap-ivector num-bytes '(unsigned-byte 8))
                            (when (= (ccl:external-call "SystemFunction036" :address buffp :unsigned-long num-bytes :boolean) 0)
-                             (error 'ironclad-error :format-control "RtlGenRandom failed"))
+                             (error 'ironclad-unsafe-error :format-control "RtlGenRandom failed"))
                            (let ((copy (copy-seq buff)))
                              (ccl:dispose-heap-ivector buff)
                              (ccl:dispose-heap-ivector buffp)
                              copy))
   #+(and os-windows allegro) (let ((buff (make-array num-bytes :element-type '(unsigned-byte 8))))
                                (when (= (rtl-gen-random buff num-bytes) 0)
-                                 (error 'ironclad-error :format-control "RtlGenRandom failed"))
+                                 (error 'ironclad-unsafe-error :format-control "RtlGenRandom failed"))
                                buff)
   #+(and mswindows lispworks)(let ((buff (sys:in-static-area (make-array num-bytes :element-type '(unsigned-byte 8)))))
-                                (unless (fli:with-dynamic-lisp-array-pointer (buff buff) (rtl-gen-random buff num-bytes)) (error 'ironclad-error :format-control "RtlGenRandom failed"))
+                                (unless (fli:with-dynamic-lisp-array-pointer (buff buff) (rtl-gen-random buff num-bytes)) (error 'ironclad-unsafe-error :format-control "RtlGenRandom failed"))
                                 (copy-seq buff))
-  #-(or unix (and win32 sbcl) (and os-windows ccl) (and os-windows allegro) (and mswindows lispworks))(error 'ironclad-error :format-control "OS-RANDOM-SEED is not supported on your platform."))
+  #-(or unix (and win32 sbcl) (and os-windows ccl) (and os-windows allegro) (and mswindows lispworks))(error 'ironclad-unsafe-error :format-control "OS-RANDOM-SEED is not supported on your platform."))
 
 (defun read-seed (path &optional (prng *prng*))
   "Reseed PRNG from PATH.  If PATH doesn't

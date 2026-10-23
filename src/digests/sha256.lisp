@@ -2,7 +2,7 @@
 ;;;; sha256.lisp -- implementation of SHA-2/256 from NIST
 
 (in-package :crypto)
-(in-ironclad-readtable)
+(in-ironclad-unsafe-readtable)
 
 (define-digest-registers (sha224 :endian :big :digest-registers 7)
   (a #xc1059ed8)
@@ -63,7 +63,7 @@
              (logxor (rol32 x 30) (rol32 x 19) (rol32 x 10)))
            (sigma1 (x)
              (logxor (rol32 x 26) (rol32 x 21) (rol32 x 7))))
-      #+ironclad-fast-mod32-arithmetic
+      #+ironclad-unsafe-fast-mod32-arithmetic
       (declare (inline ch maj sigma0 sigma1))
       (macrolet ((sha256-round (i a b c d e f g h)
                    `(let ((x (mod32+ (sigma1 ,e)
@@ -151,7 +151,7 @@
          (sigma1 (x)
            (declare (type (unsigned-byte 32) x))
            (logxor (rol32 x 15) (rol32 x 13) (mod32ash x -10))))
-    #+ironclad-fast-mod32-arithmetic
+    #+ironclad-unsafe-fast-mod32-arithmetic
     (declare (inline sigma0 sigma1))
     (loop for i from 16 below 64 do
           (setf (aref block i)

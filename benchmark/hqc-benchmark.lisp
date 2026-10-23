@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; hqc-benchmark.lisp -- small HQC KEM-cycle benchmark.
 
-(asdf:load-system "ironclad")
+(asdf:load-system "ironclad-unsafe")
 
 (defparameter *hqc-benchmark-iterations* 3
   "Number of full KEM cycles to average for each HQC parameter set.")
@@ -17,12 +17,12 @@
     (dotimes (i *hqc-benchmark-iterations*)
       (let ((t0 (get-internal-run-time)))
         (multiple-value-bind (private public)
-            (ironclad:generate-key-pair kind)
+            (ironclad-unsafe:generate-key-pair kind)
           (let ((t1 (get-internal-run-time)))
             (multiple-value-bind (ciphertext secret)
-                (ironclad:encapsulate-key public)
+                (ironclad-unsafe:encapsulate-key public)
               (let ((t2 (get-internal-run-time)))
-                (let ((secret2 (ironclad:decapsulate-key private ciphertext)))
+                (let ((secret2 (ironclad-unsafe:decapsulate-key private ciphertext)))
                   (unless (equalp secret secret2)
                     (error "HQC KEM roundtrip failed for ~A" kind))
                   (let ((t3 (get-internal-run-time)))

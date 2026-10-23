@@ -2,7 +2,7 @@
 ;;;; twofish.lisp -- implementation of Counterpane's Twofish AES candidate
 
 (in-package :crypto)
-(in-ironclad-readtable)
+(in-ironclad-unsafe-readtable)
 
 
 ;;; various constant data arrays used by Twofish

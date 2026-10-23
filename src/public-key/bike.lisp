@@ -795,9 +795,9 @@
 ;;; BIKE KEM layer, chunk E.
 
 (defun bike-sha384 (input outlen)
-  (let ((d (ironclad:make-digest :sha384)))
-    (ironclad:update-digest d input)
-    (subseq (ironclad:produce-digest d) 0 outlen)))
+  (let ((d (ironclad-unsafe:make-digest :sha384)))
+    (ironclad-unsafe:update-digest d input)
+    (subseq (ironclad-unsafe:produce-digest d) 0 outlen)))
 
 (defun bike-words-to-bytes (out words nbytes)
   (dotimes (i nbytes)
@@ -887,7 +887,7 @@
                         (values pk sk)))))))))))))
 
 (defun bike-generate-keypair ()
-  (bike-keypair-from-seeds (ironclad:random-data 32) (ironclad:random-data 32)))
+  (bike-keypair-from-seeds (ironclad-unsafe:random-data 32) (ironclad-unsafe:random-data 32)))
 
 (defun bike-encrypt-ct (c0 c1 e0 e1 h-words m)
   (let ((pad (bike-r-padded-qwords)))

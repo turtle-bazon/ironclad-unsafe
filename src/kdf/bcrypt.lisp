@@ -55,17 +55,17 @@
 (defmethod derive-key ((kdf bcrypt) passphrase salt iteration-count key-length)
   (declare (type (simple-array (unsigned-byte 8) (*)) passphrase salt))
   (unless (<= (length passphrase) 72)
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "PASSPHRASE must be at most 72 bytes long."))
   (unless (= (length salt) 16)
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "SALT must be 16 bytes long."))
   (unless (and (zerop (logand iteration-count (1- iteration-count)))
                (<= (expt 2 4) iteration-count (expt 2 31)))
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "ITERATION-COUNT must be a power of 2 between 2^4 and 2^31."))
   (unless (= key-length 24)
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "KEY-LENGTH must be 24."))
   (multiple-value-bind (p-array s-boxes)
       (bcrypt-eksblowfish passphrase salt iteration-count)
@@ -113,10 +113,10 @@
   (declare (type (simple-array (unsigned-byte 8) (*)) passphrase salt)
            (type fixnum key-length))
   (unless (plusp iteration-count)
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "ITERATION-COUNT must be a least 1."))
   (unless (<= 1 key-length 1024)
-    (error 'ironclad-error
+    (error 'ironclad-unsafe-error
            :format-control "KEY-LENGTH must be between 1 and 1024."))
   (let* ((key (make-array key-length :element-type '(unsigned-byte 8)))
          (salt-length (length salt))

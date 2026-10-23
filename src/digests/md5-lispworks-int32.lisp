@@ -18,21 +18,21 @@
 ;;;; - Ironclad integration by Klaus Harbo <klaus@harbo.net>
 ;;;;
 
-#+ironclad-md5-lispworks-int32
+#+ironclad-unsafe-md5-lispworks-int32
 (cl:defpackage :md5-lispworks-int32
   (:use :cl))
 
-#+ironclad-md5-lispworks-int32
+#+ironclad-unsafe-md5-lispworks-int32
 (in-package :md5-lispworks-int32)
-#-ironclad-md5-lispworks-int32
+#-ironclad-unsafe-md5-lispworks-int32
 (in-package :cl-user)
 
-#+ironclad-md5-lispworks-int32
+#+ironclad-unsafe-md5-lispworks-int32
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (unless (fboundp (find-symbol "INT32+" '#:SYSTEM))
-    (error 'ironclad-error :format-control "It does not look like this version of Lispworks supports the SYS:INT32 API.")))
+    (error 'ironclad-unsafe-error :format-control "It does not look like this version of Lispworks supports the SYS:INT32 API.")))
 
-#+ironclad-md5-lispworks-int32
+#+ironclad-unsafe-md5-lispworks-int32
 (eval-when (:compile-toplevel :load-toplevel :execute)
 
 (defun %optimization-settings ()
@@ -60,7 +60,7 @@ where a is the intended low-order byte and d the high-order byte."
                                      (truncate (* 4294967296
                                                   (abs (sin (float i 0.0d0)))))))))))
 
-#+ironclad-md5-lispworks-int32
+#+ironclad-unsafe-md5-lispworks-int32
 (progn
   ;;; This PROGN covers the rest of the file.
   ;;; Non-Lispworks implementation of MD5 in md5.lisp
@@ -298,7 +298,7 @@ in regs.  Returns a (simple-array (unsigned-byte 8) (16))."
     (frob (md5-regs-d regs) 12))
   buffer)
 
-(defstruct (ironclad::md5 (:constructor make-md5-int32 ())
+(defstruct (ironclad-unsafe::md5 (:constructor make-md5-int32 ())
                           (:copier))
   (regs (initial-md5-regs) :type md5-regs :read-only t)
   (amount 0 :type (integer 0 *))
@@ -345,7 +345,7 @@ starting at buffer-offset."
   "Update the given md5-state from sequence, which must be
 simple-array with element-type (unsigned-byte 8), bounded by start and
 end, which must be numeric bounding-indices."
-  (declare (type ironclad::md5 state)
+  (declare (type ironclad-unsafe::md5 state)
            (type (simple-array * (*)) sequence)
            (type fixnum start end)
            #.(%optimization-settings/no-fixnum-safety))
@@ -400,7 +400,7 @@ and appended bit-length, as specified by the MD5 standard.
 The resulting MD5 message-digest is returned as an array of sixteen
 \(unsigned-byte 8) values.  Calling `update-md5-state' after a call to
 `finalize-md5-state' results in unspecified behaviour."
-  (declare (type ironclad::md5 state)
+  (declare (type ironclad-unsafe::md5 state)
            (optimize (speed 0) (space 0) (debug 2) (float 0))
            (optimize (hcl:fixnum-safety 0)))
   (or (%md5-finalized-p state)
@@ -450,7 +450,7 @@ The resulting MD5 message-digest is returned as an array of sixteen
   (setf (%md5-finalized-p state) nil)
   state)
 
-(defmethod %md5-lispworks-int32-copy ((old ironclad::md5)
+(defmethod %md5-lispworks-int32-copy ((old ironclad-unsafe::md5)
                                       copy)
   (let* ((new (or copy (make-md5-int32)))
          (old-regs (%md5-regs old))
@@ -470,26 +470,26 @@ The resulting MD5 message-digest is returned as an array of sixteen
 ;;; IRONCLAD INTERFACE
 ;;; --------------------------------------------------------------------------------
 
-(defmethod reinitialize-instance ((state ironclad::md5) &rest initargs)
+(defmethod reinitialize-instance ((state ironclad-unsafe::md5) &rest initargs)
   (%md5-lispworks-int32-reinitialize state))
 
-(defmethod ironclad:copy-digest ((state ironclad::md5) &optional copy)
-  (%md5-lispworks-int32-copy state (or copy (ironclad::%make-md5-digest))))
+(defmethod ironclad-unsafe:copy-digest ((state ironclad-unsafe::md5) &optional copy)
+  (%md5-lispworks-int32-copy state (or copy (ironclad-unsafe::%make-md5-digest))))
 
-(ironclad::define-digest-updater ironclad::md5
-  (%md5-lispworks-int32-update-state ironclad::state ironclad::sequence
-                                     :start ironclad::start
-                                     :end ironclad::end ))
+(ironclad-unsafe::define-digest-updater ironclad-unsafe::md5
+  (%md5-lispworks-int32-update-state ironclad-unsafe::state ironclad-unsafe::sequence
+                                     :start ironclad-unsafe::start
+                                     :end ironclad-unsafe::end ))
 
-(ironclad::define-digest-finalizer (ironclad::md5 16)
-  (%md5-lispworks-int32-finalize-state ironclad::state
-                                       ironclad::%buffer
-                                       ironclad::buffer-start))
+(ironclad-unsafe::define-digest-finalizer (ironclad-unsafe::md5 16)
+  (%md5-lispworks-int32-finalize-state ironclad-unsafe::state
+                                       ironclad-unsafe::%buffer
+                                       ironclad-unsafe::buffer-start))
 
-(defun ironclad::%make-md5-digest ()
+(defun ironclad-unsafe::%make-md5-digest ()
   (make-md5-int32))
 
-(ironclad::defdigest ironclad::md5 :digest-length 16 :block-length 64)
+(ironclad-unsafe::defdigest ironclad-unsafe::md5 :digest-length 16 :block-length 64)
 
 ) ; all-encompassing progn
 

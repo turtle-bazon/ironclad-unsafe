@@ -262,7 +262,7 @@ X, Y and Z are bignums, and the result is a point."
              (type (simple-array (unsigned-byte 8) (*)) y)
              (optimize (speed 3) (safety 0) (space 0) (debug 0)))
     (when (> (length y) 255)
-      (error 'ironclad-error
+      (error 'ironclad-unsafe-error
              :format-control "The Y array is to big."))
     (concatenate '(simple-array (unsigned-byte 8) (*))
                  (map 'vector #'char-code "SigEd448")
