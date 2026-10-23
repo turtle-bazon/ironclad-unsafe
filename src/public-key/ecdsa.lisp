@@ -21,7 +21,7 @@
 ;;;;   (make-public-key :ecdsa :curve :secp256k1 :y octets)
 ;;;;   (make-private-key :ecdsa :curve :secp521r1 :x octets)
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defparameter *ecdsa-canonical-curves*

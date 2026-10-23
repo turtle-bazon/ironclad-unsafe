@@ -3,7 +3,7 @@
 
 ;; See nistspecialpublication800-38d.pdf about GCM and GMAC.
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defclass gmac (mac)

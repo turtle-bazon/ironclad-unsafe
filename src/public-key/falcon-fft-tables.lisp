@@ -1,5 +1,5 @@
 ;;;; Generated from falcon.py fft_constants.py - DO NOT EDIT
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 (defconst +falcon-fft-roots-2+ #(#C(0d0 1d0) #C(-0d0 -1d0)))
 (defconst +falcon-fft-roots-4+ #(#C(0.70710678118654802d0 0.70710678118654702d0) #C(-0.70710678118654802d0 -0.70710678118654702d0) #C(0.70710678118654802d0 -0.70710678118654702d0) #C(-0.70710678118654802d0 0.70710678118654702d0)))

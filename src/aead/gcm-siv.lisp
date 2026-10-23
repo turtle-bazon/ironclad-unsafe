@@ -14,7 +14,7 @@
 ;;;; (make-authenticated-encryption-mode :gcm-siv
 ;;;;   &key tag key initialization-vector)
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defconst +polyval-red+

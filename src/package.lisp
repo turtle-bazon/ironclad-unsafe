@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 (cl:defpackage :ironclad-unsafe
   (:use :cl)
-  (:nicknames :crypto)
+  (:nicknames :crypto-unsafe)
   (:export
    ;; referencing multiple-octet values in an octet vector (SETF-able)
    #:ub16ref/be #:ub16ref/le #:ub32ref/be #:ub32ref/le #:ub64ref/le #:ub64ref/be
@@ -266,7 +266,7 @@
            #:xchacha #:xchacha/12 #:xchacha/8
            #:sosemanuk))
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 ;;; easy-to-type readmacro for creating s-boxes and the like
 

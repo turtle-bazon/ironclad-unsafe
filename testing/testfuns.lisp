@@ -1,5 +1,5 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
-(in-package :crypto-tests)
+(in-package :crypto-unsafe-tests)
 
 (defparameter *test-vector-verbose*
   (and (uiop:getenv "IRONCLAD_TEST_VERBOSE")
@@ -38,7 +38,7 @@
 
 (defun sharp-a (stream sub-char numarg)
   (declare (ignore sub-char numarg))
-  (crypto:ascii-string-to-byte-array (read stream t nil t)))
+  (crypto-unsafe:ascii-string-to-byte-array (read stream t nil t)))
 
 (defun sharp-h (stream sub-char numarg)
   (declare (ignore sub-char numarg))
@@ -87,16 +87,16 @@
 
 (defun cipher-test-guts (cipher-name mode key input output
                          &optional extra-make-cipher-args)
-  (let ((cipher (apply #'crypto:make-cipher cipher-name
+  (let ((cipher (apply #'crypto-unsafe:make-cipher cipher-name
                        :key key :mode mode
                        extra-make-cipher-args))
         (scratch (copy-seq input)))
-    (crypto:encrypt cipher input scratch)
+    (crypto-unsafe:encrypt cipher input scratch)
     (when (mismatch scratch output)
       (error "encryption failed for ~A on key ~A, input ~A, output ~A"
              cipher-name key input output))
     (apply #'reinitialize-instance cipher :key key extra-make-cipher-args)
-    (crypto:decrypt cipher output scratch)
+    (crypto-unsafe:decrypt cipher output scratch)
     (when (mismatch scratch input)
       (error "decryption failed for ~A on key ~A, input ~A, output ~A"
              cipher-name key output input))))
@@ -104,15 +104,15 @@
 #+(or lispworks sbcl cmucl openmcl allegro abcl ecl clisp)
 (defun cipher-stream-test-guts (cipher-name mode key input output
                                 &optional extra-args)
-  (let* ((out-stream (crypto:make-octet-output-stream))
-         (enc-stream (apply #'crypto:make-encrypting-stream
+  (let* ((out-stream (crypto-unsafe:make-octet-output-stream))
+         (enc-stream (apply #'crypto-unsafe:make-encrypting-stream
                             out-stream cipher-name mode key extra-args))
-         (in-stream (crypto:make-octet-input-stream output))
-         (dec-stream (apply #'crypto:make-decrypting-stream
+         (in-stream (crypto-unsafe:make-octet-input-stream output))
+         (dec-stream (apply #'crypto-unsafe:make-decrypting-stream
                             in-stream cipher-name mode key extra-args)))
     (write-byte (aref input 0) enc-stream)
     (write-sequence input enc-stream :start 1)
-    (let ((result (crypto:get-output-stream-octets out-stream)))
+    (let ((result (crypto-unsafe:get-output-stream-octets out-stream)))
       (when (mismatch result output)
         (error "stream encryption failed for ~A on key ~A, input ~A, output ~A"
                cipher-name key input output)))
@@ -138,19 +138,19 @@
                     (list :initialization-vector hexiv)))
 
 (defun keystream-test (cipher-name key iv keystream)
-  (let* ((mode (if (= 1 (crypto:block-length cipher-name)) :stream :ctr))
-         (cipher (crypto:make-cipher cipher-name :key key :mode mode :initialization-vector iv))
+  (let* ((mode (if (= 1 (crypto-unsafe:block-length cipher-name)) :stream :ctr))
+         (cipher (crypto-unsafe:make-cipher cipher-name :key key :mode mode :initialization-vector iv))
          (buffer (make-array 1000 :element-type '(unsigned-byte 8) :initial-element 0)))
-    (crypto:keystream-position cipher 100)
-    (crypto:encrypt-in-place cipher buffer :start 100 :end 213)
-    (crypto:keystream-position cipher 500)
-    (crypto:encrypt-in-place cipher buffer :start 500 :end 1000)
-    (crypto:keystream-position cipher 213)
-    (crypto:encrypt-in-place cipher buffer :start 213 :end 500)
-    (crypto:keystream-position cipher 0)
-    (crypto:encrypt-in-place cipher buffer :end 100)
-    (crypto:keystream-position cipher 765)
-    (when (or (/= (crypto:keystream-position cipher) 765)
+    (crypto-unsafe:keystream-position cipher 100)
+    (crypto-unsafe:encrypt-in-place cipher buffer :start 100 :end 213)
+    (crypto-unsafe:keystream-position cipher 500)
+    (crypto-unsafe:encrypt-in-place cipher buffer :start 500 :end 1000)
+    (crypto-unsafe:keystream-position cipher 213)
+    (crypto-unsafe:encrypt-in-place cipher buffer :start 213 :end 500)
+    (crypto-unsafe:keystream-position cipher 0)
+    (crypto-unsafe:encrypt-in-place cipher buffer :end 100)
+    (crypto-unsafe:keystream-position cipher 765)
+    (when (or (/= (crypto-unsafe:keystream-position cipher) 765)
               (mismatch buffer keystream))
       (error "getting/setting key stream position failed for ~A on key ~A" cipher-name key))))
 
@@ -190,26 +190,26 @@
                scratch))
            (cipher-test (cipher func input output)
              (not (mismatch (frob-hex-string cipher func input) output))))
-    (let ((cipher (crypto:make-cipher cipher-name :key key :mode mode
+    (let ((cipher (crypto-unsafe:make-cipher cipher-name :key key :mode mode
                                       :initialization-vector iv)))
-      (unless (cipher-test cipher 'crypto:encrypt input output)
+      (unless (cipher-test cipher 'crypto-unsafe:encrypt input output)
         (error "encryption failed for ~A on key ~A, input ~A, output ~A"
                cipher-name key input output))
       (reinitialize-instance cipher :key key :mode mode
                              :initialization-vector iv)
-      (unless (cipher-test cipher 'crypto:decrypt output input)
+      (unless (cipher-test cipher 'crypto-unsafe:decrypt output input)
         (error "decryption failed for ~A on key ~A, input ~A, output ~A"
                cipher-name key output input)))))
 
 (defun mode-padding-test (mode cipher-name padding key iv input output)
-  (let ((cipher (crypto:make-cipher cipher-name
+  (let ((cipher (crypto-unsafe:make-cipher cipher-name
                                     :key key
                                     :mode mode
                                     :initialization-vector iv
                                     :padding padding))
         (buffer1 (make-array (length input) :element-type '(unsigned-byte 8)))
         (buffer2 (make-array (length output) :element-type '(unsigned-byte 8))))
-    (crypto:encrypt cipher input buffer2 :handle-final-block t)
+    (crypto-unsafe:encrypt cipher input buffer2 :handle-final-block t)
     (when (mismatch buffer2 output)
       (error "encryption failed for ~A on key ~A, input ~A, output ~A"
              cipher-name key input output))
@@ -218,7 +218,7 @@
                            :mode mode
                            :initialization-vector iv
                            :padding padding)
-    (crypto:decrypt cipher output buffer1 :handle-final-block t)
+    (crypto-unsafe:decrypt cipher output buffer1 :handle-final-block t)
     (when (mismatch buffer1 input)
       (error "decryption failed for ~A on key ~A, input ~A, output ~A"
              cipher-name key output input))))
@@ -235,17 +235,17 @@
 ;;; digest testing routines
 
 (defun digest-test/base (digest-name input expected-digest)
-  (let ((result (crypto:digest-sequence digest-name input)))
+  (let ((result (crypto-unsafe:digest-sequence digest-name input)))
     (when (mismatch result expected-digest)
       (error "one-shot ~A digest of ~S failed" digest-name input))))
 
 (defun digest-test/incremental (digest-name input expected-digest)
   (loop with length = (length input)
-     with digester = (crypto:make-digest digest-name)
+     with digester = (crypto-unsafe:make-digest digest-name)
      for i from 0 below length
-     do (crypto:update-digest digester input :start i :end (1+ i))
+     do (crypto-unsafe:update-digest digester input :start i :end (1+ i))
      finally
-     (let ((result (crypto:produce-digest digester)))
+     (let ((result (crypto-unsafe:produce-digest digester)))
        (when (mismatch result expected-digest)
          (error "incremental ~A digest of ~S failed" digest-name input)))))
 
@@ -255,25 +255,25 @@
                                      :element-type '(unsigned-byte 8))))
                   (dotimes (i (length octets) x)
                     (vector-push (aref octets i) x))))
-         (result (crypto:digest-sequence digest-name input)))
+         (result (crypto-unsafe:digest-sequence digest-name input)))
     (when (mismatch result expected-digest)
       (error "fill-pointer'd ~A digest of ~S failed" digest-name input))))
 
 #+(or lispworks sbcl cmucl openmcl allegro abcl ecl clisp)
 (defun digest-test/stream (digest-name input expected-digest)
-  (let* ((stream (crypto:make-digesting-stream digest-name)))
+  (let* ((stream (crypto-unsafe:make-digesting-stream digest-name)))
     (when (plusp (length input))
       (write-byte (aref input 0) stream)
       (write-sequence input stream :start 1))
-    (crypto:produce-digest stream) ; Calling produce-digest twice should not give a wrong hash
-    (when (mismatch (crypto:produce-digest stream) expected-digest)
+    (crypto-unsafe:produce-digest stream) ; Calling produce-digest twice should not give a wrong hash
+    (when (mismatch (crypto-unsafe:produce-digest stream) expected-digest)
       (error "stream-y ~A digest of ~S failed" digest-name input))))
 
 (defun digest-test/reinitialize-instance (digest-name input expected-digest)
-  (let* ((digest (crypto:make-digest digest-name))
+  (let* ((digest (crypto-unsafe:make-digest digest-name))
          (result (progn
-                   (crypto:digest-sequence digest input)
-                   (crypto:digest-sequence (reinitialize-instance digest) input))))
+                   (crypto-unsafe:digest-sequence digest input)
+                   (crypto-unsafe:digest-sequence (reinitialize-instance digest) input))))
     (when (mismatch result expected-digest)
       (error "testing reinitialize-instance ~A digest of ~S failed" digest-name input))))
 
@@ -283,24 +283,24 @@
                                           :initial-element 0)))
                   (setf (aref vector leading) byte)
                   vector))
-         (result (crypto:digest-sequence digest-name input)))
+         (result (crypto-unsafe:digest-sequence digest-name input)))
     (when (mismatch result expected-digest)
       (error "individual bit test ~A digest of (~D #x~2,'0X ~D) failed"
              digest-name leading byte trailing))))
 
 (defun xof-digest-test (digest-name output-length input expected-digest)
-  (let* ((digest (crypto:make-digest digest-name :output-length output-length))
-         (result (crypto:digest-sequence digest input)))
+  (let* ((digest (crypto-unsafe:make-digest digest-name :output-length output-length))
+         (result (crypto-unsafe:digest-sequence digest input)))
     (when (mismatch result expected-digest)
       (error "one-shot ~A xof digest of ~S failed" digest-name input))))
 
 (defun blake3-keyed-test (name key input expected-digest)
-  (let ((result (crypto:digest-sequence (crypto:make-digest :blake3 :key key) input)))
+  (let ((result (crypto-unsafe:digest-sequence (crypto-unsafe:make-digest :blake3 :key key) input)))
     (when (mismatch result expected-digest)
       (error "one-shot keyed BLAKE3 digest of ~S failed" input))))
 
 (defun blake3-derive-test (name context input expected-digest)
-  (let ((result (crypto:digest-sequence (crypto:make-digest :blake3 :context context) input)))
+  (let ((result (crypto-unsafe:digest-sequence (crypto-unsafe:make-digest :blake3 :context context) input)))
     (when (mismatch result expected-digest)
       (error "one-shot BLAKE3 key derivation of ~S failed" input))))
 
@@ -340,40 +340,40 @@
 ;;; mac testing routines
 
 (defun mac-test/base (mac-name key data expected-digest &rest args)
-  (let ((mac (apply #'crypto:make-mac mac-name key args)))
-    (crypto:update-mac mac data)
-    (let ((result (crypto:produce-mac mac)))
+  (let ((mac (apply #'crypto-unsafe:make-mac mac-name key args)))
+    (crypto-unsafe:update-mac mac data)
+    (let ((result (crypto-unsafe:produce-mac mac)))
       (when (mismatch result expected-digest)
         (error "one-shot ~A mac of ~A failed on key ~A, args ~A"
                mac-name data key args)))))
 
 (defun mac-test/incremental (mac-name key data expected-digest &rest args)
   (loop with length = (length data)
-        with mac = (apply #'crypto:make-mac mac-name key args)
+        with mac = (apply #'crypto-unsafe:make-mac mac-name key args)
         for i from 0 below length
-        do (crypto:update-mac mac data :start i :end (1+ i))
-        finally (let ((result (crypto:produce-mac mac)))
+        do (crypto-unsafe:update-mac mac data :start i :end (1+ i))
+        finally (let ((result (crypto-unsafe:produce-mac mac)))
                   (when (mismatch result expected-digest)
                     (error "incremental ~A mac of ~A failed on key ~A, args ~A"
                            mac-name data key args)))))
 
 #+(or lispworks sbcl cmucl openmcl allegro abcl ecl clisp)
 (defun mac-test/stream (mac-name key data expected-digest &rest args)
-  (let ((stream (apply #'crypto:make-authenticating-stream mac-name key args)))
+  (let ((stream (apply #'crypto-unsafe:make-authenticating-stream mac-name key args)))
     (when (plusp (length data))
       (write-byte (aref data 0) stream)
       (write-sequence data stream :start 1))
-    (crypto:produce-mac stream) ; Calling produce-mac twice should not give a wrong MAC
-    (let ((result (crypto:produce-mac stream)))
+    (crypto-unsafe:produce-mac stream) ; Calling produce-mac twice should not give a wrong MAC
+    (let ((result (crypto-unsafe:produce-mac stream)))
       (when (mismatch result expected-digest)
         (error "stream ~A mac of ~A failed on key ~A, args ~A"
                mac-name data key args)))))
 
 (defun mac-test/reinitialize-instance (mac-name key data expected-digest &rest args)
-  (let* ((mac (apply #'crypto:make-mac mac-name key args))
+  (let* ((mac (apply #'crypto-unsafe:make-mac mac-name key args))
          (result1 (progn
-                    (crypto:update-mac mac data)
-                    (crypto:produce-mac mac))))
+                    (crypto-unsafe:update-mac mac data)
+                    (crypto-unsafe:produce-mac mac))))
     (declare (ignorable result1))
     (cond
       ((typep mac 'ironclad-unsafe:gmac)
@@ -381,8 +381,8 @@
       (t
        (reinitialize-instance mac :key key)))
     (let ((result2 (progn
-                     (crypto:update-mac mac data)
-                     (crypto:produce-mac mac))))
+                     (crypto-unsafe:update-mac mac data)
+                     (crypto-unsafe:produce-mac mac))))
       (when (mismatch result2 expected-digest)
         (error "testing reinitialize-instance ~A mac of ~A failed on key ~A, args ~A"
                mac-name data key args)))))
@@ -404,23 +404,23 @@
 ;;; PRNG testing routines
 (defun fortuna-test (name seed entropy expected-sequence)
   (declare (ignore name))
-  (let ((prng (crypto:make-prng :fortuna
-                                :seed (coerce seed 'crypto::simple-octet-vector)))
+  (let ((prng (crypto-unsafe:make-prng :fortuna
+                                :seed (coerce seed 'crypto-unsafe::simple-octet-vector)))
         (num-bytes (length expected-sequence)))
     (loop for (source pool-id event) in entropy
-       do (crypto:add-random-event source pool-id event prng))
+       do (crypto-unsafe:add-random-event source pool-id event prng))
     (assert (equalp expected-sequence
-            (crypto:random-data num-bytes prng)))))
+            (crypto-unsafe:random-data num-bytes prng)))))
 
 (defun generator-test (name cipher seeds expected-sequences)
   (declare (ignore name))
-  (let ((generator (make-instance 'crypto:fortuna-generator :cipher cipher)))
+  (let ((generator (make-instance 'crypto-unsafe:fortuna-generator :cipher cipher)))
     (loop for seed in seeds
-       do (crypto:prng-reseed (coerce seed '(vector (unsigned-byte 8))) generator))
+       do (crypto-unsafe:prng-reseed (coerce seed '(vector (unsigned-byte 8))) generator))
     (every (lambda (sequence)
              (assert (zerop (mod (length sequence) 16)))
              (assert (equalp sequence
-                             (crypto:random-data (length sequence)
+                             (crypto-unsafe:random-data (length sequence)
                                          generator))))
            expected-sequences)))
 
@@ -1122,27 +1122,27 @@
 
 (defun ascon-aead-test (name input ad output tag key nonce)
   (let ((mode-name :ascon-aead128))
-    (let* ((ae (crypto:make-authenticated-encryption-mode
+    (let* ((ae (crypto-unsafe:make-authenticated-encryption-mode
                 mode-name :key key :initialization-vector nonce))
-           (ciphertext (crypto:encrypt-message ae input :associated-data ad)))
+           (ciphertext (crypto-unsafe:encrypt-message ae input :associated-data ad)))
       (when (or (mismatch ciphertext output)
-                (mismatch (crypto:produce-tag ae) tag))
+                (mismatch (crypto-unsafe:produce-tag ae) tag))
         (error "encryption failed for ~A, input ~A, output ~A" mode-name input output)))
-    (let ((ae2 (crypto:make-authenticated-encryption-mode
+    (let ((ae2 (crypto-unsafe:make-authenticated-encryption-mode
                 mode-name :key key :initialization-vector nonce :tag tag)))
-      (let ((plaintext (crypto:decrypt-message ae2 output :associated-data ad)))
+      (let ((plaintext (crypto-unsafe:decrypt-message ae2 output :associated-data ad)))
         (when (mismatch plaintext input)
           (error "decryption failed for ~A, input ~A, output ~A" mode-name input output))))
     ;; A tampered ciphertext must be rejected.
-    (let* ((ae3 (crypto:make-authenticated-encryption-mode
+    (let* ((ae3 (crypto-unsafe:make-authenticated-encryption-mode
                  mode-name :key key :initialization-vector nonce
                  :tag tag))
            (bad (copy-seq output)))
       (unless (zerop (length bad))
         (setf (aref bad 0) (logxor (aref bad 0) 1))
-        (handler-case (progn (crypto:decrypt-message ae3 bad :associated-data ad)
+        (handler-case (progn (crypto-unsafe:decrypt-message ae3 bad :associated-data ad)
                              (error "tampered ciphertext accepted for ~A" name))
-          (crypto:ironclad-unsafe-error () nil)))))
+          (crypto-unsafe:ironclad-unsafe-error () nil)))))
   t)
 
 (defparameter *aead-tests*
@@ -1197,128 +1197,128 @@
 
 (defun aead-test (mode-name input ad output tag &rest args)
   (let* ((parameters (case mode-name
-                       ((:gcm gcm crypto:gcm :eax eax crypto:eax)
+                       ((:gcm gcm crypto-unsafe:gcm :eax eax crypto-unsafe:eax)
                         (list :cipher-name (car args)
                               :key (cadr args)
                               :initialization-vector (caddr args)))
-                       ((:chacha-poly chacha-poly crypto:chacha-poly
-                         :xchacha-poly xchacha-poly crypto:xchacha-poly
-                         :gcm-siv gcm-siv crypto:gcm-siv)
+                       ((:chacha-poly chacha-poly crypto-unsafe:chacha-poly
+                         :xchacha-poly xchacha-poly crypto-unsafe:xchacha-poly
+                         :gcm-siv gcm-siv crypto-unsafe:gcm-siv)
                         (list :key (car args)
                               :initialization-vector (cadr args)))
-                       ((:ccm ccm crypto:ccm)
+                       ((:ccm ccm crypto-unsafe:ccm)
                         (list :key (car args)
                               :initialization-vector (cadr args)
                               :tag-length (caddr args)
                               :message-length (cadddr args)))
-                       ((:etm etm crypto:etm)
+                       ((:etm etm crypto-unsafe:etm)
                         (destructuring-bind (cipher-name ckey mode iv mac-name mkey mparam) args
-                          (let ((cipher (crypto:make-cipher cipher-name
+                          (let ((cipher (crypto-unsafe:make-cipher cipher-name
                                                             :key ckey
                                                             :mode mode
                                                             :initialization-vector iv))
                                 (mac (if mparam
-                                         (crypto:make-mac mac-name mkey mparam)
-                                         (crypto:make-mac mac-name mkey))))
+                                         (crypto-unsafe:make-mac mac-name mkey mparam)
+                                         (crypto-unsafe:make-mac mac-name mkey))))
                             (list :cipher cipher :mac mac))))))
-         (ae (apply #'crypto:make-authenticated-encryption-mode mode-name parameters))
-         (ciphertext (crypto:encrypt-message ae input :associated-data ad)))
+         (ae (apply #'crypto-unsafe:make-authenticated-encryption-mode mode-name parameters))
+         (ciphertext (crypto-unsafe:encrypt-message ae input :associated-data ad)))
     (when (or (mismatch ciphertext output)
-              (mismatch (crypto:produce-tag ae) tag))
+              (mismatch (crypto-unsafe:produce-tag ae) tag))
       (error "encryption failed for ~A, input ~A, output ~A" mode-name input output))
     (setf parameters (case mode-name
-                       ((:gcm gcm crypto:gcm :eax eax crypto:eax)
+                       ((:gcm gcm crypto-unsafe:gcm :eax eax crypto-unsafe:eax)
                          parameters)
-                        ((:chacha-poly chacha-poly crypto:chacha-poly
-                          :xchacha-poly xchacha-poly crypto:xchacha-poly
-                          :gcm-siv gcm-siv crypto:gcm-siv)
+                        ((:chacha-poly chacha-poly crypto-unsafe:chacha-poly
+                          :xchacha-poly xchacha-poly crypto-unsafe:xchacha-poly
+                          :gcm-siv gcm-siv crypto-unsafe:gcm-siv)
                          parameters)
-                        ((:ccm ccm crypto:ccm)
+                        ((:ccm ccm crypto-unsafe:ccm)
                          parameters)
-                       ((:etm etm crypto:etm)
+                       ((:etm etm crypto-unsafe:etm)
                         (destructuring-bind (cipher-name ckey mode iv mac-name mkey mparam) args
-                          (let ((cipher (crypto:make-cipher cipher-name
+                          (let ((cipher (crypto-unsafe:make-cipher cipher-name
                                                             :key ckey
                                                             :mode mode
                                                             :initialization-vector iv))
                                 (mac (if mparam
-                                         (crypto:make-mac mac-name mkey mparam)
-                                         (crypto:make-mac mac-name mkey))))
+                                         (crypto-unsafe:make-mac mac-name mkey mparam)
+                                         (crypto-unsafe:make-mac mac-name mkey))))
                             (list :cipher cipher :mac mac))))))
     (apply #'reinitialize-instance ae :tag tag parameters)
-    (let ((plaintext (crypto:decrypt-message ae output :associated-data ad)))
+    (let ((plaintext (crypto-unsafe:decrypt-message ae output :associated-data ad)))
       (when (or (mismatch plaintext input)
-                (mismatch (crypto:produce-tag ae) tag))
+                (mismatch (crypto-unsafe:produce-tag ae) tag))
         (error "decryption failed for ~A, input ~A, output ~A" mode-name input output)))))
 
 (defun aead-test/incremental (mode-name input ad output tag &rest args)
   (let* ((parameters (case mode-name
-                       ((:gcm gcm crypto:gcm :eax eax crypto:eax)
+                       ((:gcm gcm crypto-unsafe:gcm :eax eax crypto-unsafe:eax)
                         (list :cipher-name (car args)
                               :key (cadr args)
                               :initialization-vector (caddr args)))
-                       ((:chacha-poly chacha-poly crypto:chacha-poly
-                         :xchacha-poly xchacha-poly crypto:xchacha-poly
-                         :gcm-siv gcm-siv crypto:gcm-siv)
+                       ((:chacha-poly chacha-poly crypto-unsafe:chacha-poly
+                         :xchacha-poly xchacha-poly crypto-unsafe:xchacha-poly
+                         :gcm-siv gcm-siv crypto-unsafe:gcm-siv)
                         (list :key (car args)
                               :initialization-vector (cadr args)))
-                       ((:ccm ccm crypto:ccm)
+                       ((:ccm ccm crypto-unsafe:ccm)
                         (list :key (car args)
                               :initialization-vector (cadr args)
                               :tag-length (caddr args)
                               :message-length (cadddr args)))
-                       ((:etm etm crypto:etm)
+                       ((:etm etm crypto-unsafe:etm)
                         (destructuring-bind (cipher-name ckey mode iv mac-name mkey mparam) args
-                          (let ((cipher (crypto:make-cipher cipher-name
+                          (let ((cipher (crypto-unsafe:make-cipher cipher-name
                                                             :key ckey
                                                             :mode mode
                                                             :initialization-vector iv))
                                 (mac (if mparam
-                                         (crypto:make-mac mac-name mkey mparam)
-                                         (crypto:make-mac mac-name mkey))))
+                                         (crypto-unsafe:make-mac mac-name mkey mparam)
+                                         (crypto-unsafe:make-mac mac-name mkey))))
                             (list :cipher cipher :mac mac))))))
-         (ae (apply #'crypto:make-authenticated-encryption-mode mode-name parameters))
+         (ae (apply #'crypto-unsafe:make-authenticated-encryption-mode mode-name parameters))
          (plaintext (make-array (length input) :element-type '(unsigned-byte 8)))
          (ciphertext (make-array (length output) :element-type '(unsigned-byte 8))))
     (dotimes (i (length ad))
-      (crypto:process-associated-data ae ad :start i :end (1+ i)))
+      (crypto-unsafe:process-associated-data ae ad :start i :end (1+ i)))
     (dotimes (i (length input))
-      (crypto:encrypt ae input ciphertext
+      (crypto-unsafe:encrypt ae input ciphertext
                       :plaintext-start i :plaintext-end (1+ i)
                       :ciphertext-start i
                       :handle-final-block (= i (1- (length input)))))
     (when (or (mismatch ciphertext output)
-              (mismatch (crypto:produce-tag ae) tag))
+              (mismatch (crypto-unsafe:produce-tag ae) tag))
       (error "encryption failed for ~A, input ~A, output ~A" mode-name input output))
     (setf parameters (case mode-name
-                       ((:gcm gcm crypto:gcm :eax eax crypto:eax)
+                       ((:gcm gcm crypto-unsafe:gcm :eax eax crypto-unsafe:eax)
                          parameters)
-                        ((:chacha-poly chacha-poly crypto:chacha-poly
-                          :xchacha-poly xchacha-poly crypto:xchacha-poly
-                          :gcm-siv gcm-siv crypto:gcm-siv)
+                        ((:chacha-poly chacha-poly crypto-unsafe:chacha-poly
+                          :xchacha-poly xchacha-poly crypto-unsafe:xchacha-poly
+                          :gcm-siv gcm-siv crypto-unsafe:gcm-siv)
                          parameters)
-                        ((:ccm ccm crypto:ccm)
+                        ((:ccm ccm crypto-unsafe:ccm)
                          parameters)
-                       ((:etm etm crypto:etm)
+                       ((:etm etm crypto-unsafe:etm)
                         (destructuring-bind (cipher-name ckey mode iv mac-name mkey mparam) args
-                          (let ((cipher (crypto:make-cipher cipher-name
+                          (let ((cipher (crypto-unsafe:make-cipher cipher-name
                                                             :key ckey
                                                             :mode mode
                                                             :initialization-vector iv))
                                 (mac (if mparam
-                                         (crypto:make-mac mac-name mkey mparam)
-                                         (crypto:make-mac mac-name mkey))))
+                                         (crypto-unsafe:make-mac mac-name mkey mparam)
+                                         (crypto-unsafe:make-mac mac-name mkey))))
                             (list :cipher cipher :mac mac))))))
     (apply #'reinitialize-instance ae :tag tag parameters)
     (dotimes (i (length ad))
-      (crypto:process-associated-data ae ad :start i :end (1+ i)))
+      (crypto-unsafe:process-associated-data ae ad :start i :end (1+ i)))
     (dotimes (i (length output))
-      (crypto:decrypt ae output plaintext
+      (crypto-unsafe:decrypt ae output plaintext
                       :ciphertext-start i :ciphertext-end (1+ i)
                       :plaintext-start i
                       :handle-final-block (= i (1- (length output)))))
     (when (or (mismatch plaintext input)
-              (mismatch (crypto:produce-tag ae) tag))
+              (mismatch (crypto-unsafe:produce-tag ae) tag))
       (error "decryption failed for ~A, input ~A, output ~A" mode-name input output))))
 
 (defparameter *authenticated-encryption-tests*

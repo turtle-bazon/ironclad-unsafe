@@ -4,7 +4,7 @@
 ;;;; Direct translation of the portable (non-AVX) paths of the AWS
 ;;;; bike-kem reference implementation: QC-MDPC codes with BGF decoder.
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;;

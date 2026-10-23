@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; public-key.lisp -- implementation of common public key components
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defun list-all-key-pair-kinds ()

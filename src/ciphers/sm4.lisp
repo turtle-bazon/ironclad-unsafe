@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; sm4.lisp -- implementation of SM4 (GB/T 32907-2016)
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 (in-ironclad-unsafe-readtable)
 
 

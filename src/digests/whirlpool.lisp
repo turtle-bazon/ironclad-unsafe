@@ -11,7 +11,7 @@
 ;;;; authors assume no responsibility for the consequences of any use of
 ;;;; this software.
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
 (deftype whirlpool-regs () '(simple-array (unsigned-byte 32) (64)))

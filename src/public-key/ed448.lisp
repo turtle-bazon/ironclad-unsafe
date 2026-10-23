@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; ed448.lisp -- implementation of the ed448 signature algorithm
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; class definitions

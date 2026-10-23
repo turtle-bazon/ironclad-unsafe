@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; sha256.lisp -- implementation of SHA-2/256 from NIST
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 (in-ironclad-unsafe-readtable)
 
 (define-digest-registers (sha224 :endian :big :digest-registers 7)

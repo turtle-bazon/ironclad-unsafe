@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; keystream.lisp
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defun keystream-position (cipher &optional position)

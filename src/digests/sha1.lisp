@@ -21,7 +21,7 @@
 ;;;; authors assume no responsibility for the consequences of any use
 ;;;; of this software.
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 ;;; nonlinear functions
 

@@ -13,7 +13,7 @@
 ;;;; (make-authenticated-encryption-mode :xchacha-poly
 ;;;;   :key key :initialization-vector iv)       ; 32-byte key, 24-byte nonce
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defclass chacha-poly-base (aead-mode)

@@ -9,7 +9,7 @@
 ;;;;   (sign-message private-key message) => signature bytes
 ;;;;   (verify-signature public-key message signature) => boolean
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;;

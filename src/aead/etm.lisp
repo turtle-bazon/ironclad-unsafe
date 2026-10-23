@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; etm.lisp -- Encrypt then MAC
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defclass etm (aead-mode)

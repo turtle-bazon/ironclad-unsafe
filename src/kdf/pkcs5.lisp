@@ -1,5 +1,5 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; PBKDF1 from RFC 2898, section 5.1

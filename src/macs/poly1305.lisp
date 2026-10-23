@@ -2,7 +2,7 @@
 ;;;; poly1305.lisp -- RFC 7539 poly1305 message authentication code
 
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defclass poly1305 (mac)

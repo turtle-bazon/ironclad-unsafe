@@ -4,7 +4,7 @@
 ;;; Based on the Argon2 implementation present in the Monocypher
 ;;; crypto library (http://loup-vaillant.fr/projects/monocypher/)
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defclass argon2 ()

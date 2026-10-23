@@ -1,5 +1,5 @@
 ;;;; Generated from falcon.py ntt_constants.py - DO NOT EDIT
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 (defconst +falcon-ntt-roots-2+ #(1479 10810))
 (defconst +falcon-ntt-roots-4+ #(4043 8246 5146 7143))

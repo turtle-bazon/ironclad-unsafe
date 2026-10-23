@@ -2,7 +2,7 @@
 ;;;; secp384r1.lisp -- secp384r1 (a.k.a. NIST P-384) elliptic curve
 
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; class definitions

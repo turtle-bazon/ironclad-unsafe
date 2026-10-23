@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;; sha512.lisp -- implementation of SHA-384/512 from NIST
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 (in-ironclad-unsafe-readtable)
 
 (define-digest-registers (sha384 :endian :big :size 8 :digest-registers 6)

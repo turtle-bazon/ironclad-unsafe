@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; streebog.lisp -- implementation of Streebog (GOST R 34.11-2012)
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 (in-ironclad-unsafe-readtable)
 
 

@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; ripemd-160.lisp -- the RIPEMD-160 digest function
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 (define-digest-registers (ripemd-160 :endian :little)
   (a #x67452301)

@@ -1,5 +1,5 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 (defconstant +tea-n-rounds+ 32)
 (defconstant +tea-delta+ #x9e3779b9)

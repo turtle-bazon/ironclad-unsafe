@@ -11,7 +11,7 @@
 ;;;; a 32-octet secret and CONTEXT a string or octet vector naming the
 ;;;; derivation context; KEY and CONTEXT are mutually exclusive.
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (eval-when (:compile-toplevel :load-toplevel :execute)

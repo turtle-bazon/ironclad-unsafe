@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; modes.lisp -- using encryption modes with block ciphers
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 (defclass encryption-mode ()
   ((encrypt-function :reader encrypt-function)

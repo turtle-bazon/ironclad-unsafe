@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; crc24.lisp
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 (in-ironclad-unsafe-readtable)
 
 (declaim (type (simple-array (unsigned-byte 32) (256)) +crc24-table+))

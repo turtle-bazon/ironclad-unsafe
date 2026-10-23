@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; util.lisp -- functions that come in handy in crypto applications
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 (defun byte-array-to-hex-string (vector &key (start 0) end (element-type 'base-char))
   "Return a string containing the hexadecimal representation of the

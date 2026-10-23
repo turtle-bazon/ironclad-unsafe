@@ -5,7 +5,7 @@
 ;;; Bruce Schneier to Common Lisp.  Unfortunately, a lot of C-isms
 ;;; remain, so this is not the prettiest Common Lisp code ever.
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 (in-ironclad-unsafe-readtable)
 
 

@@ -5,7 +5,7 @@
 ;;;; 12289, SHAKE256 hash-to-point, compression codec, FFT sampling.
 ;;;; Staged: verify first, then sign, then keygen.
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;;

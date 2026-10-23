@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; xsalsa20.lisp -- implementation of the XSalsa20 stream cipher
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 (defclass xsalsa20 (salsa20)
   ())

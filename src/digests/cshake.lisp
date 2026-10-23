@@ -5,7 +5,7 @@
 ;;;; FUNCTION-NAME and CUSTOMIZATION are strings or octet vectors
 ;;;; (both empty by default, in which case cSHAKE matches SHAKE).
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defun left-encode (x)

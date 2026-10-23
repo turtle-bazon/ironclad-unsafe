@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;; chacha.lisp --implementation of the ChaCha stream cipher
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 (declaim (type (simple-octet-vector 16) chacha-sigma chacha-tau))
 (defconst chacha-sigma

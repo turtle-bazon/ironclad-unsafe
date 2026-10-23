@@ -17,7 +17,7 @@
 ;;;;   public key 1312/1952/2592, private key 2560/4032/4896,
 ;;;;   signature 2420/3309/4627 octets.
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   ;; Define the modulus at compile time as well as load time.  Some

@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; sosemanuk.lisp - implementation of the Sosemanuk stream cipher
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defconst +sosemanuk-mul-a+

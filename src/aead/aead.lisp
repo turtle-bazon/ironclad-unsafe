@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; aead.lisp -- authenticated encryption with associated data
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defclass aead-mode ()

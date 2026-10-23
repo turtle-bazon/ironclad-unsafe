@@ -1,16 +1,16 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 
-(in-package :crypto-tests)
+(in-package :crypto-unsafe-tests)
 
-#.(loop for mode in (crypto:list-all-authenticated-encryption-modes)
+#.(loop for mode in (crypto-unsafe:list-all-authenticated-encryption-modes)
         collect `(rtest:deftest ,mode
                    (run-test-vector-file ',mode *authenticated-encryption-tests*)
                    t)
           into forms
         finally (return `(progn ,@forms)))
 
-#.(loop for mode in (crypto:list-all-authenticated-encryption-modes)
-        collect `(rtest:deftest ,(crypto::symbolicate mode '#:/incremental)
+#.(loop for mode in (crypto-unsafe:list-all-authenticated-encryption-modes)
+        collect `(rtest:deftest ,(crypto-unsafe::symbolicate mode '#:/incremental)
                    (run-test-vector-file ',mode *authenticated-encryption-incremental-tests*)
                    t)
           into forms

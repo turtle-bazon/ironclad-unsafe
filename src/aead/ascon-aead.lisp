@@ -7,7 +7,7 @@
 ;;;; (make-authenticated-encryption-mode :ascon-aead128
 ;;;;   :key key :initialization-vector iv)  ; 16-byte key, 16-byte nonce
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defclass ascon-aead128 (aead-mode)

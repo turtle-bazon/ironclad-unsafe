@@ -2,7 +2,7 @@
 ;;;; common.lisp -- efficient implementations of mod32 arithmetic and macros
 
 ;;; Functions in this file are intended to be fast
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 (defmacro defconst (name value)
   `(defconstant ,name

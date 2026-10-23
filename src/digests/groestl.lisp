@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; groestl.lisp -- implementation of the Grøstl hash function
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;;

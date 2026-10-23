@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; digest.lisp -- common functions for hashing
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; defining digest (hash) functions

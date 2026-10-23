@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; ed25519.lisp -- implementation of the ed25519 signature algorithm
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; class definitions

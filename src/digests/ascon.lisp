@@ -8,7 +8,7 @@
 ;;;; (MAKE-DIGEST :ASCON-HASH256)               ; 32-octet output
 ;;;; (MAKE-DIGEST :ASCON-XOF128 &key output-length) ; default 32
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defconstant +ascon-mask64+ #xFFFFFFFFFFFFFFFF)

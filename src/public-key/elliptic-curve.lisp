@@ -1,6 +1,6 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defgeneric ec-point-on-curve-p (p)

@@ -5,7 +5,7 @@
 ;;;; KEY is any-length octets; CUSTOMIZATION a string or octets;
 ;;;; OUTPUT-LENGTH the tag size in octets (32 by default).
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defclass kmac (mac)

@@ -19,7 +19,7 @@
 ;;;;   1024: public key 1568, private key 3168, ciphertext 1568
 ;;;; Shared secret: 32 octets in all sets.
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defconstant +ml-kem-q+ 3329)

@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; sha3.lisp -- implementation of SHA-3 from NIST
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;;

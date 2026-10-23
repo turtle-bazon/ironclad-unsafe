@@ -4,7 +4,7 @@
 ;;;; Direct translation of the PQClean clean implementations:
 ;;;; quasi-cyclic codes with concatenated Reed-Muller/Reed-Solomon codec.
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; m_val tables for fixed-weight sampling.

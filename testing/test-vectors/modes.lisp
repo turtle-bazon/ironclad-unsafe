@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; modes.lisp -- sanity checks for mode reversibility
 
-(in-package :crypto-tests)
+(in-package :crypto-unsafe-tests)
 
 (rtest:deftest :modes.cbc
   (run-test-vector-file :cbc *mode-tests*)

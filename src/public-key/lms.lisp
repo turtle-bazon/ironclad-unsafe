@@ -4,7 +4,7 @@
 ;;;; Direct translation of the Cisco hash-sigs reference implementation,
 ;;;; single-threaded portable paths, SHA-256 only.
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;;

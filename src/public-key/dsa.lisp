@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; dsa.lisp -- implementation of the Digital Signature Algorithm
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; class definitions

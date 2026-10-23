@@ -1,5 +1,5 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 (defun make-random-salt (&optional (size 16))
   "Generate a byte vector of SIZE (default 16) random bytes, suitable

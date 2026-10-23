@@ -16,7 +16,7 @@
 ;;;; INFO and SALT are HKDF info/salt octet vectors (both empty by
 ;;;; default); sender and receiver must agree on them.
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defun %ecies-field-octets (curve)

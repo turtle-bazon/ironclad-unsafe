@@ -11,7 +11,7 @@
 ;;;; (make-authenticated-encryption-mode :ccm
 ;;;;   &key tag key initialization-vector (tag-length 16) message-length)
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defclass ccm (aead-mode)

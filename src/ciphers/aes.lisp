@@ -4,7 +4,7 @@
 ;;; Currently limited to 128-bit block sizes, although the full range of
 ;;; key sizes is supported.
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 (in-ironclad-unsafe-readtable)
 
 

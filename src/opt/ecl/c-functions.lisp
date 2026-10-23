@@ -1,6 +1,6 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 #+(and ecl ironclad-unsafe-assembly)
 (progn

@@ -3,7 +3,7 @@
 
 
 (declaim (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; class definitions

@@ -31,7 +31,7 @@
 ;;;; This software is "as is", and has no warranty of any kind.  The
 ;;;; authors assume no responsibility for the consequences of any use
 ;;;; of this software.
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 #-ironclad-unsafe-md5-lispworks-int32
 (eval-when (:compile-toplevel :load-toplevel :execute)

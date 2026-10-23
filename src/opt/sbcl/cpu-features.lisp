@@ -19,7 +19,7 @@
 ;;;; probes are kept as a fallback for the systems where /proc/cpuinfo is
 ;;;; not available, and for the checks that the kernel does not report.
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 ;;; ------------------------------------------------------------------
 ;;; The cache

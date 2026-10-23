@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; adler32.lisp - computing adler32 checksums (rfc1950) of a byte array
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 ;;; smallest prime < 65536
 (defconstant adler32-modulo 65521)

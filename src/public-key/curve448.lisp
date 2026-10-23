@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; curve448.lisp -- implementation of the curve448 Diffie-Hellman function
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; class definitions

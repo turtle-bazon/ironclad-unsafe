@@ -5,7 +5,7 @@
 ;;; cipher in security protocols before ciphers and keys have been
 ;;; established.
 
-(cl:in-package :crypto)
+(cl:in-package :crypto-unsafe)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defconstant +xor-block-length+ 8))

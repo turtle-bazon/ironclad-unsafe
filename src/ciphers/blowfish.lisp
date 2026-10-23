@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; blowfish.lisp -- implementation of Bruce Schneier's Blowfish block cipher
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 (in-ironclad-unsafe-readtable)
 
 (defconst +blowfish-n-rounds+ 16)

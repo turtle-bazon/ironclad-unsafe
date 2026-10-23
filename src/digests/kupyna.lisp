@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; kupyna.lisp -- implementation of the Kupyna hash functions (DSTU 7564:2014)
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;;

@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; jh.lisp -- implementation of the JH hash function
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;;

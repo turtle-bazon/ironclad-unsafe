@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; threefish.lisp -- implementation of the Threefish block cipher
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; Constants

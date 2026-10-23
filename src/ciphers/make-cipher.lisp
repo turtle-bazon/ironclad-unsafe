@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; make-cipher.lisp -- all the machinery necessary for MAKE-CIPHER
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; Validity of modes for ciphers.

@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; pkcs1.lisp -- implementation of OAEP and PSS schemes
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; Mask generation function

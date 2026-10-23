@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; macro-utils.lisp -- things to make compiler macros easier
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 (defun quotationp (thing)
   (and (consp thing) (consp (rest thing))

@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; eax.lisp -- Encrypt then authenticate then translate
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defclass eax (aead-mode)

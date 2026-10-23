@@ -2,7 +2,7 @@
 ;;;; secp521r1.lisp -- secp521r1 (a.k.a. NIST P-521) elliptic curve
 
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; class definitions

@@ -1,5 +1,5 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; scrypt from Colin Percival's

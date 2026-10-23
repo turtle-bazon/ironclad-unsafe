@@ -5,7 +5,7 @@
 ;;;; Direct translation of the PQClean clean implementations:
 ;;;; GF(2^m) arithmetic, Goppa support, Patterson decoding.
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;;

@@ -2,7 +2,7 @@
 ;;;; secp256k1.lisp -- secp256k1 elliptic curve
 
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; class definitions

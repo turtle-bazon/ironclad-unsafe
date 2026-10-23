@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; generic.lisp -- generic function definitions
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; Authenticated encryption

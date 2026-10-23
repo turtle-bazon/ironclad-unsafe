@@ -13,7 +13,7 @@
 ;;;; (encapsulate-key public-key) => ciphertext, shared-secret
 ;;;; (decapsulate-key private-key ciphertext) => shared-secret
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; The 6-byte ASCII label "\./^\" (5c2e2f2f5e5c).

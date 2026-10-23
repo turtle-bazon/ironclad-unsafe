@@ -1,5 +1,5 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
-(in-package :crypto-tests)
+(in-package :crypto-unsafe-tests)
 
 ;;; Test vectors for "bare" PBKDF* are impossible to find; RSA has some,
 ;;; but they're tied up with other PKCS bits, making the tests a wee bit
@@ -24,14 +24,14 @@
           '(vector (unsigned-byte 8))))
 
 (rtest:deftest pbkdf1
-    (run-kdf-test (crypto:make-kdf 'crypto:pbkdf1 :digest 'ironclad-unsafe:sha1)
+    (run-kdf-test (crypto-unsafe:make-kdf 'crypto-unsafe:pbkdf1 :digest 'ironclad-unsafe:sha1)
                   *password* *salt* 1000 16 *pbkdf1-key*)
   t)
 
 (rtest:deftest pbkdf1.valid-hashes
     (loop with valid-hashes = '(:md2 :md5 :sha1)
-       for hash in (crypto:list-all-digests)
-       when (handler-case (crypto:make-kdf 'crypto:pbkdf1 :digest hash)
+       for hash in (crypto-unsafe:list-all-digests)
+       when (handler-case (crypto-unsafe:make-kdf 'crypto-unsafe:pbkdf1 :digest hash)
               (error () nil)
               (:no-error (kdf)
                 (declare (ignore kdf))
@@ -47,7 +47,7 @@
           '(vector (unsigned-byte 8))))
 
 (rtest:deftest pbkdf2
-    (run-kdf-test (crypto:make-kdf 'crypto:pbkdf2 :digest 'ironclad-unsafe:sha1)
+    (run-kdf-test (crypto-unsafe:make-kdf 'crypto-unsafe:pbkdf2 :digest 'ironclad-unsafe:sha1)
                   *password* *salt* 2048 24 *pbkdf2-key*)
   t)
 
@@ -59,8 +59,8 @@
 
 (rtest:deftest unsupported-kdf
   (handler-case
-      (crypto:make-kdf :random-name)
-    (crypto:unsupported-kdf () :ok)
+      (crypto-unsafe:make-kdf :random-name)
+    (crypto-unsafe:unsupported-kdf () :ok)
     (:no-error () :error))
   :ok)
 

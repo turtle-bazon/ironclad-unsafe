@@ -2,7 +2,7 @@
 ;;;; secp224r1.lisp -- secp224r1 (a.k.a. NIST P-224) elliptic curve
 
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; class definitions

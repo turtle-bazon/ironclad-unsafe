@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; xmss.lisp -- XMSS-SHA2_10_256 hash-based signatures (RFC 8391).
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 (defconstant +xmss-n+ 32)
 (defconstant +xmss-padding-len+ 32)

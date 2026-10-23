@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; serpent.lisp -- implementation of the Serpent block cipher
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;; S-Boxes

@@ -296,7 +296,7 @@
   ((type :initform "testvec")))
 
 (defpackage :ironclad-unsafe-tests
-  (:nicknames :crypto-tests)
+  (:nicknames :crypto-unsafe-tests)
   (:use :cl))
 
 (defsystem "ironclad-unsafe/tests"

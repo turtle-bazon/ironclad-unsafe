@@ -1,9 +1,9 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
-(in-package :crypto-tests)
+(in-package :crypto-unsafe-tests)
 
 
 (rtest:deftest argon2i-1
-    (run-kdf-test (crypto:make-kdf 'crypto:argon2i
+    (run-kdf-test (crypto-unsafe:make-kdf 'crypto-unsafe:argon2i
                                    :block-count 12
                                    :additional-key (ironclad-unsafe:hex-string-to-byte-array "0303030303030303")
                                    :additional-data (ironclad-unsafe:hex-string-to-byte-array "040404040404040404040404"))
@@ -15,7 +15,7 @@
   t)
 
 (rtest:deftest argon2i-2
-    (run-kdf-test (crypto:make-kdf 'crypto:argon2i
+    (run-kdf-test (crypto-unsafe:make-kdf 'crypto-unsafe:argon2i
                                    :block-count 133
                                    :additional-key (ironclad-unsafe:hex-string-to-byte-array "0303030303030303")
                                    :additional-data (ironclad-unsafe:hex-string-to-byte-array "040404040404040404040404"))
@@ -27,7 +27,7 @@
   t)
 
 (rtest:deftest argon2i-3
-    (run-kdf-test (crypto:make-kdf 'crypto:argon2i
+    (run-kdf-test (crypto-unsafe:make-kdf 'crypto-unsafe:argon2i
                                    :block-count 8
                                    :additional-key (ironclad-unsafe:hex-string-to-byte-array "0303030303030303")
                                    :additional-data (ironclad-unsafe:hex-string-to-byte-array "040404040404040404040404"))
@@ -39,7 +39,7 @@
   t)
 
 (rtest:deftest argon2i-4
-    (run-kdf-test (crypto:make-kdf 'crypto:argon2i
+    (run-kdf-test (crypto-unsafe:make-kdf 'crypto-unsafe:argon2i
                                    :block-count 4096)
                   (ironclad-unsafe:hex-string-to-byte-array "70617373776f7264")
                   (ironclad-unsafe:hex-string-to-byte-array "73616c7473616c74")

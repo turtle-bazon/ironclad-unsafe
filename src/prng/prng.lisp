@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; prng.lisp -- common functions for pseudo-random number generators
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defvar *prng* nil

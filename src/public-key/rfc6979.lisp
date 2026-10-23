@@ -13,7 +13,7 @@
 ;;;; implementations; COMPUTE-DETERMINISTIC-NONCE (the key-object
 ;;;; convenience entry point named in the manual) lives in ecdsa.lisp.
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defparameter *ecdsa-rfc6979-digest* :sha256

@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; fortuna.lisp -- Fortuna PRNG
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defparameter +min-pool-size+

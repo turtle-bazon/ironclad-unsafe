@@ -20,7 +20,7 @@
 ;;;;   (hpke-open recipient-context aad ct) => pt or NIL
 ;;;;   (hpke-export context exporter-context length) => bytes
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defconst +hpke-version-label+ (ascii-string-to-byte-array "HPKE-v1"))

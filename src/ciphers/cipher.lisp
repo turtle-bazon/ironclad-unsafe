@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; cipher.lisp -- generic functions for symmetric encryption
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 (defclass cipher ()
   ((mode :initarg :mode :accessor mode)

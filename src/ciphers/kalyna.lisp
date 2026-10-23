@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; kalyna.lisp -- implementation of the Kalyna block ciphers (DSTU 7624:2014)
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;;

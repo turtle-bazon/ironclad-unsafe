@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; rc2.lisp -- implementation of the RC2 cipher algorithm from RFC 2268
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 (in-ironclad-unsafe-readtable)
 
 ;;; RC2 accepts a 1-byte to 128-byte key.  But it also lets you specify

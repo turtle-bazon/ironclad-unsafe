@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; blake2-mac.lisp -- implementation of the Blake2b MAC
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defclass blake2-mac (mac)

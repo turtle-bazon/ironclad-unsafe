@@ -12,7 +12,7 @@
 ;;;; several times more expensive than a multiplication, is not needed
 ;;;; at all.
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 (defconstant +goldilocks-q+
   726838724295606890549323807888004534353641360687318060281490199180612328166730772686396383698676545930088884461843637361053498018365439)

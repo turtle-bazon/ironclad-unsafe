@@ -1,6 +1,6 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;; implementation of RFC 5869
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 (defclass hmac-kdf ()
   ((digest-name :initarg :digest :reader kdf-digest)

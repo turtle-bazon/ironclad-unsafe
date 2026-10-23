@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; skein-mac.lisp -- implementation of the Skein MAC
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defclass skein-mac (mac)

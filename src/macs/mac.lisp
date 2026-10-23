@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; macs.lisp -- common functions for message authentication codes
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defclass mac () ())

@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; blake2s.lisp -- implementation of the BLAKE2s hash function (RFC 7693)
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 ;;;

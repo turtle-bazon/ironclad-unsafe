@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; seed.lisp - implementation of the SEED block cipher
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 
 (defconst +seed-sbox0+

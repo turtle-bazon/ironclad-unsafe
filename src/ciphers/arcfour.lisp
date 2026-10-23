@@ -1,7 +1,7 @@
 ;;;; -*- mode: lisp; indent-tabs-mode: nil -*-
 ;;;; arcfour.lisp -- implementation of the alleged RC4 stream cipher
 
-(in-package :crypto)
+(in-package :crypto-unsafe)
 
 ;;; This is a rewrite of a C program by Christophe Devine.  Thanks,
 ;;; Mr. Devine.  This version is Copyright (C) 2005 Tim Daly Jr.
