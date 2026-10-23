@@ -1557,3 +1557,8 @@ is already reduced in one step; the prior limb attempt was reverted and
 is not retried without a reference.  secp256r1 verify's shamir is
 already limb-based with a 4-bit window.  falcon-512 keygen is the NTRU
 solve.  The full suite passes.
+
+Attempted further profiling of ed448 (ec-add, comb, ladder) but the
+remaining gap is the allocation in the goldilocks point operations and
+the NTRU solve for falcon; no further changes landed.  The full suite
+passes.
