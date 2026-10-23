@@ -936,7 +936,7 @@ reusing scratch pool S. DST must differ from P."
       (return-from verify-signature nil))
     (let* ((h (subseq message start end))
          (e (ec-decode-scalar :secp256r1 h))
-         (w (modular-inverse-with-blinding s +secp256r1-l+))
+         (w (modular-inverse s +secp256r1-l+))
          (u1 (mod (* e w) +secp256r1-l+))
          (u2 (mod (* r w) +secp256r1-l+))
          ;; Joint multiplication (Shamir's trick): one pass instead of two.
