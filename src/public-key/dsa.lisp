@@ -196,5 +196,5 @@
              (u2 (mod (* r w) q))
              ;; U1, U2, G and Y are public, so the variable-time
              ;; sliding-window exponentiation is safe here.
-             (v (mod (mod (* (expt-mod/unsafe g u1 p) (expt-mod/unsafe y u2 p)) p) q)))
+             (v (mod (power-mod2 g u1 y u2 p) q)))
         (= v r)))))

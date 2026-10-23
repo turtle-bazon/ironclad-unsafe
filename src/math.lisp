@@ -103,6 +103,30 @@ denominator."
               (setq res (mod (* res res) m))
               (decf i))))))))
 
+(defun power-mod2 (a e1 b e2 m)
+  "As (mod (* (expt a e1) (expt b e2)) m), computed in one pass by
+Shamir's trick: one squaring per bit of the longer exponent, and a
+multiply for each bit where at least one exponent is set.  The
+exponents are non-negative and the bases are below M."
+  (declare (optimize (speed 3) (safety 0))
+           (type integer a e1 b e2 m))
+  (when (or (zerop e1) (zerop e2))
+    (return-from power-mod2
+      (mod (* (power-mod a e1 m) (power-mod b e2 m)) m)))
+  (let* ((nbits (max (integer-length e1) (integer-length e2)))
+         (ab (mod (* a b) m))
+         (res 1))
+    (declare (type fixnum nbits) (type integer res ab))
+    (do ((i (1- nbits) (1- i)))
+        ((minusp i) res)
+      (declare (type fixnum i))
+      (setq res (mod (* res res) m))
+      (let ((bit1 (logbitp i e1))
+            (bit2 (logbitp i e2)))
+        (cond ((and bit1 bit2) (setq res (mod (* res ab) m)))
+              (bit1 (setq res (mod (* res a) m)))
+              (bit2 (setq res (mod (* res b) m))))))))
+
 (defun miller-rabin-decomposition (n) ;; assume n > 2 (n-1 is even)
   ;; return values q,k with n-1 = q*2^k
   (declare (optimize (speed 3) (safety 0)))
