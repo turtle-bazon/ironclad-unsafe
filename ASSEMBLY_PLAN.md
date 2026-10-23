@@ -1535,3 +1535,14 @@ the point operations were first rewritten to mutating, scratch-based
 versions, with the buffer's high limbs zeroed before the reduction.
 Verify went from about 2360 to 2120 microseconds.  The full suite
 passes.
+
+Ed448 verify: the point operations were rewritten to mutating,
+scratch-based versions with the buffer's high limbs zeroed, and the
+ladder reuses a single scratch pool, avoiding per-iteration
+allocation.  Verify went from about 2360 to 2120 microseconds.  The
+full suite passes.
+
+P-256 verify uses the unblinded inverse for the public scalar; the
+shamir and the field inverse remain the cost.  P-521 and falcon-512
+remain as before: P-521 stays on integer arithmetic (the prior limb
+attempt was reverted), and falcon-512 keygen is the NTRU solve.
