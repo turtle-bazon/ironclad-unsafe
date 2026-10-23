@@ -1562,3 +1562,8 @@ Attempted further profiling of ed448 (ec-add, comb, ladder) but the
 remaining gap is the allocation in the goldilocks point operations and
 the NTRU solve for falcon; no further changes landed.  The full suite
 passes.
+
+P-521 stays on integer arithmetic: the field is a Mersenne fold in one
+step and the prior limb attempt was reverted; no further progress.
+secp256r1 verify's shamir is already limb-based with a 4-bit window.
+falcon-512 keygen is the NTRU solve.  The full suite passes.
