@@ -527,37 +527,83 @@ most."
       (setf m (ash m -56)))))
 
 (defun secp224r1-felem-add (out a b)
-  "OUT := (A + B) mod P."
+  "OUT := (A + B) mod P, by adding the limbs and folding the carry.
+A and B are below the prime, so their sum is below twice it; the
+carry out of the top limb is a 2^224, which is 2^96 - 1 modulo the
+prime, and the contract then brings the result below the prime."
   (declare (type secp224r1-felem out a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let* ((n (+ (secp224r1-felem-to-int a) (secp224r1-felem-to-int b)))
-         (m (if (>= n +secp224r1-p+) (- n +secp224r1-p+) n)))
-    (declare (type integer n m))
-    (dotimes (i 4 out)
-      (setf (aref out i) (logand m +secp224r1-limb-mask+))
-      (setf m (ash m -56)))))
+  (let* ((mask +secp224r1-limb-mask+)
+         (s0 (+ (aref a 0) (aref b 0)))
+         (s1 (+ (aref a 1) (aref b 1)))
+         (s2 (+ (aref a 2) (aref b 2)))
+         (s3 (+ (aref a 3) (aref b 3))))
+    (declare (type (unsigned-byte 64) mask s0 s1 s2 s3))
+    ;; Carry zero to one to two to three.
+    (setf s1 (+ s1 (ash s0 -56)) s0 (logand s0 mask))
+    (setf s2 (+ s2 (ash s1 -56)) s1 (logand s1 mask))
+    (setf s3 (+ s3 (ash s2 -56)) s2 (logand s2 mask))
+    (let ((c (ash s3 -56)))
+      (declare (type (unsigned-byte 64) c))
+      (setf s3 (logand s3 mask))
+      (when (plusp c)
+        ;; 2^224 is 2^96 - 1, whose limbs are (2^56 - 1) and
+        ;; (2^40 - 1); add the constant and carry it up.
+        (setf s0 (+ s0 mask))
+        (setf s1 (+ s1 (ash s0 -56) (1- (ash 1 40))))
+        (setf s0 (logand s0 mask))
+        (setf s2 (+ s2 (ash s1 -56)) s1 (logand s1 mask))
+        (setf s3 (+ s3 (ash s2 -56)) s2 (logand s2 mask))))
+    (setf (aref out 0) s0 (aref out 1) s1
+          (aref out 2) s2 (aref out 3) s3)
+    (secp224r1-felem-contract out out)))
 
 (defun secp224r1-felem-sub (out a b)
-  "OUT := (A - B) mod P, after the reference.
-The difference is made in the wide form and reduced, as the reference
-does, and the contract brings it below the prime."
+  "OUT := (A - B) mod P, by subtracting the limbs and adding the
+prime, whose limbs are 1, 2^56 - 2^40, 2^56 - 1 and 2^56 - 1.
+A and B are below the prime, so their difference lies in (-P, P).
+When it is negative a 2^224 is borrowed into the top limb; adding the
+prime then cancels that 2^224, so the carry out is dropped instead of
+being folded.  When it is not negative, a carry out is folded as
+2^96 - 1.  The contract then brings the result below the prime."
   (declare (type secp224r1-felem out a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((w (make-array 14 :element-type '(unsigned-byte 64)
-                          :initial-element 0)))
-    (declare (dynamic-extent w))
-    ;; The multiple of the prime of the reference, so that every
-    ;; coefficient of the difference is positive: 2^58 + 4,
-    ;; 2^58 - 2^42 - 4 and 2^58 - 4.
-    (let ((c0 (+ (ash 1 58) 4))
-          (c1 (- (ash 1 58) (ash 1 42) 4))
-          (c2 (- (ash 1 58) 4)))
-      (declare (type (unsigned-byte 64) c0 c1 c2))
-      (secp224r1-wide-set w 0 (+ (aref a 0) c0 (- (aref b 0))))
-      (secp224r1-wide-set w 1 (+ (aref a 1) c1 (- (aref b 1))))
-      (secp224r1-wide-set w 2 (+ (aref a 2) c2 (- (aref b 2))))
-      (secp224r1-wide-set w 3 (+ (aref a 3) c2 (- (aref b 3)))))
-    (secp224r1-felem-reduce out w)
+  (let* ((mask +secp224r1-limb-mask+)
+         (x0 (- (aref a 0) (aref b 0)))
+         (x1 (- (aref a 1) (aref b 1)))
+         (x2 (- (aref a 2) (aref b 2)))
+         (x3 (- (aref a 3) (aref b 3)))
+         (borrow 0))
+    (declare (type (signed-byte 64) x0 x1 x2 x3)
+             (type (unsigned-byte 1) borrow))
+    ;; Borrow zero to one to two to three; the borrow out of the top
+    ;; limb is a 2^224.
+    (when (minusp x0) (decf x1) (incf x0 (ash 1 56)))
+    (when (minusp x1) (decf x2) (incf x1 (ash 1 56)))
+    (when (minusp x2) (decf x3) (incf x2 (ash 1 56)))
+    (when (minusp x3) (setf borrow 1) (incf x3 (ash 1 56)))
+    ;; Add the prime.
+    (setf x0 (+ x0 1)
+          x1 (+ x1 (- (ash 1 56) (ash 1 40)))
+          x2 (+ x2 mask)
+          x3 (+ x3 mask))
+    ;; Carry zero to one to two to three.
+    (setf x1 (+ x1 (ash x0 -56)) x0 (logand x0 mask))
+    (setf x2 (+ x2 (ash x1 -56)) x1 (logand x1 mask))
+    (setf x3 (+ x3 (ash x2 -56)) x2 (logand x2 mask))
+    (let ((c (ash x3 -56)))
+      (declare (type (unsigned-byte 64) c))
+      (setf x3 (logand x3 mask))
+      ;; The borrowed 2^224 and the carry out of the sum cancel; only
+      ;; a carry with no borrow is a real 2^224, folded as 2^96 - 1.
+      (when (and (plusp c) (zerop borrow))
+        (setf x0 (+ x0 mask))
+        (setf x1 (+ x1 (ash x0 -56) (1- (ash 1 40))))
+        (setf x0 (logand x0 mask))
+        (setf x2 (+ x2 (ash x1 -56)) x1 (logand x1 mask))
+        (setf x3 (+ x3 (ash x2 -56)) x2 (logand x2 mask))))
+    (setf (aref out 0) x0 (aref out 1) x1
+          (aref out 2) x2 (aref out 3) x3)
     (secp224r1-felem-contract out out)))
 
 ;; The prime in limbs.  This is a DEFVAR and not a DEFCONSTANT: the
