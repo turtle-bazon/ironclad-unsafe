@@ -204,16 +204,71 @@ The result is in the low eight limbs of C; the others are clobbered."
   (goldilocks-fe-reduce8 c)
   c))
 
+(defvar *goldilocks-mul-prod* nil
+  "A reusable product buffer for goldilocks-fe-mul.")
+
 (defun goldilocks-fe-mul (a b)
   "The product of the field elements A and B, reduced."
   (declare (type goldilocks-fe a b))
-  (let ((prod (make-array 16 :element-type '(unsigned-byte 64) :initial-element 0)))
+  (unless *goldilocks-mul-prod*
+    (setf *goldilocks-mul-prod*
+          (make-array 16 :element-type '(unsigned-byte 64) :initial-element 0)))
+  (let ((prod *goldilocks-mul-prod*))
     (declare (type goldilocks-product prod))
     (goldilocks-fe-mul-raw prod a b)
     (goldilocks-fe-reduce16 prod)
     (let ((r (make-array 16 :element-type '(unsigned-byte 64) :initial-element 0)))
       (dotimes (i 8) (setf (aref r i) (aref prod i)))
       r)))
+
+(defun goldilocks-make-scratch ()
+  "A scratch pool for the point operations: thirteen field elements and
+one sixteen-limb product buffer."
+  (let ((s (make-array 14)))
+    (dotimes (i 13 s)
+      (setf (svref s i) (goldilocks-fe-zero)))
+    (setf (svref s 13)
+          (make-array 16 :element-type '(unsigned-byte 64)
+                          :initial-element 0))))
+
+(defun goldilocks-fe-mul-buf (r a b buf)
+  "R := A * B, reduced, using BUF as the product buffer."
+  (declare (type goldilocks-fe r a b)
+           (type goldilocks-product buf)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (goldilocks-fe-mul-raw buf a b)
+  (goldilocks-fe-reduce16 buf)
+  (dotimes (i 8 r)
+    (setf (aref r i) (aref buf i))))
+
+(defun goldilocks-fe-add-buf (r a b)
+  "R := A + B, reduced, in place."
+  (declare (type goldilocks-fe r a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (dotimes (i 8)
+    (setf (aref r i) (+ (aref a i) (aref b i))))
+  (goldilocks-fe-reduce16 r)
+  r)
+
+(defun goldilocks-fe-sub-buf (r a b)
+  "R := A - B, reduced, in place."
+  (declare (type goldilocks-fe r a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((borrow 0))
+    (dotimes (i 8)
+      (let* ((v (- (aref a i) (aref b i) borrow))
+             (lo (logand v +goldilocks-limb-mask+)))
+        (setf (aref r i) lo
+              borrow (if (minusp v) 1 0))))
+    (when (= borrow 1)
+      (setf borrow 0)
+      (dotimes (i 8)
+        (let* ((sub (if (or (= i 0) (= i 4)) 1 0))
+               (v (- (aref r i) sub borrow)))
+          (setf (aref r i) (logand v +goldilocks-limb-mask+)
+                borrow (if (minusp v) 1 0))))))
+  (goldilocks-fe-reduce16 r)
+  r)
 
 (defun goldilocks-fe-expt (base e)
   "BASE raised to the power E, in the limb field.
