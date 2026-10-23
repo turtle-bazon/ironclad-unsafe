@@ -2,6 +2,7 @@
 ;;;; secp256r1.lisp -- secp256r1 (a.k.a. NIST P-256) elliptic curve
 
 
+(declaim (optimize (speed 3) (safety 0) (debug 0) (space 0) (compilation-speed 0)))
 (in-package :crypto)
 
 
