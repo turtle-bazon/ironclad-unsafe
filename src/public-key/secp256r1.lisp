@@ -558,28 +558,67 @@ normalize first unless the words are already canonical."
 
 (declaim (inline secp256r1-fe-inv))
 (defun secp256r1-fe-inv (a)
-  "Field element inverse via Fermat's little theorem: A^(P-2) mod P.
-Uses square-and-multiply over the field element representation,
-avoiding bignum arithmetic entirely.  Not constant-time; callers that
-need side-channel resistance should blind the input first (see
-MODULAR-INVERSE-WITH-BLINDING)."
+  "Field element inverse via the reference addition chain for P-256:
+A^(P-2) mod P, with far fewer multiplications than Fermat."
   (declare (type secp256r1-fe a)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((result (secp256r1-fe-from-int 1))
-        (base a)
-        ;; The product buffer and the scratch of the reduction are
-        ;; made once: the exponentiation below does a few hundred
-        ;; multiplies, and an array for each of them would cost more
-        ;; than the multiplies themselves.
+  (let ((ftmp (secp256r1-fe-zero))
+        (ftmp2 (secp256r1-fe-zero))
+        (e2 (secp256r1-fe-zero))
+        (e4 (secp256r1-fe-zero))
+        (e8 (secp256r1-fe-zero))
+        (e16 (secp256r1-fe-zero))
+        (e32 (secp256r1-fe-zero))
+        (e64 (secp256r1-fe-zero))
+        (out (secp256r1-fe-zero))
         (c (make-array 16 :element-type '(unsigned-byte 64)
                          :initial-element 0))
         (q (secp256r1-fe-zero)))
-    (declare (type secp256r1-fe result base q))
-    (loop for i from (1- (integer-length +secp256r1-p-minus-2+)) downto 0
-          do (secp256r1-fe-sq-buf result result c q)
-             (when (logbitp i +secp256r1-p-minus-2+)
-               (secp256r1-fe-mul-buf result result base c q)))
-    result))
+    (declare (type secp256r1-fe ftmp ftmp2 e2 e4 e8 e16 e32 e64 out q))
+    (flet ((sq (src dst) (secp256r1-fe-sq-buf dst src c q))
+           (ml (x y dst) (secp256r1-fe-mul-buf dst x y c q))
+           (cp (src dst) (secp256r1-fe-copy! dst src)))
+      ;; in^2, then 2^2 - 1
+      (sq a ftmp)
+      (ml a ftmp ftmp)
+      (cp ftmp e2)
+      (sq ftmp ftmp)
+      (sq ftmp ftmp)
+      (ml ftmp e2 ftmp)
+      (cp ftmp e4)
+      (sq ftmp ftmp)
+      (sq ftmp ftmp)
+      (sq ftmp ftmp)
+      (sq ftmp ftmp)
+      (ml ftmp e4 ftmp)
+      (cp ftmp e8)
+      (dotimes (i 8) (sq ftmp ftmp))
+      (ml ftmp e8 ftmp)
+      (cp ftmp e16)
+      (dotimes (i 16) (sq ftmp ftmp))
+      (ml ftmp e16 ftmp)
+      (cp ftmp e32)
+      (dotimes (i 32) (sq ftmp ftmp))
+      (cp ftmp e64)
+      (ml ftmp a ftmp)
+      (dotimes (i 192) (sq ftmp ftmp))
+      ;; second part: 2^96 - 3
+      (ml e64 e32 ftmp2)
+      (dotimes (i 16) (sq ftmp2 ftmp2))
+      (ml ftmp2 e16 ftmp2)
+      (dotimes (i 8) (sq ftmp2 ftmp2))
+      (ml ftmp2 e8 ftmp2)
+      (dotimes (i 4) (sq ftmp2 ftmp2))
+      (ml ftmp2 e4 ftmp2)
+      (sq ftmp2 ftmp2)
+      (sq ftmp2 ftmp2)
+      (ml ftmp2 e2 ftmp2)
+      (sq ftmp2 ftmp2)
+      (sq ftmp2 ftmp2)
+      (ml ftmp2 a ftmp2)
+      ;; combine
+      (ml ftmp2 ftmp out))
+    out))
 
 (defmethod ec-scalar-inv ((kind (eql :secp256r1)) n)
   ;; Fermat inversion over field elements is faster than bignum binary
