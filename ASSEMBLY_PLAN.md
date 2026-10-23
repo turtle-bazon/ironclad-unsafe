@@ -1522,3 +1522,9 @@ avoiding one sixteen-limb allocation per multiply; the full suite
 passes.  A scratch-pool rewrite of the goldilocks point operations was
 attempted and reverted, as it corrupted memory; the allocation in the
 point operations remains the main cost.
+
+Ed448 verify: a scratch-pool rewrite of the point operations was
+attempted, but it corrupted memory (the reduction needs the high limbs
+of its buffer zeroed, and the reuse of scratch slots aliased inputs
+in the ladder), so it was reverted.  The cached product buffer in
+goldilocks-fe-mul remains.  The full suite passes.

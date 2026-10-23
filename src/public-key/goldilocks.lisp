@@ -225,11 +225,12 @@ The result is in the low eight limbs of C; the others are clobbered."
   "A scratch pool for the point operations: thirteen field elements and
 one sixteen-limb product buffer."
   (let ((s (make-array 14)))
-    (dotimes (i 13 s)
+    (dotimes (i 13)
       (setf (svref s i) (goldilocks-fe-zero)))
     (setf (svref s 13)
           (make-array 16 :element-type '(unsigned-byte 64)
-                          :initial-element 0))))
+                          :initial-element 0))
+    s))
 
 (defun goldilocks-fe-mul-buf (r a b buf)
   "R := A * B, reduced, using BUF as the product buffer."
@@ -247,6 +248,7 @@ one sixteen-limb product buffer."
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i 8)
     (setf (aref r i) (+ (aref a i) (aref b i))))
+  (dotimes (i 8) (setf (aref r (+ 8 i)) 0))
   (goldilocks-fe-reduce16 r)
   r)
 
@@ -267,6 +269,7 @@ one sixteen-limb product buffer."
                (v (- (aref r i) sub borrow)))
           (setf (aref r i) (logand v +goldilocks-limb-mask+)
                 borrow (if (minusp v) 1 0))))))
+  (dotimes (i 8) (setf (aref r (+ 8 i)) 0))
   (goldilocks-fe-reduce16 r)
   r)
 
