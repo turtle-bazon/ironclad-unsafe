@@ -1589,3 +1589,7 @@ in this session.  The full suite passes.
 Rebenchmarked (rev 1003): secp224r1 verify 2.34x, sign 3.67x;
 ed448 verify 9.43x; secp256r1 verify 8.97x; secp521r1 sign 8.37x;
 falcon-512 keygen 11.94x.  Remaining deep gaps unchanged.
+
+P-521 field inverse now uses the reference addition chain from
+ecp_nistp521.c.  secp256r1 6-bit shamir window attempted and reverted
+(slower than 4-bit).  Full suite passes.
