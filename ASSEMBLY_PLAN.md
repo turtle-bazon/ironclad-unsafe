@@ -1585,3 +1585,7 @@ P-521 and falcon-512 remain as before.  The full suite passes.
 Further deep-gap work (falcon-512 NTRU solve, secp256r1 shamir, secp521r1
 limb field) requires reference C sources or major rewrites not available
 in this session.  The full suite passes.
+
+Rebenchmarked (rev 1003): secp224r1 verify 2.34x, sign 3.67x;
+ed448 verify 9.43x; secp256r1 verify 8.97x; secp521r1 sign 8.37x;
+falcon-512 keygen 11.94x.  Remaining deep gaps unchanged.
