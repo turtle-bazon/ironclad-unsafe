@@ -5,6 +5,55 @@ Close the remaining public-key performance gaps in `benchmark/all-algorithms.md`
 (falcon 36×, mceliece 32×, ed448 32×, secp256r1 27×, ed25519 20×, hqc 21×)
 by rewriting field arithmetic with limb-based representations and assembly VOPs.
 
+## Point Operation VOP Plan (secp256r1 double)
+
+### Algorithm
+26 steps, 8 scratch fe arrays (A-H) + 1 product buffer (P, 16 words).
+
+Steps:
+1. A = sq(sx) [xx]
+2. B = sq(sy) [yy]
+3. C = sq(B) [yyyy]
+4. D = sq(sz) [zz]
+5. E = add(sx, B) [x+yy]
+6. F = add(sy, sz) [y+z]
+7. G = sq(E) [t1]
+8. H = sub(G, A) [t2]
+9. H = sub(H, C) [t3]
+10. E = add(H, H) [ss]
+11. G = sq(D) [t4]
+12. A = sub(A, G) [t5]
+13. G = add(A, A) [t6]
+14. A = add(G, A) [mm]
+15. G = sq(A) [t7]
+16. H = add(E, E) [t8]
+17. A = sub(G, H) [uu]
+18. G = sub(E, A) [t9]
+19. H = mul(A, G) [t10] (needs P)
+20. G = add(C, C) [e2]
+21. G = add(G, G) [e4]
+22. G = add(G, G) [e8]
+23. H = sub(H, G) [y2]
+24. F = sq(F) [t11]
+25. F = sub(F, B) [t12]
+26. F = sub(F, D) [z2]
+
+Output: dx=A(uu), dy=H(y2), dz=F(z2)
+
+### Field operations
+- sq: fe-sqr-raw-asm (32→64) + fe-reduce-asm (64→32)
+- mul: fe-mul-raw-asm (32×32→64) + fe-reduce-asm
+- add: fe-add-asm
+- sub: fe-sub-asm
+
+### Scratch
+8 fe arrays (64 words) + 1 product buffer (16 words) = 80 words
+
+### VOP signature
+Args: dx, dy, dz, sx, sy, sz, A, B, C, D, E, F, G, H, P (15 fe/product arrays)
+
+### Status: NOT YET IMPLEMENTED
+
 ## Current State
 - Digests and SHA-NI are at/near C parity.
 - secp256r1 already uses 32-bit limb field elements + assembly VOPs for
