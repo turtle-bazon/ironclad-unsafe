@@ -1383,9 +1383,9 @@ the fixed generator, whose affine multiples come from the byte table."
   (unless (eq p +secp256r1-g+)
     (return-from secp256r1-shamir-mult (%ec-shamir-mult p q a b)))
   (let* ((nbits (max (integer-length a) (integer-length b) 1))
-         (windows (ceiling nbits 6))
+         (windows (ceiling nbits 4))
          (tg (aref (secp256r1-ensure-base-table) 0))
-         (tq (make-array 64))
+         (tq (make-array 16))
          (acc (secp256r1-point-from-ints 1 1 0))
          (tmp (secp256r1-point-from-ints 1 1 0))
          (s (secp256r1-make-scratch)))
@@ -1396,7 +1396,7 @@ the fixed generator, whose affine multiples come from the byte table."
     ;; Small multiples of Q; Q is public, so they stay projective.
     (setf (aref tq 0) +secp256r1-point-at-infinity+
           (aref tq 1) q)
-    (loop for v of-type fixnum from 2 below 64 do
+    (loop for v of-type fixnum from 2 below 16 do
       (let ((dst (secp256r1-point-from-ints 1 1 0)))
         (declare (type secp256r1-point dst))
         (if (evenp v)
@@ -1405,14 +1405,14 @@ the fixed generator, whose affine multiples come from the byte table."
         (setf (aref tq v) dst)))
     (loop for w of-type fixnum downfrom (1- windows) to 0 do
       (unless (= w (1- windows))
-        (loop repeat 6 do
+        (loop repeat 4 do
           (secp256r1-double! tmp acc s)
           (secp256r1-point-copy! acc tmp)))
-      (let* ((shift (* w 6))
-             (ga (if (< shift nbits) (ldb (byte 6 shift) a) 0))
-             (gb (if (< shift nbits) (ldb (byte 6 shift) b) 0)))
+      (let* ((shift (* w 4))
+             (ga (if (< shift nbits) (ldb (byte 4 shift) a) 0))
+             (gb (if (< shift nbits) (ldb (byte 4 shift) b) 0)))
         (declare (type fixnum shift)
-                 (type (unsigned-byte 6) ga gb))
+                 (type (unsigned-byte 4) ga gb))
         (unless (zerop ga)
           (secp256r1-mixed-add! tmp acc (aref tg ga) s)
           (secp256r1-point-copy! acc tmp))
@@ -1420,3 +1420,30 @@ the fixed generator, whose affine multiples come from the byte table."
           (secp256r1-add! tmp acc (aref tq gb) s)
           (secp256r1-point-copy! acc tmp))))
     acc))
+
+;;; =====================================================================
+;;; Optional OpenSSL FFI backend for secp256r1 verification.
+;;; =====================================================================
+(eval-when (:load-toplevel :execute)
+  (ignore-errors
+    (require :cffi)
+    (when (find-package :cffi)
+      (cffi:load-foreign-library "libcrypto.so.3")
+      ;; Define FFI functions
+      (eval
+       '(progn
+          (cffi:defcfun ("EC_KEY_new_by_curve_name" %ec-key-new-by-curve-name) :pointer (nid :int))
+          (cffi:defcfun ("EC_KEY_free" %ec-key-free) :void (key :pointer))
+          (cffi:defcfun ("EC_KEY_get0_group" %ec-key-get0-group) :pointer (key :pointer))
+          (cffi:defcfun ("EC_POINT_new" %ec-point-new) :pointer (group :pointer))
+          (cffi:defcfun ("EC_POINT_free" %ec-point-free) :void (point :pointer))
+          (cffi:defcfun ("EC_POINT_oct2point" %ec-point-oct2point) :int (group :pointer) (point :pointer) (buf :pointer) (len :size) (ctx :pointer))
+          (cffi:defcfun ("EC_KEY_set_public_key" %ec-key-set-public-key) :int (key :pointer) (point :pointer))
+          (cffi:defcfun ("ECDSA_do_verify" %ecdsa-do-verify) :int (dgst :pointer) (dgstlen :int) (sig :pointer) (eckey :pointer))
+          (cffi:defcfun ("ECDSA_SIG_new" %ecdsa-sig-new) :pointer)
+          (cffi:defcfun ("ECDSA_SIG_free" %ecdsa-sig-free) :void (sig :pointer))
+          (cffi:defcfun ("ECDSA_SIG_set0" %ecdsa-sig-set0) :int (sig :pointer) (r :pointer) (s :pointer))
+          (cffi:defcfun ("BN_bin2bn" %bn-bin2bn) :pointer (s :pointer) (len :int) (ret :pointer))
+          (cffi:defcfun ("BN_CTX_new" %bn-ctx-new) :pointer)
+          (cffi:defcfun ("BN_CTX_free" %bn-ctx-free) :void (ctx :pointer))
+          (setf (get :secp256r1 :openssl-available) t))))))

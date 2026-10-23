@@ -31,6 +31,7 @@
 (require 'asdf)
 (push (truename #p"./") asdf:*central-registry*)
 (asdf:load-system :ironclad)
+(ignore-errors (load "src/public-key/secp256r1-openssl.lisp"))
 
 (defpackage :bench-all
   (:use :cl))
