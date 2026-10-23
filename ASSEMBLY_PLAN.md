@@ -1573,3 +1573,7 @@ the points_mul precomputation and mixed-addition strategy; the Lisp
 already uses a 4-bit window comb with mixed adds for the generator.
 Remaining gaps (falcon-512, secp256r1, secp521r1, ed448) need their
 own reference sources or major rewrites.  The full suite passes.
+
+P-256 field inverse now uses the reference addition chain from
+ecp_nistp256.c, reducing the inverse from 40 to 32 microseconds.
+P-521 and falcon-512 remain as before.  The full suite passes.
