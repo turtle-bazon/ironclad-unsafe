@@ -1546,3 +1546,8 @@ P-256 verify uses the unblinded inverse for the public scalar; the
 shamir and the field inverse remain the cost.  P-521 and falcon-512
 remain as before: P-521 stays on integer arithmetic (the prior limb
 attempt was reverted), and falcon-512 keygen is the NTRU solve.
+
+Further attempts: secp256r1 verify's shamir (4-bit window, already limb-based)
+and secp521r1 (integer arithmetic, the prior limb attempt having been
+reverted) are left as-is; falcon-512 keygen is the NTRU solve.  The
+full suite passes.
