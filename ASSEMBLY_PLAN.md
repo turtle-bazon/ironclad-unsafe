@@ -1551,3 +1551,9 @@ Further attempts: secp256r1 verify's shamir (4-bit window, already limb-based)
 and secp521r1 (integer arithmetic, the prior limb attempt having been
 reverted) are left as-is; falcon-512 keygen is the NTRU solve.  The
 full suite passes.
+
+secp521r1 stays on integer arithmetic: the field is a Mersenne fold and
+is already reduced in one step; the prior limb attempt was reverted and
+is not retried without a reference.  secp256r1 verify's shamir is
+already limb-based with a 4-bit window.  falcon-512 keygen is the NTRU
+solve.  The full suite passes.
