@@ -1516,3 +1516,9 @@ allocation in the goldilocks point operations), secp256r1 verify (an
 addition chain for the field inverse, for which no reference source
 is available locally), and secp521r1 sign (a carefully verified limb
 field, the previous attempt having been reverted).
+
+Ed448 verify now uses a cached product buffer in goldilocks-fe-mul,
+avoiding one sixteen-limb allocation per multiply; the full suite
+passes.  A scratch-pool rewrite of the goldilocks point operations was
+attempted and reverted, as it corrupted memory; the allocation in the
+point operations remains the main cost.
