@@ -196,6 +196,8 @@
   (any)
   :overwrite-fndb-silently t)
 
+
+
 #+x86-64
 (defknown ironclad::secp224r1-fe-contract-limbs-asm
   ((simple-array (unsigned-byte 64) (*))
@@ -335,6 +337,8 @@
   (values)
   (any)
   :overwrite-fndb-silently t)
+
+
 
 #+x86-64
 (defknown ironclad::secp256r1-fe-reduce-asm
