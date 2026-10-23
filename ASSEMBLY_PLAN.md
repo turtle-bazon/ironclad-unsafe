@@ -1528,3 +1528,10 @@ attempted, but it corrupted memory (the reduction needs the high limbs
 of its buffer zeroed, and the reuse of scratch slots aliased inputs
 in the ladder), so it was reverted.  The cached product buffer in
 goldilocks-fe-mul remains.  The full suite passes.
+
+Ed448 verify now reuses a single scratch pool across the ladder
+iterations, avoiding per-iteration allocation of the point temporaries;
+the point operations were first rewritten to mutating, scratch-based
+versions, with the buffer's high limbs zeroed before the reduction.
+Verify went from about 2360 to 2120 microseconds.  The full suite
+passes.
