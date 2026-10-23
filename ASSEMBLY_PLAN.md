@@ -1506,3 +1506,13 @@ subtraction of 2^224 + 1 produced the wrong residue and broke
 :HPKE, :ED448-SIGNATURE, :CURVE448-DH and :GOLDILOCKS-FIELD.  It
 must be derived from `goldilocks-fe-reduce16` instead and is left
 alone until then.
+
+DSA verify now uses a single Shamir pass for g^u1 * y^u2 mod p, and
+P-256 verify uses the unblinded inverse for the public scalar.  The
+full suite passes.
+
+Remaining work: falcon-512 keygen (the NTRU solve), ed448 verify (the
+allocation in the goldilocks point operations), secp256r1 verify (an
+addition chain for the field inverse, for which no reference source
+is available locally), and secp521r1 sign (a carefully verified limb
+field, the previous attempt having been reverted).
