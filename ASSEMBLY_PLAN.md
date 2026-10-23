@@ -1581,3 +1581,7 @@ P-521 and falcon-512 remain as before.  The full suite passes.
 secp256r1 field inverse now uses the reference addition chain from
 ecp_nistp256.c, reducing the inverse from 40 to 32 microseconds.
 P-521 and falcon-512 remain as before.  The full suite passes.
+
+Further deep-gap work (falcon-512 NTRU solve, secp256r1 shamir, secp521r1
+limb field) requires reference C sources or major rewrites not available
+in this session.  The full suite passes.
