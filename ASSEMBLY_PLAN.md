@@ -1642,3 +1642,42 @@ falcon-512 keygen 11.94x.  Remaining deep gaps unchanged.
 P-521 field inverse now uses the reference addition chain from
 ecp_nistp521.c.  secp256r1 6-bit shamir window attempted and reverted
 (slower than 4-bit).  Full suite passes.
+
+## Update (this session)
+
+### Completed
+- rev 1014: P-256 square uses carry-free reduction (`secp256r1-fe-reduce-fast`); phase-0
+  normalization removed from the VOP. fe-sq-buf 104->58 ns, fe-mul-buf 94->70 ns,
+  point double 1053->653 ns, secp256r1 verify 540->360 us (gap 8.97->5.98x).
+- rev 1015: Goldilocks field add/sub moved into assembly VOPs
+  (`goldilocks-fe-add-asm`, `goldilocks-fe-sub-asm`). fe-add-buf 28->16 ns,
+  fe-sub-buf 80->34 ns, ed448 verify 2120->1680 us (gap 9.43->7.3x).
+- Declared `secp256r1-fe-mul-buf`, `secp256r1-fe-sq-buf`, `secp256r1-fe-mul-raw`,
+  `secp256r1-fe-sqr-raw`, `secp256r1-fe-reduce-fast` inline (no measurable gain
+  on the hot path, but removes call overhead in principle).
+
+### Findings
+- Profile (secp256r1 verify): reduce 35.6%, sqr-raw 16.7%, mul-raw 12.2%.
+  Field ops are ~65% of verify; the 8x32-bit representation is near its ceiling
+  (~1.7 cycles/product in mul-raw). Further closure needs a 4x64-bit limb rewrite.
+- Profile (ed448 verify): FE-MUL 42.9%, FE-ADD-BUF 14.3%, FE-MUL-RAW 14.3%.
+  The Goldilocks mul-raw (Comba 8x8) is near optimal; remaining gain needs AVX2
+  or Karatsuba.
+- Profile (secp521r1 sign): bignum MULTIPLY-BIGNUMS 26.7%, point EC-ADD 26.7%
+  (total). Needs a limb representation (9x64) + field VOPs.
+- Profile (DSA sign): expt-mod dominates; needs Montgomery modexp VOP.
+- The point-operation VOP plan (26-step double) is unlikely to help much:
+  Lisp overhead is ~10% of verify, and the field VOPs are already inlined into the
+  point ops via the Lisp wrappers; a monolithic VOP would mostly remove array
+  indexing/call overhead. Deferred in favour of the 4x64-bit rewrite.
+
+### Next steps (not attempted this session)
+1. P-256 4x64-bit limb rewrite (template: secp224r1). Field types, from/to-int,
+   add/sub (Lisp folding), mul-raw (Comba 4x4 VOP), reduce (Solinas on 8x128 VOP),
+   contract (is-zero handles <2p). Point ops need only type-declaration changes.
+   Expected: secp256r1 verify 6x -> ~2.5x.
+2. Goldilocks AVX2 mul-raw VOP (Zen 2 has AVX2; gate via ironclad-cpu-feature-p).
+   Expected: ed448 verify 7.3x -> ~4x.
+3. secp521r1: 9x64-bit limb field + VOPs (Mersenne reduction).
+4. DSA/RSA: n-limb Montgomery modexp VOP.
+5. Re-run benchmark/all-algorithms.md and update the table.

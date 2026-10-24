@@ -80,7 +80,9 @@
                  secp256r1-fe-from-int secp256r1-fe-to-int
                  secp256r1-fe-add secp256r1-fe-sub
                  secp256r1-fe-equal secp256r1-fe-is-zero
-                 secp256r1-fe-sqr-raw secp256r1-fe-sq secp256r1-fesq))
+                 secp256r1-fe-sqr-raw secp256r1-fe-sq secp256r1-fesq
+                 secp256r1-fe-mul-raw secp256r1-fe-mul-buf
+                 secp256r1-fe-sq-buf secp256r1-fe-reduce-fast))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun secp256r1-fe-zero ()
