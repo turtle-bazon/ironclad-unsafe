@@ -294,7 +294,7 @@ operation allocates nothing."
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (secp256r1-fe-sqr-raw c a)
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
-  (secp256r1-fe-reduce-asm r q c)
+  (secp256r1-fe-reduce-fast r q c)
   #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
     (secp256r1-fe-normalize16 c)
@@ -531,7 +531,7 @@ normalize first unless the words are already canonical."
     (secp256r1-fe-sqr-raw c a)
     #+(and sbcl x86-64 ironclad-unsafe-assembly)
     (let ((q (secp256r1-fe-zero)))
-      (secp256r1-fe-reduce-asm r q c))
+      (secp256r1-fe-reduce-fast r q c))
     #-(and sbcl x86-64 ironclad-unsafe-assembly)
     (progn
       (secp256r1-fe-normalize16 c)

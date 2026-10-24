@@ -2442,16 +2442,10 @@
              (c32 (k) (dword-ea (+ data-offset (* 8 k)) c))
              (r32 (i) (dword-ea (+ data-offset (* 4 i)) r))
              (q32 (i) (dword-ea (+ data-offset (* 4 i)) q)))
-        ;; Phase 0: normalize c in place (needed for the portable
-        ;; product path; a no-op for VOP-produced words).
-        (dotimes (k 15)
-          (inst mov tmp (c64 k))
-          (inst mov t2 tmp)
-          (inst shr t2 32)
-          (dword-inst mov (c64 k) tmp)
-          (inst add (c64 (1+ k)) t2))
-        (inst mov tmp (c64 15))
-        (dword-inst mov (c64 15) tmp)
+        ;; Phase 0 is omitted: every caller of this VOP hands it the
+        ;; output of the Comba multiplier, which already stores each of
+        ;; C's sixteen words below 2^32.  (The portable path normalizes
+        ;; separately, in SECP256R1-FE-REDUCE-FAST.)
         ;; Phase 1: N := S6 + S7 + S8 + S9 into r, overflow into HH.
         ;; Lists are low-word-first c indices, NIL for padding.
         (inst mov acc0 0)
