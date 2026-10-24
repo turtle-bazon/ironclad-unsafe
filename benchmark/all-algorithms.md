@@ -12,8 +12,8 @@ Sorted by current C/Lisp ratio, descending. Rows without a C reference are liste
 | Category | Algorithm | Operation | Unit | Lisp initial | Lisp current | C reference | C/Lisp initial | C/Lisp current |
 |---|---|---|---|---:|---:|---:|---:|---:|
 | public-key | falcon-512 | keygen | ops/s | 1.75 | 6.329 | 75.56 | 45.31 | 11.94 |
-| public-key | ed448 | verify | ops/s | 113 | 465 | 4.383k | 43.42 | 9.43 |
-| public-key | secp256r1 | verify | ops/s | 600 | 1.850k | 16.600k | 30.17 | 8.97 |
+| public-key | ed448 | verify | ops/s | 113 | 640 | 4.383k | 43.42 | 6.85 |
+| public-key | secp256r1 | verify | ops/s | 600 | 2.555k | 16.600k | 30.17 | 6.50 |
 | digest | whirlpool | hash 8192-byte block | bytes/s | 25.520M | 23.920M | 201.200M | 7.84 | 8.41 |
 | public-key | secp521r1 | sign | ops/s | 215 | 430 | 3.599k | 18.93 | 8.37 |
 | public-key | dsa | sign | ops/s | 610 | 545 | 4.192k | 7.03 | 7.69 |
@@ -22,7 +22,7 @@ Sorted by current C/Lisp ratio, descending. Rows without a C reference are liste
 | aead | chacha-poly | encrypt 8192-byte message | bytes/s | 340.800M | 332.800M | 2.193G | - | 6.59 |
 | public-key | secp521r1 | verify | ops/s | 155 | 300 | 1.938k | 14.26 | 6.46 |
 | public-key | ml-dsa-65 | verify | ops/s | 1.460k | 1.400k | 8.130k | 3.88 | 5.81 |
-| public-key | secp256r1 | sign | ops/s | 790 | 8.275k | 47.920k | 59.91 | 5.79 |
+| public-key | secp256r1 | sign | ops/s | 790 | 9.165k | 47.920k | 59.91 | 5.23 |
 | public-key | ml-dsa-44 | verify | ops/s | 2.328k | 2.280k | 13.010k | 2.83 | 5.71 |
 | public-key | rsa | sign | ops/s | 75 | 330 | 1.839k | 24.32 | 5.57 |
 | public-key | falcon-512 | sign | ops/s | 25 | 47.17 | 256.3 | 10.80 | 5.43 |
@@ -32,7 +32,7 @@ Sorted by current C/Lisp ratio, descending. Rows without a C reference are liste
 | public-key | ml-dsa-87 | verify | ops/s | 915 | 845 | 4.024k | 2.44 | 4.76 |
 | public-key | ml-dsa-44 | keygen | ops/s | 2.615k | 2.445k | 11.350k | 2.23 | 4.64 |
 | public-key | rsa | verify | ops/s | 70.8 | 13.680k | 62.840k | 889.55 | 4.59 |
-| public-key | ed448 | sign | ops/s | 220 | 1.100k | 4.812k | 24.35 | 4.37 |
+| public-key | ed448 | sign | ops/s | 220 | 1.370k | 4.812k | 24.35 | 3.51 |
 | public-key | ml-dsa-87 | keygen | ops/s | 980 | 870 | 3.716k | 2.05 | 4.27 |
 | aead | ccm | encrypt 8192-byte message | bytes/s | 32.600M | 215.900M | 819.600M | - | 3.80 |
 | public-key | secp224r1 | sign | ops/s | 985 | 5.255k | 19.300k | 19.84 | 3.67 |
