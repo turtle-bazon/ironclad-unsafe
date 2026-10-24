@@ -1725,3 +1725,44 @@ ecp_nistp521.c.  secp256r1 6-bit shamir window attempted and reverted
 - secp521r1 sign: 8.37x (420 ops/s)
 - dsa sign: 7.69x (535 ops/s)
 All 677 tests pass.
+
+## Update (CIOS VOP attempt, this session)
+
+### Attempted: CIOS Montgomery VOP (4x64, p'=1)
+- Wrote the full CIOS algorithm (multiply phase + reduction phase + final
+  subtract) as an SBCL VOP.  Register allocation failed: 4 T-registers
+  (T[4..7]) + 5 temps + 3 args + rax/rdx = 14 registers, but SBCL's
+  regalloc cannot pack them (Load-TN packing failure for descriptor-reg args).
+- Tried reducing to fewer temps (combined tmp/tmp2, borrow/carry) and
+  using any-reg for T-registers.  Still failed.
+- The VOP body is saved in /tmp/opencode/vop_compact*.lisp for reference.
+- The portable Montgomery field layer (from the previous attempt) is validated
+  and can be re-applied.  The VOP is the sole missing piece.
+
+### Register budget analysis
+- Available GP registers: ~12 (SBCL reserves rbp, rsp, and a few).
+- Needed: 4 (T[4..7]) + 5 (ai, c0, c1, tmp, tmp2) + 3 (r,a,b args)
+  + 2 (rax, rdx for mul) = 14.  Over by 2.
+- Options to reduce:
+  1. Store T[4..7] in memory (r array) during reduction, freeing 4 registers.
+     But multiply phase needs T[0..7] simultaneously.
+  2. Process one i at a time: keep only T[i..i+4] (5 words) in registers,
+     shift the window.  Complex but uses 5 registers instead of 8.
+  3. Use stack for T[0..7] (8 words).  SBCL VOPs can use rsp-based addressing
+     via sb-vm:ea.  Risky (alignment) but standard.
+  4. Split into two VOPs: one for multiply (T = A*B), one for reduce.
+     Each uses fewer registers independently.
+
+### Recommendation
+Option 4 (split into multiply + reduce VOPs) is the cleanest.  Each VOP
+needs fewer registers and can be tested independently.  The multiply VOP
+produces T[0..7] (stored in an 8-word output).  The reduce VOP takes
+T[0..7] and produces r[0..3].  The caller passes an 8-word temp buffer.
+
+This requires:
+- A new 8-word temp buffer in the scratch pool (or reuse the product buffer,
+  which is already 16 words = enough for 8 words).
+- Two new VOPs: mont-mul (A,B -> T[0..7]) and mont-reduce (T -> r).
+- Updated fe-mul to call both.
+
+Estimated: 2 sessions of focused work.
