@@ -1681,3 +1681,47 @@ ecp_nistp521.c.  secp256r1 6-bit shamir window attempted and reverted
 3. secp521r1: 9x64-bit limb field + VOPs (Mersenne reduction).
 4. DSA/RSA: n-limb Montgomery modexp VOP.
 5. Re-run benchmark/all-algorithms.md and update the table.
+
+## Update (Montgomery attempt, this session)
+
+### Attempted: P-256 4x64-bit Montgomery representation
+- Field layer rewritten (fe-from-int, fe-to-int, fe-add, fe-sub, fe-mul, fe-sq,
+  fe-mul-buf, fe-sq-buf, fe-inv, fe-equal, fe-is-zero) in Montgomery form.
+  All 677 tests passed after fixing: stale .fasl cache, duplicate 8-limb
+  fe-copy!/point-set-inf!, missing eval-when close paren, struct slot type
+  forward-reference, +secp256r1-g+ as defparameter (compile-time eval).
+- Portable fe-mul (bignum round-trip) measured at ~800 ns vs the 32-bit VOP
+  path's ~84 ns (mul-raw 37 + reduce 47).  This is ~10x slower, violating
+  the no-regression rule.  The Montgomery VOP (CIOS, 4x64, p'=1) is required
+  for speed but was not completed: 128-bit carry management (carry_hi can
+  reach 2^64+3) and 8-word temp storage make the VOP ~200 lines of careful
+  assembly.  Reverted to the 32-bit version (6.50x gap) to keep main green.
+- Key technical findings:
+  - p = 2^256 - 2^224 + 2^192 + 2^96 - 1 has p mod 2^64 = 2^64-1, so
+    p' = -p^-1 mod 2^64 = 1 (simplifies Montgomery reduction).
+  - p limbs (64-bit): [0xffffffffffffffff, 0x00000000ffffffff, 0, 0xffffffff00000001].
+  - R mod p = 0xfffffffe...00000001,  R^-1 mod p = 0xfffffffe00000003... .
+  - SBCL struct slots must not use forward-referenced deftypes (secp256r1-fe)
+    as :type, or the accessor returns garbage at safety 0.  Use untyped slots
+    or define the dectype before the struct.
+  - Arrays stored in struct slots can be corrupted by out-of-bounds writes
+    (e.g. 8-iteration dotimes on a 4-element array).  Audit all limb-count
+    constants when changing representation.
+- The Montgomery VOP (CIOS, 4x64) remains the next implementation target.
+  Estimated ~200 lines of assembly using 128-bit carries (two registers).
+  Expected: secp256r1 verify 6.50x -> ~2.5x.
+
+### AVX2 capability
+- Confirmed: `inst vpmuludq`, `inst vpaddd`, `make-reg :ymm`, and the
+  `int-avx2-reg` SC all work in SBCL 2.6.7 VOPs (tested).  `avx2-cpu-support-p`
+  VOP already exists.  However, AVX2 is not the binding constraint for the
+  crypto gaps: mul-raw is <15% of verify time; reduction dominates.  AVX2
+  mul-raw is a secondary optimization after the 4x64/Montgomery rewrite.
+- Goldilocks (56-bit limbs) needs 28-bit splitting for vpmuludq; complex.
+
+### Current state (reverted to 32-bit)
+- secp256r1 verify: 6.50x (2.555k ops/s)
+- ed448 verify: 6.85x (640 ops/s)
+- secp521r1 sign: 8.37x (420 ops/s)
+- dsa sign: 7.69x (535 ops/s)
+All 677 tests pass.
