@@ -2041,6 +2041,148 @@
 
 
 #+x86-64
+(define-vop (goldilocks-fe-add-asm)
+  ;; R := (A + B) mod P, in place, for reduced residues in eight limbs
+  ;; of 56 bits held in 64-bit words.  R has sixteen limbs and its high
+  ;; half is scratch.
+  ;;
+  ;; The prime is 2^448 - 2^224 - 1, so a carry out of the top limb is
+  ;; 2^448, which is 2^224 + 1 modulo the prime and is folded into the
+  ;; first and the fifth limb.  The limbs are fixed up afterwards, and
+  ;; the prime is subtracted when the value is at least it.
+  (:translate ironclad-unsafe::goldilocks-fe-add-asm)
+  (:policy :fast-safe)
+  (:args (r :scs (descriptor-reg))
+         (a :scs (descriptor-reg))
+         (b :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg) tmp tmp2 carry borrow mask mask1)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (flet ((r64 (i) (ea (+ data-offset (* 8 i)) r))
+             (a64 (i) (ea (+ data-offset (* 8 i)) a))
+             (b64 (i) (ea (+ data-offset (* 8 i)) b)))
+        (inst mov mask #x00ffffffffffffff)
+        (inst mov mask1 #x00fffffffffffffe)
+        ;; The sum, the carry out of each limb kept for the next.
+        (inst mov carry 0)
+        (dotimes (i 8)
+          (inst mov tmp (a64 i))
+          (inst mov tmp2 (b64 i))
+          (inst add tmp tmp2)
+          (inst add tmp carry)
+          (inst mov tmp2 tmp)
+          (inst shr tmp2 56)
+          (inst and tmp mask)
+          (inst mov (r64 i) tmp)
+          (inst mov carry tmp2))
+        ;; Fold the top carry and bring the limbs back into range.
+        (let ((top (gen-label)))
+          (emit-label top)
+          (inst add (r64 0) carry)
+          (inst add (r64 4) carry)
+          (inst mov carry 0)
+          (dotimes (i 8)
+            (inst mov tmp (r64 i))
+            (inst add tmp carry)
+            (inst mov tmp2 tmp)
+            (inst shr tmp2 56)
+            (inst and tmp mask)
+            (inst mov (r64 i) tmp)
+            (inst mov carry tmp2))
+          (inst test carry carry)
+          (inst jmp :nz top))
+        ;; The value is below 2^448 now.  Subtract the prime when it is
+        ;; at least the value's, which the borrow of the difference
+        ;; says.  The difference is made in the high half, which is
+        ;; free, and moved down when no borrow was taken.
+        (let ((done (gen-label)))
+          (inst mov borrow 0)
+          (dotimes (i 8)
+            (inst mov tmp (r64 i))
+            (inst mov tmp2 (if (= i 4) mask1 mask))
+            (inst sub tmp tmp2)
+            (inst sub tmp borrow)
+            ;; The limb is kept to fifty-six bits, and the borrow is
+            ;; taken from the sign of the raw difference.
+            (inst mov borrow tmp)
+            (inst and tmp mask)
+            (inst mov (r64 (+ 8 i)) tmp)
+            (inst sar borrow 63)
+            (inst and borrow 1))
+          (inst test borrow borrow)
+          (inst jmp :nz done)
+          (dotimes (i 8)
+            (inst mov tmp (r64 (+ 8 i)))
+            (inst mov (r64 i) tmp))
+          (emit-label done))))))
+
+
+#+x86-64
+(define-vop (goldilocks-fe-sub-asm)
+  ;; R := (A - B) mod P, in place, for reduced residues in eight limbs
+  ;; of 56 bits held in 64-bit words.  R has sixteen limbs and its high
+  ;; half is scratch.
+  ;;
+  ;; The limbs hold the difference plus 2^448 when it borrowed, and the
+  ;; prime is 2^448 less 2^224 + 1, so the prime is added by taking
+  ;; 2^224 + 1 away from the limbs.
+  (:translate ironclad-unsafe::goldilocks-fe-sub-asm)
+  (:policy :fast-safe)
+  (:args (r :scs (descriptor-reg))
+         (a :scs (descriptor-reg))
+         (b :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg) tmp tmp2 carry borrow one mask)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (flet ((r64 (i) (ea (+ data-offset (* 8 i)) r))
+             (a64 (i) (ea (+ data-offset (* 8 i)) a))
+             (b64 (i) (ea (+ data-offset (* 8 i)) b)))
+        (inst mov mask #x00ffffffffffffff)
+        (inst mov one 1)
+        ;; The difference, masked by limb, with the borrow of each kept
+        ;; for the next.
+        (inst mov borrow 0)
+        (dotimes (i 8)
+          (inst mov tmp (a64 i))
+          (inst mov tmp2 (b64 i))
+          (inst sub tmp tmp2)
+          (inst sub tmp borrow)
+          (inst mov (r64 i) tmp)
+          (inst mov borrow tmp)
+          (inst sar borrow 63)
+          (inst and borrow 1))
+        (dotimes (i 8)
+          (inst mov tmp (r64 i))
+          (inst and tmp mask)
+          (inst mov (r64 i) tmp))
+        (let ((done (gen-label)))
+          (inst test borrow borrow)
+          (inst jmp :z done)
+          ;; Take 2^224 + 1 away: one from the first and the fifth
+          ;; limb, and the borrow through.
+          (inst mov carry 0)
+          (dotimes (i 8)
+            (inst mov tmp (r64 i))
+            (inst mov tmp2 (if (or (= i 0) (= i 4)) one 0))
+            (inst sub tmp tmp2)
+            (inst sub tmp carry)
+            (inst mov carry tmp)
+            (inst sar carry 63)
+            (inst and carry 1)
+            (inst and tmp mask)
+            (inst mov (r64 i) tmp))
+          (emit-label done))))))
+
+
+#+x86-64
 (define-vop (ed25519-sqr-raw-asm)
   (:translate ironclad-unsafe::ed25519-fe-sqr-raw-asm)
   (:policy :fast-safe)

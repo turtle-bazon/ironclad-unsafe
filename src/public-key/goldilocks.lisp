@@ -246,16 +246,27 @@ one sixteen-limb product buffer."
   "R := A + B, reduced, in place."
   (declare (type goldilocks-fe r a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (dotimes (i 8)
-    (setf (aref r i) (+ (aref a i) (aref b i))))
-  (dotimes (i 8) (setf (aref r (+ 8 i)) 0))
-  (goldilocks-fe-reduce16 r)
-  r)
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (progn
+    (goldilocks-fe-add-asm r a b)
+    r)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
+  (progn
+    (dotimes (i 8)
+      (setf (aref r i) (+ (aref a i) (aref b i))))
+    (dotimes (i 8) (setf (aref r (+ 8 i)) 0))
+    (goldilocks-fe-reduce16 r)
+    r))
 
 (defun goldilocks-fe-sub-buf (r a b)
   "R := A - B, reduced, in place."
   (declare (type goldilocks-fe r a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (progn
+    (goldilocks-fe-sub-asm r a b)
+    r)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (let ((borrow 0))
     (dotimes (i 8)
       (let* ((v (- (aref a i) (aref b i) borrow))
@@ -292,31 +303,11 @@ depend on it."
 (defun goldilocks-fe-add (a b)
   "The sum of the field elements A and B, reduced."
   (declare (type goldilocks-fe a b))
-  (let ((r (make-array 16 :element-type '(unsigned-byte 64) :initial-element 0)))
-    (dotimes (i 8) (setf (aref r i) (+ (aref a i) (aref b i))))
-    (goldilocks-fe-reduce16 r)
-    r))
+  (let ((r (goldilocks-fe-zero)))
+    (goldilocks-fe-add-buf r a b)))
 
 (defun goldilocks-fe-sub (a b)
   "The difference of the field elements A and B, reduced."
   (declare (type goldilocks-fe a b))
-  (let ((r (make-array 16 :element-type '(unsigned-byte 64) :initial-element 0)))
-    (let ((borrow 0))
-      (dotimes (i 8)
-        (let* ((v (- (aref a i) (aref b i) borrow))
-               (lo (logand v +goldilocks-limb-mask+)))
-          (setf (aref r i) lo
-                borrow (if (minusp v) 1 0))))
-    ;; A borrow means that the difference is negative.  The prime is
-    ;; 2^448 less 2^224 + 1, so the prime has to be added, which is
-    ;; the same as subtracting 2^224 + 1 from the 2^448 that the limbs
-    ;; hold.
-    (when (= borrow 1)
-      (let ((borrow 0))
-        (dotimes (i 8)
-          (let* ((sub (if (or (= i 0) (= i 4)) 1 0))
-                 (v (- (aref r i) sub borrow)))
-            (setf (aref r i) (logand v +goldilocks-limb-mask+)
-                  borrow (if (minusp v) 1 0)))))))
-    (goldilocks-fe-reduce16 r)
-    r))
+  (let ((r (goldilocks-fe-zero)))
+    (goldilocks-fe-sub-buf r a b)))
