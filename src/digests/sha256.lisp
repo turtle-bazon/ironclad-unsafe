@@ -141,7 +141,6 @@
 ;;; These operate on XMM registers (128-bit SSE registers) and provide
 ;;; hardware acceleration for SHA-256 compression.
 
-#+x86-64
 (defun sha256-expand-block (block)
   (declare (type (simple-array (unsigned-byte 32) (64)) block)
            #.(burn-baby-burn))
@@ -168,7 +167,7 @@
 ;;; VOP defined in src/opt/sbcl/x86oid-vm.lisp; the comments there describe
 ;;; the algorithm and the register layout.
 
-#+x86-64
+#+(and sbcl x86-64)
 (defun sha256ni-compress (regs block)
   "Compress BLOCK into REGS using the SHA-NI instruction set.
    Both arguments are updated in place.
@@ -261,7 +260,7 @@
   (flet ((compress (state sequence offset)
            (let ((block (sha256-block state)))
              (fill-block-ub8-be block sequence offset)
-             #+x86-64
+             #+(and sbcl x86-64)
              (if (sha-ni-supported-p)
                  (sha256ni-compress (sha256-regs state) block)
                  (progn
