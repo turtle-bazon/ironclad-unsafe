@@ -30,6 +30,80 @@ when signing SHA-512 digests is also fine.")
     (update-mac mac data)
     (produce-mac mac)))
 
+(defun %rfc6979-hmac-parts (key parts digest)
+  "HMAC-DIGEST over the concatenation of PARTS under KEY."
+  (declare (type simple-octet-vector key)
+           (type list parts))
+  #+x86-64
+  (when (eq digest :sha256)
+    (when (> (length key) 64)
+      (return-from %rfc6979-hmac-parts
+        (%rfc6979-hmac key (apply #'%rfc6979-cat parts) digest)))
+    (return-from %rfc6979-hmac-parts
+      (%rfc6979-hmac-sha256-parts key parts)))
+  (%rfc6979-hmac key (apply #'%rfc6979-cat parts) digest))
+
+#+x86-64
+(defun %rfc6979-hmac-sha256-parts (key parts)
+  "HMAC-SHA256 over the concatenation of PARTS under KEY, computed
+   directly from the SHA-256 compression primitives.  RFC 6979 drives
+   five HMACs per signature and the generic MAC machinery spends most
+   of its time allocating digests and copying states, so this path
+   drives the primitives directly.  Returns a fresh 32-byte vector."
+  (declare (type simple-octet-vector key)
+           (type list parts))
+  (let ((block (make-array 64 :element-type '(unsigned-byte 32)))
+        (regs (make-array 8 :element-type '(unsigned-byte 32)))
+        (buf (make-array 256 :element-type '(unsigned-byte 8)))
+        (inner (make-array 32 :element-type '(unsigned-byte 8)))
+        (out (make-array 32 :element-type '(unsigned-byte 8))))
+    (labels ((pad (n)
+               (let* ((padded (* 64 (ceiling (+ n 9) 64)))
+                      (bits (* 8 n)))
+                 (fill buf 0 :start n :end padded)
+                 (setf (aref buf n) #x80
+                       (aref buf (- padded 1)) (ldb (byte 8 0) bits)
+                       (aref buf (- padded 2)) (ldb (byte 8 8) bits)
+                       (aref buf (- padded 3)) (ldb (byte 8 16) bits)
+                       (aref buf (- padded 4)) (ldb (byte 8 24) bits)
+                       (aref buf (- padded 5)) (ldb (byte 8 32) bits)
+                       (aref buf (- padded 6)) (ldb (byte 8 40) bits)
+                       (aref buf (- padded 7)) (ldb (byte 8 48) bits)
+                       (aref buf (- padded 8)) (ldb (byte 8 56) bits))
+                 padded))
+             (compress (n end)
+               (replace regs +pristine-sha256-registers+)
+               (loop for off of-type fixnum from 0 below end by 64
+                     do (fill-block-ub8-be block buf off)
+                        (sha256-compress-word-block regs block)))
+             (export-regs (dst)
+               (loop for i of-type fixnum below 8
+                     do (let ((w (aref regs i)))
+                          (setf (aref dst (+ (* i 4) 0)) (ldb (byte 8 24) w)
+                                (aref dst (+ (* i 4) 1)) (ldb (byte 8 16) w)
+                                (aref dst (+ (* i 4) 2)) (ldb (byte 8 8) w)
+                                (aref dst (+ (* i 4) 3)) (ldb (byte 8 0) w))))))
+      ;; inner: ipad || parts
+      (fill buf #x36 :end 64)
+      (let ((klen (length key)))
+        (dotimes (i klen)
+          (setf (aref buf i) (logxor #x36 (aref key i)))))
+      (let ((n 64))
+        (dolist (p parts)
+          (replace buf p :start1 n)
+          (incf n (length p)))
+        (compress n (pad n))
+        (export-regs inner))
+      ;; outer: opad || inner
+      (fill buf #x5c :end 64)
+      (let ((klen (length key)))
+        (dotimes (i klen)
+          (setf (aref buf i) (logxor #x5c (aref key i)))))
+      (replace buf inner :start1 64)
+      (compress 96 (pad 96))
+      (export-regs out)
+      out)))
+
 (defun %rfc6979-cat (&rest parts)
   "Concatenate octet vectors into a fresh simple-octet-vector."
   (apply #'concatenate '(simple-array (unsigned-byte 8) (*)) parts))
@@ -64,7 +138,7 @@ Returns an integer K with 1 <= K < ORDER."
                              :initial-element 0)))
     (declare (type simple-octet-vector v k x-oct h-oct))
     (flet ((hmac (k &rest parts)
-             (%rfc6979-hmac k (apply #'%rfc6979-cat parts) digest)))
+             (%rfc6979-hmac-parts k parts digest)))
       (setf k (hmac k v #(0) x-oct h-oct))
       (setf v (hmac k v))
       (setf k (hmac k v #(1) x-oct h-oct))

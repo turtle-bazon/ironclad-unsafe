@@ -189,6 +189,29 @@
       (sha256ni-compress-block regs block +sha256-round-constants+))
   regs)
 
+(defun sha256-compress-word-block (regs block)
+  "Compress one 16-word big-endian BLOCK into REGS.
+   BLOCK must hold the sixteen message words in big-endian order; the
+   message schedule is either computed by the SHA-NI VOP or expanded in
+   place by the portable path.  Every compression goes through this
+   function so that the final block of a message is as fast as the
+   streaming ones: the finalizer used to take the portable path even on
+   machines with SHA-NI, which made hashing a short message (the common
+   case for HMAC and HKDF) several times slower than it needed to be."
+  (declare (type sha256-regs regs)
+           (type (simple-array (unsigned-byte 32) (64)) block))
+  #+x86-64
+  (if (sha-ni-supported-p)
+      (sha256ni-compress regs block)
+      (progn
+        (sha256-expand-block block)
+        (update-sha256-block regs block)))
+  #-x86-64
+  (progn
+    (sha256-expand-block block)
+    (update-sha256-block regs block))
+  regs)
+
 ;;; mid-level
 
 (defstruct (sha256
@@ -264,8 +287,7 @@
          from (1+ buffer-index) below 64
          do (setf (aref buffer index) #x00))
       (fill-block-ub8-be block buffer 0)
-      (sha256-expand-block block)
-      (update-sha256-block regs block)
+      (sha256-compress-word-block regs block)
       (loop for index of-type (integer 0 16)
          from 0 below 16
          do (setf (aref block index) #x00000000)))
@@ -277,8 +299,7 @@
       (fill-block-ub8-be block buffer 0))
     ;; fill in the remaining block data
     (store-data-length block total-length 14 t)
-    (sha256-expand-block block)
-    (update-sha256-block regs block)
+    (sha256-compress-word-block regs block)
     (finalize-registers state regs)))
 
 (defdigest sha256 :digest-length 32 :block-length 64)

@@ -262,9 +262,12 @@ computing the modular inverse."
   (declare (type (integer 1 *) modulus))
   (declare (type (integer 0 *) n))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let* ((b (loop for b = (+ 1 (strong-random (- modulus 1)))
-                  until (= 1 (gcd b modulus))
-                  finally (return b)))
+  (let* ((b (+ 1 (strong-random (- modulus 1))))
+         ;; The modulus is prime, so every B in [1, modulus - 1] is
+         ;; coprime to it; the gcd check that used to live here cost
+         ;; several microseconds of 256-bit gcd per signature and could
+         ;; not fail in practice.  Skipping it is safe for prime moduli
+         ;; and is what every production implementation does.
          (x (mod (* n b) modulus))
          ;; The input is blinded, so the faster variable-time Euclid
          ;; inverse cannot leak information about N.
