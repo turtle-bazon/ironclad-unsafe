@@ -16,18 +16,22 @@
    (y :initarg :y :reader secp256r1-key-y :type (simple-array (unsigned-byte 8) (*)))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
+  ;; The field element type has to be known before the point structure,
+  ;; or the slot accessors are compiled against an unknown type and,
+  ;; with safety zero, read the wrong words.
+  (deftype secp256r1-fe () '(simple-array (unsigned-byte 64) (4)))
   ;; Internally, a point (x, y) is represented using the Jacobian projective
   ;; coordinates (X, Y, Z), with x = X / Z^2 and y = Y / Z^3.  Coordinates
-  ;; are P-256 field elements (8x32-bit limbs); see the fe- layer above.
+  ;; are P-256 field elements (4x64-bit limbs); see the fe- layer below.
   (defstruct (secp256r1-point
               (:constructor make-secp256r1-point
                   (&key (x (secp256r1-fe-zero))
                         (y (secp256r1-fe-zero))
                         (z (secp256r1-fe-zero))))
               (:predicate nil))
-    (x (secp256r1-fe-zero) :type secp256r1-fe :read-only t)
-    (y (secp256r1-fe-zero) :type secp256r1-fe :read-only t)
-    (z (secp256r1-fe-zero) :type secp256r1-fe :read-only t)))
+    (x (secp256r1-fe-zero) :type t)
+    (y (secp256r1-fe-zero) :type t)
+    (z (secp256r1-fe-zero) :type t)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun secp256r1-point-from-ints (x y z)
@@ -53,8 +57,9 @@
 (defconstant +secp256r1-l+ 115792089210356248762697446949407573529996955224135760342422259061068512044369)
 (defconstant +secp256r1-i+ 28948022302589062190674361737351893382521535853822578548883407827216774463488)
 
-;;; The prime's limbs, little endian.  Keeping them in a vector avoids
-;;; extracting them from the bignum constant on every add and subtract.
+;;; The prime's limbs, little endian, four 64-bit words.  Keeping them
+;;; in a vector avoids extracting them from the bignum constant on
+;;; every add and subtract.
 ;;;
 ;;; This is a DEFVAR and not a DEFCONSTANT: SBCL compares the value of
 ;;; a DEFCONSTANT with EQL, and the vector built at compile time is
@@ -62,54 +67,68 @@
 ;;; vector value makes every recompilation of this file fail with
 ;;; DEFCONSTANT-UNEQL.  The value is a literal, so the same vector is
 ;;; used every time the file is loaded.
-(defvar +secp256r1-p-limbs+ '#(4294967295 4294967295 4294967295
-                               0 0 0 1 4294967295))
+(defvar +secp256r1-p-limbs+ '#(#xffffffffffffffff #x00000000ffffffff
+                               #x0000000000000000 #xffffffff00000001))
 
-;;; P-256 field arithmetic on 32-bit limbs.
+;;; P-256 field arithmetic on four 64-bit limbs in the Montgomery form.
 ;;;
-;;; A field element is (SIMPLE-ARRAY (UNSIGNED-BYTE 32) (8)), little
-;;; endian.  All intermediate values fit in 34 bits, so every operation
-;;; stays in fixnums on all 64-bit Lisps with no bignum consing.  School
-;;; book multiply accumulates with split 32-bit products; reduction is
-;;; the Solinas form of the P-256 prime.  An SBCL x86-64 VOP can later
-;;; replace SECP256R1-FE-MUL behind the same interface.
+;;; A field element is (SIMPLE-ARRAY (UNSIGNED-BYTE 64) (4)), little
+;;; endian, and holds a residue multiplied by R = 2^256 modulo P.  The
+;;; conversion happens only in SECP256R1-FE-FROM-INT and
+;;; SECP256R1-FE-TO-INT; every other operation stays in Montgomery
+;;; form, where the reduction is a single word.
+;;;
+;;; The lowest limb of P is 2^64 - 1, so P modulo 2^64 is -1, its
+;;; inverse is -1, and the Montgomery word P' = -P^-1 mod 2^64 is one.
 
-(deftype secp256r1-fe () '(simple-array (unsigned-byte 32) (8)))
+(defconstant +secp256r1-r-mod-p+
+  #xfffffffeffffffffffffffffffffffff000000000000000000000001)
+(defconstant +secp256r1-r-inv-mod-p+
+  #xfffffffe00000003fffffffd0000000200000001fffffffe0000000300000000)
 
+;;; FROM-INT and TO-INT are deliberately not inline: inlining the pair
+;;; makes SBCL 2.6.7 fold the whole conversion of a literal at compile
+;;; time and then read the wrong words of the dumped vector.
 (declaim (inline secp256r1-fe-zero secp256r1-fe-copy
-                 secp256r1-fe-from-int secp256r1-fe-to-int
                  secp256r1-fe-add secp256r1-fe-sub
                  secp256r1-fe-equal secp256r1-fe-is-zero
-                 secp256r1-fe-sqr-raw secp256r1-fe-sq secp256r1-fesq
-                 secp256r1-fe-mul-raw secp256r1-fe-mul-buf
-                 secp256r1-fe-sq-buf secp256r1-fe-reduce-fast))
+                 secp256r1-fe-mul secp256r1-fe-sq
+                 secp256r1-fe-mul-buf secp256r1-fe-sq-buf))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun secp256r1-fe-zero ()
-    (make-array 8 :element-type '(unsigned-byte 32) :initial-element 0)))
+    (make-array 4 :element-type '(unsigned-byte 64) :initial-element 0)))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun secp256r1-fe-from-int (n)
+    "The Montgomery form of N modulo P."
+    (declare (type integer n)
+             (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+    (let* ((v (mod (* (mod n +secp256r1-p+) +secp256r1-r-mod-p+)
+                   +secp256r1-p+))
+           (r (secp256r1-fe-zero)))
+      (setf (aref r 0) (ldb (byte 64 0) v)
+            (aref r 1) (ldb (byte 64 64) v)
+            (aref r 2) (ldb (byte 64 128) v)
+            (aref r 3) (ldb (byte 64 192) v))
+      r)))
+
+(defun secp256r1-fe-to-int (a)
+  "The value of the Montgomery field element A, an integer below P."
+  (declare (type secp256r1-fe a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((v (logior (aref a 0)
+                   (ash (aref a 1) 64)
+                   (ash (aref a 2) 128)
+                   (ash (aref a 3) 192))))
+    (mod (* v +secp256r1-r-inv-mod-p+) +secp256r1-p+)))
 
 (defun secp256r1-fe-copy (a)
   (declare (type secp256r1-fe a)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((r (secp256r1-fe-zero)))
-    (dotimes (i 8 r)
+    (dotimes (i 4 r)
       (setf (aref r i) (aref a i)))))
-
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defun secp256r1-fe-from-int (n)
-    (declare (type integer n)
-             (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-    (let ((r (secp256r1-fe-zero)))
-      (dotimes (i 8 r)
-        (setf (aref r i) (ldb (byte 32 (* i 32)) n))))))
-
-(defun secp256r1-fe-to-int (a)
-  (declare (type secp256r1-fe a)
-           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((n 0))
-    (declare (type integer n))
-    (dotimes (i 8 n)
-      (setf n (dpb (aref a i) (byte 32 (* i 32)) n)))))
 
 (defun secp256r1-fe-add (r a b)
   "R := (A + B) mod P, all reduced residues."
@@ -117,32 +136,17 @@
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
-    (secp256r1-fe-add-asm r a b)
+    (secp256r1-fe-add64-asm r a b)
     r)
   #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
-    (let ((carry 0))
-      (declare (type (unsigned-byte 32) carry))
-      (dotimes (i 8)
-        (let ((s (+ (aref a i) (aref b i) carry)))
-          (setf (aref r i) (ldb (byte 32 0) s)
-                carry (ash s -32))))
-      ;; Subtract P when R >= P.  CARRY = 1 implies R >= 2^256 > P.
-      (when (or (plusp carry)
-                (loop for i from 7 downto 0
-                      for limb = (aref r i)
-                      for plimb = (aref +secp256r1-p-limbs+ i)
-                      when (/= limb plimb) return (> limb plimb)
-                      finally (return t)))
-        (let ((borrow 0))
-          (declare (type (unsigned-byte 32) borrow))
-          (dotimes (i 8)
-            (let ((d (- (aref r i)
-                        (aref +secp256r1-p-limbs+ i)
-                        borrow)))
-              (setf (aref r i) (ldb (byte 32 0) d)
-                    borrow (logand (ash d -32) 1)))))))
-    r))
+    (let ((v (mod (+ (secp256r1-fe-to-int a) (secp256r1-fe-to-int b))
+                  +secp256r1-p+)))
+      (setf (aref r 0) (ldb (byte 64 0) v)
+            (aref r 1) (ldb (byte 64 64) v)
+            (aref r 2) (ldb (byte 64 128) v)
+            (aref r 3) (ldb (byte 64 192) v))
+      r)))
 
 (defun secp256r1-fe-sub (r a b)
   "R := (A - B) mod P, all reduced residues."
@@ -150,308 +154,88 @@
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
-    (secp256r1-fe-sub-asm r a b)
+    (secp256r1-fe-sub64-asm r a b)
     r)
   #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
-    (let ((borrow 0))
-      (declare (type (unsigned-byte 32) borrow))
-      (dotimes (i 8)
-        (let ((d (- (aref a i) (aref b i) borrow)))
-          (setf (aref r i) (ldb (byte 32 0) d)
-                borrow (logand (ash d -32) 1))))
-      (when (plusp borrow)
-        (let ((carry 0))
-          (declare (type (unsigned-byte 32) carry))
-          (dotimes (i 8)
-            (let ((s (+ (aref r i)
-                        (aref +secp256r1-p-limbs+ i)
-                        carry)))
-              (setf (aref r i) (ldb (byte 32 0) s)
-                    carry (ash s -32)))))))
-    r))
+    (let ((v (mod (- (secp256r1-fe-to-int a) (secp256r1-fe-to-int b))
+                  +secp256r1-p+)))
+      (setf (aref r 0) (ldb (byte 64 0) v)
+            (aref r 1) (ldb (byte 64 64) v)
+            (aref r 2) (ldb (byte 64 128) v)
+            (aref r 3) (ldb (byte 64 192) v))
+      r)))
 
-(defun secp256r1-fe-mul-raw (r a b)
-  "R := A * B as 16 limbs, no reduction.  R holds (UNSIGNED-BYTE 64)."
-  (declare (type secp256r1-fe a b)
-           (type (simple-array (unsigned-byte 64) (16)) r)
+(defun secp256r1-fe-mont-mul (r a b c)
+  "R := A * B * R^-1 mod P, with C a scratch of nine 64-bit words."
+  (declare (type secp256r1-fe r a b)
+           (type (simple-array (unsigned-byte 64) (*)) c)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
-  (secp256r1-fe-mul-raw-asm r a b)
+  (progn
+    (secp256r1-fe-mont-mul-asm r a b c)
+    r)
   #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
-    (dotimes (k 16)
-      (setf (aref r k) 0))
-    (dotimes (i 8)
-      (let ((carry 0))
-        (declare (type (unsigned-byte 32) carry))
-        (dotimes (j 8)
-          ;; S = R[I+J] + A[I]*B[J] + CARRY stays below 2^34: the stored
-          ;; word and the carry are each under 2^33 by construction.
-          (let* ((prod (* (aref a i) (aref b j)))
-                 (plo (ldb (byte 32 0) prod))
-                 (phi (ash prod -32))
-                 (s (+ (aref r (+ i j)) plo carry)))
-            (setf (aref r (+ i j)) (ldb (byte 32 0) s)
-                  carry (+ (ash s -32) phi))))
-        (setf (aref r (+ i 8)) carry))))
-  r)
-
-(defun secp256r1-fe-normalize16 (c)
-  "Propagate carries so C holds 16 canonical 32-bit words."
-  (declare (type (simple-array (unsigned-byte 64) (16)) c)
-           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (dotimes (k 15)
-    (let ((carry (ash (aref c k) -32)))
-      (setf (aref c k) (ldb (byte 32 0) (aref c k))
-            (aref c (1+ k)) (+ (aref c (1+ k)) carry))))
-  (setf (aref c 15) (ldb (byte 32 0) (aref c 15)))
-  c)
-
-(declaim (inline secp256r1--adc secp256r1--sbb secp256r1--fe-ge-p))
-
-(defun secp256r1--adc (a b c)
-  "Add three small words; return (VALUES word carry).
-All arguments are at most 32-bit field limbs plus a small carry, so
-the sum stays under 2^34 and every operation remains in fixnums."
-  (declare (type (unsigned-byte 34) a b c)
-           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((s (+ a b c)))
-    (values (ldb (byte 32 0) s) (ash s -32))))
-
-(defun secp256r1--sbb (a b borrow)
-  "Subtract with borrow; return (VALUES word borrow-out).
-A and B are 32-bit field limbs, BORROW is 0 or 1, so the difference
-stays within fixnum range."
-  (declare (type (unsigned-byte 32) a b)
-           (type (unsigned-byte 32) borrow)
-           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((d (- a b borrow)))
-    (values (ldb (byte 32 0) d) (if (minusp d) 1 0))))
-
-(defun secp256r1--fe-ge-p (a)
-  (declare (type secp256r1-fe a)
-           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (loop for i from 7 downto 0
-        for limb = (aref a i)
-        for plimb = (aref +secp256r1-p-limbs+ i)
-        when (/= limb plimb) return (> limb plimb)
-        finally (return t)))
-
-(defun secp256r1-fe-reduce-fast (r q c)
-  "R := C mod P, using the carry-free assembly reduction.
-R and Q are eight 32-bit limbs, C holds sixteen 64-bit limbs."
-  (declare (type (simple-array (unsigned-byte 32) (8)) r q)
-           (type (simple-array (unsigned-byte 64) (16)) c)
-           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-unsafe-assembly)
-  (secp256r1-fe-reduce-fast-asm r q c)
-  #-(and sbcl x86-64 ironclad-unsafe-assembly)
-  (progn
-    (secp256r1-fe-normalize16 c)
-    (secp256r1-fe-solinas r c))
-  r)
+    (let ((v (mod (* (secp256r1-fe-to-int a)
+                     (secp256r1-fe-to-int b)
+                     +secp256r1-r-inv-mod-p+)
+                  +secp256r1-p+)))
+      (setf (aref r 0) (ldb (byte 64 0) v)
+            (aref r 1) (ldb (byte 64 64) v)
+            (aref r 2) (ldb (byte 64 128) v)
+            (aref r 3) (ldb (byte 64 192) v))
+      r)))
 
 (defun secp256r1-fe-mul (r a b)
-  "R := (A * B) mod P for reduced residues in limb form."
+  "R := A * B in Montgomery form, allocating the scratch."
   (declare (type secp256r1-fe r a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((c (make-array 16 :element-type '(unsigned-byte 64)
-                       :initial-element 0)))
-    ;; NB: the product must stay in the heap; the assembly VOP assumes
-    ;; the usual heap layout of a simple vector.
-    (secp256r1-fe-mul-raw c a b)
-    #+(and sbcl x86-64 ironclad-unsafe-assembly)
-    (let ((q (secp256r1-fe-zero)))
-      (secp256r1-fe-reduce-fast r q c))
-    #-(and sbcl x86-64 ironclad-unsafe-assembly)
-    (progn
-      (secp256r1-fe-normalize16 c)
-      (secp256r1-fe-solinas r c)))
+  (let ((c (make-array 9 :element-type '(unsigned-byte 64)
+                         :initial-element 0)))
+    ;; NB: the scratch must stay in the heap; the VOP assumes the usual
+    ;; heap layout of a simple vector.
+    (secp256r1-fe-mont-mul r a b c))
   r)
 
 (defun secp256r1-fe-mul-buf (r a b c q)
-  "R := (A * B) mod P, using the product buffer C and the scratch Q.
-C holds the sixteen limbs of the product and Q is the scratch of the
-reduction.  The caller reuses both, so a multiply inside a point
-operation allocates nothing."
+  "R := A * B in Montgomery form, using the scratch C and ignoring Q.
+C holds nine 64-bit words; the caller reuses it, so a multiply inside a
+point operation allocates nothing."
   (declare (type secp256r1-fe r a b)
            (type (simple-array (unsigned-byte 64) (16)) c)
            (type secp256r1-fe q)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (secp256r1-fe-mul-raw c a b)
-  #+(and sbcl x86-64 ironclad-unsafe-assembly)
-  (secp256r1-fe-reduce-fast r q c)
-  #-(and sbcl x86-64 ironclad-unsafe-assembly)
-  (progn
-    (secp256r1-fe-normalize16 c)
-    (secp256r1-fe-solinas r c))
+  (secp256r1-fe-mont-mul r a b c)
   r)
 
+(defun secp256r1-fe-sq (r a)
+  "R := A^2 in Montgomery form, allocating the scratch."
+  (declare (type secp256r1-fe r a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (secp256r1-fe-mul r a a))
+
 (defun secp256r1-fe-sq-buf (r a c q)
-  "R := A^2 mod P, using the product buffer C and the scratch Q."
+  "R := A^2 in Montgomery form, using the scratch C and ignoring Q."
   (declare (type secp256r1-fe r a)
            (type (simple-array (unsigned-byte 64) (16)) c)
            (type secp256r1-fe q)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (secp256r1-fe-sqr-raw c a)
-  #+(and sbcl x86-64 ironclad-unsafe-assembly)
-  (secp256r1-fe-reduce-fast r q c)
-  #-(and sbcl x86-64 ironclad-unsafe-assembly)
-  (progn
-    (secp256r1-fe-normalize16 c)
-    (secp256r1-fe-solinas r c))
-  r)
-
-(defun secp256r1-fe-solinas (r c)
-  "R := C mod P via the P-256 Solinas reduction.
-C holds 16 possibly non-canonical (UNSIGNED-BYTE 64) limbs; callers
-normalize first unless the words are already canonical."
-  (declare (type secp256r1-fe r)
-           (type (simple-array (unsigned-byte 64) (16)) c)
-           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((p (secp256r1-fe-zero))
-        (n (secp256r1-fe-zero))
-        (hp 0)
-        (hn 0))
-    (declare (type (unsigned-byte 64) hp hn)
-             (dynamic-extent p n))
-    ;; P := S1 + 2*S2 + 2*S3 + S4 + S5, N := S6 + S7 + S8 + S9.
-    ;; Each SI is under 2^256, so P < 7*2^256 and N < 4*2^256.
-    ;; Words below are (C15 .. C0), high word to low word.
-    (macrolet ((sw (i) `(aref c ,i)))
-      ;; S1 = (C7 .. C0).
-      (dotimes (i 8)
-        (setf (aref p i) (sw i)))
-      ;; 2*S2, S2 = (C15 C14 C13 C12 C11 0 0 0), low word first.
-      (let ((carry 0))
-        (dotimes (i 8)
-          (let ((w (if (>= i 3) (sw (+ i 8)) 0)))
-            (multiple-value-bind (lo c1) (secp256r1--adc w w (aref p i))
-              (multiple-value-bind (sum c2) (secp256r1--adc lo 0 carry)
-                (setf (aref p i) sum
-                      carry (+ c1 c2))))))
-        (setf hp (+ hp carry)))
-      ;; 2*S3, S3 = (0 C15 C14 C13 C12 0 0 0), low word first.
-      (let ((carry 0))
-        (dotimes (i 8)
-          (let ((w (if (and (>= i 3) (<= i 6)) (sw (+ i 9)) 0)))
-            (multiple-value-bind (lo c1) (secp256r1--adc w w (aref p i))
-              (multiple-value-bind (sum c2) (secp256r1--adc lo 0 carry)
-                (setf (aref p i) sum
-                      carry (+ c1 c2))))))
-        (setf hp (+ hp carry)))
-      ;; S4 = (C15 C14 0 0 0 C10 C9 C8), low word first.
-      (let ((carry 0))
-        (dotimes (i 8)
-          (let ((w (cond ((>= i 6) (sw (+ i 8)))
-                         ((<= i 2) (sw (+ i 8)))
-                         (t 0))))
-            (multiple-value-bind (sum c1)
-                (secp256r1--adc w (aref p i) carry)
-              (setf (aref p i) sum
-                    carry c1))))
-        (setf hp (+ hp carry)))
-      ;; S5 = (C8 C13 C15 C14 C13 C11 C10 C9), low word first.
-      (let ((carry 0)
-            (s5 #(9 10 11 13 14 15 13 8)))
-        (dotimes (i 8)
-          (multiple-value-bind (sum c1)
-              (secp256r1--adc (sw (aref s5 i)) (aref p i) carry)
-            (setf (aref p i) sum
-                  carry c1)))
-        (setf hp (+ hp carry)))
-      ;; N = S6 + S7 + S8 + S9, low word first.
-      ;; S6 = (C10 C8 0 0 0 C13 C12 C11).
-      (let ((s6 #(11 12 13 0 0 0 8 10)))
-        (dotimes (i 8)
-          (setf (aref n i) (if (zerop (aref s6 i)) 0 (sw (aref s6 i))))))
-      ;; S7 = (C11 C9 0 0 C15 C14 C13 C12).
-      (let ((s7 #(12 13 14 15 0 0 9 11))
-            (carry 0))
-        (dotimes (i 8)
-          (multiple-value-bind (sum c1)
-              (secp256r1--adc (aref n i) (if (zerop (aref s7 i)) 0 (sw (aref s7 i))) carry)
-            (setf (aref n i) sum
-                  carry c1)))
-        (setf hn (+ hn carry)))
-      ;; S8 = (C12 0 C10 C9 C8 C15 C14 C13).
-      (let ((s8 #(13 14 15 8 9 10 0 12))
-            (carry 0))
-        (dotimes (i 8)
-          (multiple-value-bind (sum c1)
-              (secp256r1--adc (aref n i) (if (zerop (aref s8 i)) 0 (sw (aref s8 i))) carry)
-            (setf (aref n i) sum
-                  carry c1)))
-        (setf hn (+ hn carry)))
-      ;; S9 = (C13 0 C11 C10 C9 0 C15 C14).
-      (let ((s9 #(14 15 0 9 10 11 0 13))
-            (carry 0))
-        (dotimes (i 8)
-          (multiple-value-bind (sum c1)
-              (secp256r1--adc (aref n i) (if (zerop (aref s9 i)) 0 (sw (aref s9 i))) carry)
-            (setf (aref n i) sum
-                  carry c1)))
-        (setf hn (+ hn carry)))
-      ;; T := P + 8*P256 - N into R.  P + 8p >= 8p > 4*2^256 > N,
-      ;; so no borrow runs out of the top word.
-      (let ((carry 0)
-            (borrow 0))
-        (dotimes (i 8)
-          (let ((pw (* 8 (aref +secp256r1-p-limbs+ i))))
-            (multiple-value-bind (summed c1)
-                (secp256r1--adc (aref p i) pw carry)
-              (multiple-value-bind (word b1)
-                  (secp256r1--sbb summed (aref n i) borrow)
-                (setf (aref r i) word
-                      carry c1
-                      borrow b1)))))
-        ;; H counts 2^256 units: P's overflow plus the carry out of the
-        ;; P + 8p addition (which already contains FLOOR(8*P/2^256)),
-        ;; minus the borrow run out of the low-word subtraction and
-        ;; minus N's overflow.  H is non-negative because the folded
-        ;; value T = P8 + 8p - N8 alone already exceeds 2^256.
-        (let ((h (+ hp carry)))
-          (declare (type (unsigned-byte 64) h))
-          (setf h (- h borrow hn))
-          ;; Fold H: H * 2^256 = H * (2^224 - 2^192 - 2^96 + 1).
-          (let ((carry 0))
-            (dotimes (i 8)
-              (let ((s (+ (aref r i) carry
-                          (if (zerop i) h 0)
-                          (if (= i 7) h 0)
-                          (if (= i 3) (- h) 0)
-                          (if (= i 6) (- h) 0))))
-                (let ((q (floor s #.(ash 1 32))))
-                  (setf (aref r i) (- s (* q #.(ash 1 32)))
-                        carry q)))))
-          ;; The folded value is under 2*P: one conditional subtract.
-          (when (secp256r1--fe-ge-p r)
-            (let ((borrow 0))
-              (dotimes (i 8)
-                (multiple-value-bind (word b1)
-                    (secp256r1--sbb (aref r i)
-                                    (aref +secp256r1-p-limbs+ i)
-                                    borrow)
-                  (setf (aref r i) word
-                        borrow b1)))))))))
-    r)
+  (secp256r1-fe-mul-buf r a a c q))
 
 (defun secp256r1-fe-equal (a b)
   "T when limb vectors A and B hold the same value."
   (declare (type secp256r1-fe a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (dotimes (i 8 t)
-    (unless (= (aref a i) (aref b i))
-      (return nil))))
+  (and (= (aref a 0) (aref b 0)) (= (aref a 1) (aref b 1))
+       (= (aref a 2) (aref b 2)) (= (aref a 3) (aref b 3))))
 
 (defun secp256r1-fe-is-zero (a)
   "T when the field element A is zero."
   (declare (type secp256r1-fe a)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (dotimes (i 8 t)
-    (unless (zerop (aref a i))
-      (return nil))))
+  (and (zerop (aref a 0)) (zerop (aref a 1))
+       (zerop (aref a 2)) (zerop (aref a 3))))
 
 (declaim (inline secp256r1-femul secp256r1-feadd secp256r1-fesub
                  secp256r1-femul! secp256r1-feadd! secp256r1-fesub!
@@ -509,37 +293,6 @@ normalize first unless the words are already canonical."
   (secp256r1-fe-sq r a)
   r)
 
-(defun secp256r1-fe-sqr-raw (r a)
-  "R := A * A as 16 limbs, no reduction."
-  (declare (type secp256r1-fe a)
-           (type (simple-array (unsigned-byte 64) (16)) r)
-           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+(and sbcl x86-64 ironclad-unsafe-assembly)
-  (secp256r1-fe-sqr-raw-asm r a)
-  #-(and sbcl x86-64 ironclad-unsafe-assembly)
-  (progn
-    (dotimes (k 16)
-      (setf (aref r k) 0))
-    (secp256r1-fe-mul-raw r a a))
-  r)
-
-(defun secp256r1-fe-sq (r a)
-  "R := A^2 mod P."
-  (declare (type secp256r1-fe r a)
-           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((c (make-array 16 :element-type '(unsigned-byte 64)
-                       :initial-element 0)))
-    ;; NB: the product must stay in the heap; see SECP256R1-FE-MUL.
-    (secp256r1-fe-sqr-raw c a)
-    #+(and sbcl x86-64 ironclad-unsafe-assembly)
-    (let ((q (secp256r1-fe-zero)))
-      (secp256r1-fe-reduce-fast r q c))
-    #-(and sbcl x86-64 ironclad-unsafe-assembly)
-    (progn
-      (secp256r1-fe-normalize16 c)
-      (secp256r1-fe-solinas r c)))
-  r)
-
 (defun secp256r1-fesq (a)
   "Square of field element A as a fresh vector."
   (declare (type secp256r1-fe a)
@@ -548,12 +301,15 @@ normalize first unless the words are already canonical."
     (secp256r1-fe-sq r a)
     r))
 
-(defconst +secp256r1-g+
+;;; These are DEFPARAMETER, not DEFCONSTANT: the structure is built at
+;;; load time, so a recompilation in the same image would otherwise
+;;; trip the DEFCONSTANT-UNEQL check.
+(defparameter +secp256r1-g+
   (secp256r1-point-from-ints
    48439561293906451759052585252797914202762949526041747995844080717082404635286
    36134250956749795798585127919587881956611106672985015071877198253568414405109
    1))
-(defconst +secp256r1-point-at-infinity+
+(defparameter +secp256r1-point-at-infinity+
   (secp256r1-point-from-ints 1 1 0))
 
 
@@ -1051,8 +807,11 @@ reusing scratch pool S. DST must differ from P."
   "Copy field element SRC into DST."
   (declare (type secp256r1-fe dst src)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (dotimes (i 8 dst)
-    (setf (aref dst i) (aref src i))))
+  (setf (aref dst 0) (aref src 0)
+        (aref dst 1) (aref src 1)
+        (aref dst 2) (aref src 2)
+        (aref dst 3) (aref src 3))
+  dst)
 
 (defun secp256r1-point-copy! (dst src)
   "Copy point SRC into DST."
@@ -1071,7 +830,7 @@ reusing scratch pool S. DST must differ from P."
         (y (secp256r1-point-y dst))
         (z (secp256r1-point-z dst)))
     (declare (type secp256r1-fe x y z))
-    (dotimes (i 8)
+    (dotimes (i 4)
       (setf (aref x i) 0
             (aref y i) 0
             (aref z i) 0))
@@ -1273,7 +1032,7 @@ nothing per multiply."
   (let ((p (make-secp256r1-point)))
     (secp256r1-fe-copy! (secp256r1-point-x p) x)
     (secp256r1-fe-copy! (secp256r1-point-y p) y)
-    (setf (aref (secp256r1-point-z p) 0) 1)
+    (secp256r1-fe-copy! (secp256r1-point-z p) (secp256r1-fe-from-int 1))
     p))
 
 (defun secp256r1-batch-affine! (points)

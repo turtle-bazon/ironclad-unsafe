@@ -4100,3 +4100,242 @@
       (inst movdqu xmm1 (ea (+ data-offset (* 4 0)) src))
       (sb-assem:emit sb-assem::*current-destination* '(.byte #x66 #x0F #x3A #x0F #xC1 #x04))
       (inst movdqu (ea (+ data-offset (* 4 0)) dst) xmm0))))
+
+
+#+x86-64
+(define-vop (secp256r1-fe-mont-mul-asm)
+  ;; R := A * B * R^-1 mod P for four 64-bit limbs in the Montgomery
+  ;; representation, with R = 2^256.  The lowest limb of P is 2^64 - 1,
+  ;; so P' = -P^-1 mod 2^64 is one, and the reduction word is C[i].
+  ;;
+  ;; This is the separated operand scanning form: the eight words of
+  ;; the product are accumulated in the scratch buffer C, and the
+  ;; reduction updates them in place, so only the multiplier, a carry
+  ;; word and the reduction word are live besides RAX and RDX.  The
+  ;; earlier attempt kept the whole accumulator in registers and the
+  ;; register allocator had no room left for the arguments.
+  (:translate ironclad-unsafe::secp256r1-fe-mont-mul-asm)
+  (:policy :fast-safe)
+  (:args (r :scs (descriptor-reg))
+         (a :scs (descriptor-reg))
+         (b :scs (descriptor-reg))
+         (c :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+  (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
+  (:temporary (:sc unsigned-reg) tmp carry limb)
+  (:temporary (:sc unsigned-reg) tmp2)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag))
+          (done (gen-label)))
+      (flet ((a64 (i) (ea (+ data-offset (* 8 i)) a))
+             (b64 (i) (ea (+ data-offset (* 8 i)) b))
+             (r64 (i) (ea (+ data-offset (* 8 i)) r))
+             (c64 (i) (ea (+ data-offset (* 8 i)) c))
+             (pw (i) (case i (0 #xffffffffffffffff)
+                          (1 #x00000000ffffffff)
+                          (2 0)
+                          (3 #xffffffff00000001))))
+        ;; C[0..8] := 0.
+        (inst mov tmp 0)
+        (dotimes (k 9)
+          (inst mov (c64 k) tmp))
+        ;; The product, eight words, in C[0..7].
+        (dotimes (i 4)
+          (inst mov carry 0)
+          (dotimes (j 4)
+            (inst mov rax-tmp (a64 i))
+            (inst mov tmp (b64 j))
+            (inst mul tmp)
+            (inst add rax-tmp (c64 (+ i j)))
+            (inst adc rdx-tmp 0)
+            (inst add rax-tmp carry)
+            (inst adc rdx-tmp 0)
+            (inst mov (c64 (+ i j)) rax-tmp)
+            (inst mov carry rdx-tmp))
+          (inst mov (c64 (+ i 4)) carry))
+        ;; The reduction: C += C[i] * P * 2^(64 i), four times.
+        (dotimes (i 4)
+          (inst mov limb (c64 i))
+          (inst mov carry 0)
+          (dotimes (j 4)
+            (inst mov rax-tmp limb)
+            (inst mov tmp (pw j))
+            (inst mul tmp)
+            (inst add rax-tmp (c64 (+ i j)))
+            (inst adc rdx-tmp 0)
+            (inst add rax-tmp carry)
+            (inst adc rdx-tmp 0)
+            (inst mov (c64 (+ i j)) rax-tmp)
+            (inst mov carry rdx-tmp))
+          (inst mov tmp2 carry)
+          (loop for k from (+ i 4) to 8
+                do (inst mov rax-tmp (c64 k))
+                   (inst add rax-tmp tmp2)
+                   (inst mov (c64 k) rax-tmp)
+                   (inst mov tmp2 0)
+                   (inst adc tmp2 0)))
+        ;; R := C[4..7] - P, remembering the borrow.  The carry of the
+        ;; first subtraction is materialized before the borrow of the
+        ;; previous limb is subtracted, for chaining the two would lose
+        ;; it; LIMB is free again after the reduction.
+        (inst mov limb 0)
+        (dotimes (i 4)
+          (inst mov rax-tmp (c64 (+ i 4)))
+          (inst mov tmp (pw i))
+          (inst sub rax-tmp tmp)
+          (inst mov tmp2 0)
+          (inst adc tmp2 0)
+          (inst sub rax-tmp limb)
+          (inst adc tmp2 0)
+          (inst mov (r64 i) rax-tmp)
+          (inst mov limb tmp2))
+        ;; The ninth word is the overflow; the reduced value is below
+        ;; twice the prime, so one subtraction is enough, and it is
+        ;; undone when it borrowed with no overflow to spend.
+        (inst mov tmp (c64 8))
+        (inst sub tmp limb)
+        (inst jmp :nc done)
+        (inst mov limb 0)
+        (dotimes (i 4)
+          (inst mov rax-tmp (r64 i))
+          (inst mov tmp (pw i))
+          (inst add rax-tmp tmp)
+          (inst mov tmp2 0)
+          (inst adc tmp2 0)
+          (inst add rax-tmp limb)
+          (inst adc tmp2 0)
+          (inst mov (r64 i) rax-tmp)
+          (inst mov limb tmp2))
+        (emit-label done)))))
+
+
+#+x86-64
+(define-vop (secp256r1-fe-add64-asm)
+  ;; R := (A + B) mod P for four 64-bit limbs.
+  ;;
+  ;; A three-operand add is done as ADD then ADC into a second word, so
+  ;; that the carry of A[i] + B[i] is not lost when the carry of the
+  ;; previous limb turns the low word over.  The prime is subtracted
+  ;; from the sum: a borrow means the sum was below the prime and the
+  ;; prime is added back, unless the sum was above 2^256, for then the
+  ;; wrapped difference is already right.
+  (:translate ironclad-unsafe::secp256r1-fe-add64-asm)
+  (:policy :fast-safe)
+  (:args (r :scs (descriptor-reg))
+         (a :scs (descriptor-reg))
+         (b :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+  (:temporary (:sc unsigned-reg) tmp carry borrow limb)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag))
+          (done (gen-label)))
+      (flet ((a64 (i) (ea (+ data-offset (* 8 i)) a))
+             (b64 (i) (ea (+ data-offset (* 8 i)) b))
+             (r64 (i) (ea (+ data-offset (* 8 i)) r))
+             (pw (i) (case i (0 #xffffffffffffffff)
+                          (1 #x00000000ffffffff)
+                          (2 0)
+                          (3 #xffffffff00000001))))
+        ;; The sum.
+        (inst mov carry 0)
+        (dotimes (i 4)
+          (inst mov rax-tmp (a64 i))
+          (inst add rax-tmp (b64 i))
+          (inst mov tmp 0)
+          (inst adc tmp 0)
+          (inst add rax-tmp carry)
+          (inst adc tmp 0)
+          (inst mov (r64 i) rax-tmp)
+          (inst mov carry tmp))
+        ;; The difference between the sum and the prime.
+        (inst mov borrow 0)
+        (dotimes (i 4)
+          (inst mov rax-tmp (r64 i))
+          (inst mov limb (pw i))
+          (inst sub rax-tmp limb)
+          (inst mov tmp 0)
+          (inst adc tmp 0)
+          (inst sub rax-tmp borrow)
+          (inst adc tmp 0)
+          (inst mov (r64 i) rax-tmp)
+          (inst mov borrow tmp))
+        (inst test borrow borrow)
+        (inst jmp :z done)
+        (inst test carry carry)
+        (inst jmp :nz done)
+        ;; Put the prime back.
+        (inst mov carry 0)
+        (dotimes (i 4)
+          (inst mov rax-tmp (r64 i))
+          (inst mov limb (pw i))
+          (inst add rax-tmp limb)
+          (inst mov tmp 0)
+          (inst adc tmp 0)
+          (inst add rax-tmp carry)
+          (inst adc tmp 0)
+          (inst mov (r64 i) rax-tmp)
+          (inst mov carry tmp))
+        (emit-label done)))))
+
+
+#+x86-64
+(define-vop (secp256r1-fe-sub64-asm)
+  ;; R := (A - B) mod P for four 64-bit limbs, by the same pattern as
+  ;; the addition, with the prime added back when the difference
+  ;; borrowed.
+  (:translate ironclad-unsafe::secp256r1-fe-sub64-asm)
+  (:policy :fast-safe)
+  (:args (r :scs (descriptor-reg))
+         (a :scs (descriptor-reg))
+         (b :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+  (:temporary (:sc unsigned-reg) tmp carry borrow limb)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag))
+          (done (gen-label)))
+      (flet ((a64 (i) (ea (+ data-offset (* 8 i)) a))
+             (b64 (i) (ea (+ data-offset (* 8 i)) b))
+             (r64 (i) (ea (+ data-offset (* 8 i)) r))
+             (pw (i) (case i (0 #xffffffffffffffff)
+                          (1 #x00000000ffffffff)
+                          (2 0)
+                          (3 #xffffffff00000001))))
+        ;; The difference.
+        (inst mov borrow 0)
+        (dotimes (i 4)
+          (inst mov rax-tmp (a64 i))
+          (inst sub rax-tmp (b64 i))
+          (inst mov tmp 0)
+          (inst adc tmp 0)
+          (inst sub rax-tmp borrow)
+          (inst adc tmp 0)
+          (inst mov (r64 i) rax-tmp)
+          (inst mov borrow tmp))
+        (inst test borrow borrow)
+        (inst jmp :z done)
+        ;; Put the prime back.
+        (inst mov carry 0)
+        (dotimes (i 4)
+          (inst mov rax-tmp (r64 i))
+          (inst mov limb (pw i))
+          (inst add rax-tmp limb)
+          (inst mov tmp 0)
+          (inst adc tmp 0)
+          (inst add rax-tmp carry)
+          (inst adc tmp 0)
+          (inst mov (r64 i) rax-tmp)
+          (inst mov carry tmp))
+        (emit-label done)))))
