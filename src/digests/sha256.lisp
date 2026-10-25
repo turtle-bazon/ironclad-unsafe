@@ -200,13 +200,13 @@
    case for HMAC and HKDF) several times slower than it needed to be."
   (declare (type sha256-regs regs)
            (type (simple-array (unsigned-byte 32) (64)) block))
-  #+x86-64
+  #+(and sbcl x86-64)
   (if (sha-ni-supported-p)
       (sha256ni-compress regs block)
       (progn
         (sha256-expand-block block)
         (update-sha256-block regs block)))
-  #-x86-64
+  #-(and sbcl x86-64)
   (progn
     (sha256-expand-block block)
     (update-sha256-block regs block))

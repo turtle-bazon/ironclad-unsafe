@@ -126,7 +126,8 @@ array, and falls back to a byte-at-a-time XOR for anything else.  SIMPLE
 says whether DATA is such a simple array; the caller checks that once
 for the whole message, instead of once per block."
   (declare (type (vector (unsigned-byte 8)) data)
-           (type boolean simple))
+           (type boolean simple)
+           (ignorable simple))
   (let ((chain (ccm-chain mode)))
     (declare (type (simple-array (unsigned-byte 8) (16)) chain))
     #+(and sbcl x86-64 ironclad-unsafe-assembly)
@@ -141,7 +142,6 @@ for the whole message, instead of once per block."
       (aes-encrypt-block (ccm-ecb mode) chain 0 chain 0))
     #-(and sbcl x86-64 ironclad-unsafe-assembly)
     (progn
-      (declare (ignore simple))
       (dotimes (i 16)
         (setf (aref chain i)
               (logxor (aref chain i) (aref data (+ offset i)))))
