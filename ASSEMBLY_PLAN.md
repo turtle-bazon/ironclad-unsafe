@@ -97,11 +97,14 @@ separated-operand-scanning form and fits the register budget.
   blinding factor (prime modulus => always coprime): saves ~6 us.
 
 ### Remaining work
-- Dedicated squaring VOP for P-256 (SOS squaring, ~10 mulq instead of 16);
-  estimated ~7% on verify.  Not yet done.
+- Dedicated squaring VOP for P-256 was attempted (SOS squaring, 10 mulq
+  instead of 16) but the off-diagonal carry propagation is fiddly and the
+  VOP produced wrong results; abandoned.  fe-sq reuses fe-mul (40 ns), so
+  the loss is small (~6 mulq per square, ~5 ns).
 - secp384r1 and secp521r1 use bignum integers, not limb arrays; porting
   them to a limb-based Montgomery representation is a full rewrite.
 - DSA/RSA Montgomery modexp (variable modulus, per-key p').
 - AVX2 mul-raw for P-256 (secondary; the scalar VOP is already 40 ns).
 - fe-inv uses the addition chain (12 us); a 4-limb binary extended gcd
-  would be ~2-3 us.
+  would be ~2-3 us.  Note that the bignum-based modular-inverse-euclid
+  already takes ~12 us, so there is no easy win without a limb-level GCD.
