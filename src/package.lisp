@@ -326,8 +326,10 @@
 (dolist (f (ironclad-unsafe-implementation-features))
   (pushnew f *features*))
 
-;; Enable assembly optimizations, unless we are either in ECL using only the
-;; bytecode compiler or in an older version of CCL.
-#-(or ecl-bytecmp
+;; Enable assembly optimizations, unless we are either in ECL (whose
+;; ffi:c-inline based paths have portability bugs), in ECL using only
+;; the bytecode compiler, or in an older version of CCL.
+#-(or ecl
+      ecl-bytecmp
       (and ccl (not ccl-1.12)))
 (pushnew :ironclad-unsafe-assembly *features*)

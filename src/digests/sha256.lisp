@@ -90,8 +90,7 @@
 
 (defun update-sha256-block-fast (regs block)
   (declare (type sha256-regs regs)
-           (type (simple-array (unsigned-byte 32) (64)) block)
-            #.(burn-baby-burn))
+           (type (simple-array (unsigned-byte 32) (64)) block))
   (let ((a (sha256-regs-a regs)) (b (sha256-regs-b regs))
         (c (sha256-regs-c regs)) (d (sha256-regs-d regs))
         (e (sha256-regs-e regs)) (f (sha256-regs-f regs))
@@ -113,14 +112,14 @@
                (t2 (logand #xffffffff
                            (+ (sigma0 a) (maj a b c)))))
           (declare (type (unsigned-byte 32) w k t1 t2))
-          (setf h g
-                g f
-                f e
-                e (logand #xffffffff (+ d t1))
-                d c
-                c b
-                b a
-                a (logand #xffffffff (+ t1 t2)))))
+          (psetf h g
+                 g f
+                 f e
+                 e (logand #xffffffff (+ d t1))
+                 d c
+                 c b
+                 b a
+                 a (logand #xffffffff (+ t1 t2)))))
       (setf (sha256-regs-a regs) (logand #xffffffff (+ (sha256-regs-a regs) a))
             (sha256-regs-b regs) (logand #xffffffff (+ (sha256-regs-b regs) b))
             (sha256-regs-c regs) (logand #xffffffff (+ (sha256-regs-c regs) c))
@@ -265,7 +264,11 @@
                  (sha256ni-compress (sha256-regs state) block)
                  (progn
                    (sha256-expand-block block)
-                   (update-sha256-block-fast (sha256-regs state) block))))))
+                   (update-sha256-block-fast (sha256-regs state) block)))
+             #-(and sbcl x86-64)
+             (progn
+               (sha256-expand-block block)
+               (update-sha256-block-fast (sha256-regs state) block)))))
     (declare (dynamic-extent #'compress))
     (declare (notinline mdx-updater))
     (mdx-updater state #'compress sequence start end)))
