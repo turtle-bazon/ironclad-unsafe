@@ -366,3 +366,25 @@ Results (Zen 2, falcon-512): keygen ~230 -> ~104 ms avg (68-204 range,
 retry variance), sign ~19 -> 5.2 ms, verify unchanged 178 us.
 All 677 tests pass; fresh-key roundtrips pass for every signature
 and encryption scheme.
+
+## Update (ed448 windows, this session)
+
+Verify was 1616 us: a 4-bit fixed-base comb plus a full 456-bit ladder
+plus an add.  Sign was 688 us (4-bit comb).
+
+- `ed448-base-mult-limbs` now uses eight-bit windows over a 256-entry
+  table of V*G (57 additions instead of 114), destination-passing
+  `!` point ops with rotatef'd temporaries, linear scan selection.
+- New `ed448-shamir-mult-limbs`: five-bit joint multiplication for
+  verify.  The generator's table serves the five-bit windows directly;
+  the public key gets a 32-entry table per verify.  Verify checks
+  s*B - h*A == R with h negated mod l, in one 92-window pass instead
+  of fixed-base + ladder + add.
+
+  ed448 sign    688 -> 586 us (gap 3.4x -> 2.9x)
+  ed448 verify 1616 -> 720 us (gap 7.6x -> 3.4x)
+  Signature vectors pass; fresh roundtrips pass.
+
+Remaining ed448 cost is the field multiply itself (66% of verify in
+mul-raw + reduce16, already VOP-backed at ~56 ns); halving again
+needs extended coordinates or point-level VOPs.

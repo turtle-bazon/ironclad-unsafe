@@ -190,66 +190,186 @@ X, Y and Z are bignums, and the result is a point."
                        :z (goldilocks-fe-to-int r0z)))))
 
 (defvar *ed448-base-table-limbs* nil
-  "Precomputed I * G for I in [0, 16), in limbs.")
+  "Precomputed I * G for I in [0, 256), in limbs.")
+
+(defun ed448-base-table-entry (table i)
+  "Fresh I*G triple for the base TABLE, built with destination-passing
+ops from earlier entries (which must already be present)."
+  (declare (type simple-vector table)
+           (type fixnum i)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((s (goldilocks-make-scratch))
+        (x (goldilocks-fe-zero))
+        (y (goldilocks-fe-zero))
+        (z (goldilocks-fe-zero)))
+    (declare (type simple-vector s)
+             (type goldilocks-fe x y z))
+    (cond ((zerop i)
+           (setf (aref x 0) 0
+                 (aref y 0) 1
+                 (aref z 0) 1))
+          ((= i 1)
+           (replace x (goldilocks-fe-from-int (slot-value +ed448-b+ 'x)))
+           (replace y (goldilocks-fe-from-int (slot-value +ed448-b+ 'y)))
+           (setf (aref z 0) 1))
+          (t
+           (if (evenp i)
+               (ed448-point-double-limbs! x y z
+                                          (aref (aref table (ash i -1)) 0)
+                                          (aref (aref table (ash i -1)) 1)
+                                          (aref (aref table (ash i -1)) 2)
+                                          s)
+               (ed448-point-add-limbs! x y z
+                                       (aref (aref table (1- i)) 0)
+                                       (aref (aref table (1- i)) 1)
+                                       (aref (aref table (1- i)) 2)
+                                       (aref (aref table 1) 0)
+                                       (aref (aref table 1) 1)
+                                       (aref (aref table 1) 2)
+                                       s))))
+    (vector x y z)))
 
 (defun ed448-ensure-base-table-limbs ()
   (or *ed448-base-table-limbs*
       (setf *ed448-base-table-limbs*
-            (let ((table (make-array 16))
-                  (x nil) (y nil) (z nil))
-              (declare (ignorable x y z))
-              (setf (aref table 0) (vector (goldilocks-fe-from-int 0)
-                                           (goldilocks-fe-from-int 1)
-                                           (goldilocks-fe-from-int 1))
-                    (aref table 1) (vector (goldilocks-fe-from-int
-                                            (slot-value +ed448-b+ 'x))
-                                           (goldilocks-fe-from-int
-                                            (slot-value +ed448-b+ 'y))
-                                           (goldilocks-fe-from-int 1)))
-              (loop for i from 2 below 16
-                    do (progn
-                         (multiple-value-setq (x y z)
-                           (if (evenp i)
-                               (ed448-point-double-limbs
-                                (aref (aref table (ash i -1)) 0)
-                                (aref (aref table (ash i -1)) 1)
-                                (aref (aref table (ash i -1)) 2))
-                               (ed448-point-add-limbs
-                                (aref (aref table (1- i)) 0)
-                                (aref (aref table (1- i)) 1)
-                                (aref (aref table (1- i)) 2)
-                                (aref (aref table 1) 0)
-                                (aref (aref table 1) 1)
-                                (aref (aref table 1) 2))))
-                         (setf (aref table i) (vector x y z))))
-              table))))
+            (let ((table (make-array 256)))
+              (dotimes (i 256 table)
+                (setf (aref table i) (ed448-base-table-entry table i)))))))
+
+(declaim (inline ed448-select-base-limbs))
+(defun ed448-select-base-limbs (table v ax ay az)
+  "Copy TABLE[V] into AX AY AZ.  Linear scan, timing independent of V."
+  (declare (type simple-vector table)
+           (type (unsigned-byte 8) v)
+           (type goldilocks-fe ax ay az)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (dotimes (i 256)
+    (when (= i v)
+      (let ((e (aref table i)))
+        (declare (type simple-vector e))
+        (replace ax (aref e 0))
+        (replace ay (aref e 1))
+        (replace az (aref e 2)))))
+  (values ax ay az))
+
+(defun ed448-make-window-table-limbs (x y z)
+  "32 multiples of the bignum point (X : Y : Z) for five-bit windows."
+  (declare (type integer x y z)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((table (make-array 32))
+        (s (goldilocks-make-scratch)))
+    (declare (type simple-vector table s))
+    (setf (aref table 0) (vector (goldilocks-fe-from-int 0)
+                                 (goldilocks-fe-from-int 1)
+                                 (goldilocks-fe-from-int 1))
+          (aref table 1) (vector (goldilocks-fe-from-int x)
+                                 (goldilocks-fe-from-int y)
+                                 (goldilocks-fe-from-int z)))
+    (loop for v of-type fixnum from 2 below 32 do
+      (let ((dx (goldilocks-fe-zero))
+            (dy (goldilocks-fe-zero))
+            (dz (goldilocks-fe-zero)))
+        (declare (type goldilocks-fe dx dy dz))
+        (if (evenp v)
+            (ed448-point-double-limbs! dx dy dz
+                                       (aref (aref table (ash v -1)) 0)
+                                       (aref (aref table (ash v -1)) 1)
+                                       (aref (aref table (ash v -1)) 2)
+                                       s)
+            (ed448-point-add-limbs! dx dy dz
+                                    (aref (aref table (1- v)) 0)
+                                    (aref (aref table (1- v)) 1)
+                                    (aref (aref table (1- v)) 2)
+                                    (aref (aref table 1) 0)
+                                    (aref (aref table 1) 1)
+                                    (aref (aref table 1) 2)
+                                    s))
+        (setf (aref table v) (vector dx dy dz))))
+    table))
+
+(defun ed448-shamir-mult-limbs (ax ay az bx by bz a b)
+  "A*(AX:AY:AZ) + B*(BX:BY:BZ), public only, five-bit windows. The
+input points use bignum coordinates; the result is an ed448-point."
+  (declare (type integer ax ay az bx by bz a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((w 5)
+         (abit (integer-length a))
+         (bbit (integer-length b))
+         (bits (max abit bbit 1))
+         (nwin (ceiling bits w))
+         ;; The generator's 256-entry table starts with V*G for V in
+         ;; [0, 32), so it serves the five-bit windows directly.
+         (tg (ed448-ensure-base-table-limbs))
+         (tq (ed448-make-window-table-limbs bx by bz))
+         (rx (goldilocks-fe-from-int 0))
+         (ry (goldilocks-fe-from-int 1))
+         (rz (goldilocks-fe-from-int 1))
+         (tx (goldilocks-fe-zero))
+         (ty (goldilocks-fe-zero))
+         (tz (goldilocks-fe-zero))
+         (s (goldilocks-make-scratch)))
+    (declare (type fixnum w abit bbit bits nwin)
+             (type simple-vector tq)
+             (type goldilocks-fe rx ry rz tx ty tz))
+    (loop for wi of-type fixnum downfrom (1- nwin) to 0 do
+      (unless (= wi (1- nwin))
+        (dotimes (i w)
+          (declare (ignore i))
+          (ed448-point-double-limbs! tx ty tz rx ry rz s)
+          (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))
+      (let* ((shift (* wi w))
+             (va (if (< shift abit) (ldb (byte w shift) a) 0))
+             (vb (if (< shift bbit) (ldb (byte w shift) b) 0)))
+        (declare (type fixnum shift)
+                 (type (unsigned-byte 5) va vb))
+        (unless (zerop va)
+          (let ((e (aref tg va)))
+            (declare (type simple-vector e))
+            (ed448-point-add-limbs! tx ty tz rx ry rz
+                                    (aref e 0) (aref e 1) (aref e 2) s)
+            (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))
+        (unless (zerop vb)
+          (let ((e (aref tq vb)))
+            (declare (type simple-vector e))
+            (ed448-point-add-limbs! tx ty tz rx ry rz
+                                    (aref e 0) (aref e 1) (aref e 2) s)
+            (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))))
+    (make-instance 'ed448-point
+                   :x (goldilocks-fe-to-int rx)
+                   :y (goldilocks-fe-to-int ry)
+                   :z (goldilocks-fe-to-int rz))))
 
 (defun ed448-base-mult-limbs (k)
-  "The fixed-base comb for G, in the limb field."
+  "The fixed-base comb for G, in the limb field: eight-bit windows."
   (declare (type integer k)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((table (ed448-ensure-base-table-limbs))
         (ax (goldilocks-fe-from-int 0))
         (ay (goldilocks-fe-from-int 1))
         (az (goldilocks-fe-from-int 1))
-        (x nil) (y nil) (z nil))
-    (declare (ignorable x y z))
-    (loop for j from 113 downto 0 do          ; 456 bits / 4 = 114 nibbles
-      (progn
-        (dotimes (i 4)
-          (multiple-value-setq (x y z) (ed448-point-double-limbs ax ay az))
-          (setf ax x ay y az z))
-        ;; The point is selected with a linear scan, so that the time
-        ;; does not depend on the secret scalar.
-        (let ((v (ldb (byte 4 (* j 4)) k)))
-          (dotimes (i 16)
-            (when (= i v)
-              (multiple-value-setq (x y z)
-                (ed448-point-add-limbs ax ay az
-                                       (aref (aref table i) 0)
-                                       (aref (aref table i) 1)
-                                       (aref (aref table i) 2)))
-              (setf ax x ay y az z))))))
+        (tx (goldilocks-fe-zero))
+        (ty (goldilocks-fe-zero))
+        (tz (goldilocks-fe-zero))
+        (sx (goldilocks-fe-zero))
+        (sy (goldilocks-fe-zero))
+        (sz (goldilocks-fe-zero))
+        (s (goldilocks-make-scratch)))
+    (declare (type simple-vector table s)
+             (type goldilocks-fe ax ay az tx ty tz sx sy sz))
+    (loop for j of-type fixnum from 56 downto 0 do ; 456 bits / 8
+      (unless (= j 56)
+        (dotimes (i 8)
+          (declare (ignore i))
+          (ed448-point-double-limbs! tx ty tz ax ay az s)
+          (rotatef ax tx) (rotatef ay ty) (rotatef az tz)))
+      ;; Linear scan: timing does not depend on the secret scalar.
+      ;; Table entry 0 is infinity, so a zero window adds nothing.
+      (let ((v (ldb (byte 8 (* j 8)) k)))
+        (declare (type (unsigned-byte 8) v))
+        (unless (zerop v)
+          (ed448-select-base-limbs table v sx sy sz)
+          (ed448-point-add-limbs! tx ty tz ax ay az sx sy sz s)
+          (rotatef ax tx) (rotatef ay ty) (rotatef az tz))))
     (make-instance 'ed448-point
                    :x (goldilocks-fe-to-int ax)
                    :y (goldilocks-fe-to-int ay)
@@ -605,8 +725,16 @@ X, Y and Z are bignums, and the result is a point."
          (s (ec-decode-scalar :ed448 (getf signature-elements :s)))
          (a (ec-decode-point :ed448 pk))
          (h (mod (ec-decode-scalar :ed448 (ed448-hash +ed448-dom+ r pk m)) +ed448-l+))
-         (res1 (ec-scalar-mult +ed448-b+ s))
-         (res2 (ec-add rp (ed448-scalar-mult-general a h))))
+         ;; Joint multiplication for s*B - h*A == R: negate h modulo
+         ;; the order and check the sum against R in one pass instead
+         ;; of a fixed-base mult plus a ladder plus an add.
+         (res1 (with-slots ((ax x) (ay y) (az z)) +ed448-b+
+                 (declare (type integer ax ay az))
+                 (with-slots ((bx x) (by y) (bz z)) a
+                   (declare (type integer bx by bz))
+                   (ed448-shamir-mult-limbs ax ay az bx by bz
+                                            s (mod (- h) +ed448-l+)))))
+         (res2 rp))
     (declare (type (simple-array (unsigned-byte 8) (*)) r)
              (type integer s h)
              (type ed448-point rp a res1 res2))
