@@ -721,3 +721,21 @@ P-521), instead of rebuilding the generator table on every verify.
 Differential coverage unchanged (tables/Shamir validated bit-exact);
 P-384 sig/DH vectors pass.
 Full SBCL suite green with P-521 limb sign active (rev 1056).
+
+## Update (SHA-1 SHA-NI, this session)
+
+SHA-1 single-block compression via SHA-NI (sha1rnds4/nexte/msg1/msg2),
+mirroring the sha256ni pattern: runtime dispatch on sha-ni-supported-p,
+portable path unchanged.  The VOP was validated three ways before
+landing: instruction semantics probed empirically with GAS test
+binaries (including discovering that the message words must be
+lane-reversed with pshufd, not byte-reversed with pshufb, because the
+block holds u32 values); the schedule pairing (MSG1 + PXOR + MSG2,
+from the Intel whitepaper flow confirmed against OpenSSL's
+register usage) verified symbolically end-to-end (KAT digest from the
+models); and a GAS prototype KAT-tested (empty/abc/56-byte/2-block)
+before transcribing bytes to the VOP.  Along the way: my byte-level
+KAT expectations had typos (9c vs 9d nibbles) -- always verify KAT
+vectors against hashlib, not memory.
+
+  sha1 8k-block  513 -> ~1560 MB/s (3.0x, gap 3.14 -> ~1.0)

@@ -4620,3 +4620,187 @@
     (#x00000000ffffffff #xffffffff00000000 #xfffffffffffffffe
      #xffffffffffffffff #xffffffffffffffff #xffffffffffffffff)
   :sub)
+
+;;; SHA-1 single-block compression with SHA-NI instructions.
+;;;
+;;; STATE holds the five words A B C D E, BLOCK the first sixteen words
+;;; of the message schedule area (big-endian values).  The compression
+;;; follows the Intel whitepaper: the state is shuffled to the A-high
+;;; layout, the message groups are loaded as values and reversed to the
+;;; W[4i]-high layout with pshufd, and the eighty rounds run with
+;;; SHA1RNDS4 / SHA1NEXTE / SHA1MSG1 / SHA1MSG2.  The E term for each
+;;; four-round group travels in the high lane of the message register
+;;; (added with a plain paddd for the first group, produced by
+;;; SHA1NEXTE after that), and the schedule is a MSG1 + PXOR + MSG2
+;;; triple per group.
+;;;
+;;; The double-reg temporaries are allocated xmm0 to xmm8 in order;
+;;; the raw SHA-NI bytes below name those registers explicitly.
+
+#+x86-64
+(define-vop (sha1ni-compress-block)
+  (:translate ironclad-unsafe::sha1ni-compress-block)
+  (:policy :fast-safe)
+  (:args (state :scs (descriptor-reg))
+         (block :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32)
+  (:temporary (:sc double-reg) t0 t1 t2 t3 t4 t5 t6 t7 t8 t9)
+  ;; NB: t7 is unused padding so that t8 and t9 allocate xmm8 and xmm9,
+  ;; which the raw bytes below name explicitly (with REX prefixes).
+  (:temporary (:sc unsigned-reg) etmp)
+  (:generator 1000
+(let ((disp (- (* n-word-bytes vector-data-offset) other-pointer-lowtag)))
+  ;; load ABCD and E, shuffle to A-high layout
+  (inst movdqu t0 (ea (+ disp 0) state))
+  (inst pshufd t0 t0 #x1b)
+  (dword-inst mov etmp (dword-ea (+ disp 16) state))
+  (inst movd t1 etmp)
+  (inst pshufd t1 t1 #x1b)
+  (inst movdqa t8 t0)
+  (inst movdqa t9 t1)
+  ;; group 0
+  (inst movdqu t3 (ea (+ disp 0) block))
+  (inst pshufd t3 t3 #x1b)
+  (inst paddd t1 t3)
+  (inst movdqa t2 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc1 #x00))
+  ;; group 1
+  (inst movdqu t4 (ea (+ disp 16) block))
+  (inst pshufd t4 t4 #x1b)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xd4))
+  (inst movdqa t1 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc2 #x00))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc9 #xdc))
+  ;; group 2
+  (inst movdqu t5 (ea (+ disp 32) block))
+  (inst pshufd t5 t5 #x1b)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xcd))
+  (inst movdqa t2 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc1 #x00))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc9 #xe5))
+  (inst pxor t3 t5)
+  ;; group 3
+  (inst movdqu t6 (ea (+ disp 48) block))
+  (inst pshufd t6 t6 #x1b)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xd6))
+  (inst movdqa t1 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xca #xde))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc2 #x00))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc9 #xee))
+  (inst pxor t4 t6)
+  ;; group 4
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xcb))
+  (inst movdqa t2 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xca #xe3))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc1 #x00))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc9 #xf3))
+  (inst pxor t5 t3)
+  ;; group 5
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xd4))
+  (inst movdqa t1 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xca #xec))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc2 #x01))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc9 #xdc))
+  (inst pxor t6 t4)
+  ;; group 6
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xcd))
+  (inst movdqa t2 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xca #xf5))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc1 #x01))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc9 #xe5))
+  (inst pxor t3 t5)
+  ;; group 7
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xd6))
+  (inst movdqa t1 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xca #xde))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc2 #x01))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc9 #xee))
+  (inst pxor t4 t6)
+  ;; group 8
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xcb))
+  (inst movdqa t2 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xca #xe3))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc1 #x01))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc9 #xf3))
+  (inst pxor t5 t3)
+  ;; group 9
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xd4))
+  (inst movdqa t1 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xca #xec))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc2 #x01))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc9 #xdc))
+  (inst pxor t6 t4)
+  ;; group 10
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xcd))
+  (inst movdqa t2 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xca #xf5))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc1 #x02))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc9 #xe5))
+  (inst pxor t3 t5)
+  ;; group 11
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xd6))
+  (inst movdqa t1 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xca #xde))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc2 #x02))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc9 #xee))
+  (inst pxor t4 t6)
+  ;; group 12
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xcb))
+  (inst movdqa t2 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xca #xe3))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc1 #x02))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc9 #xf3))
+  (inst pxor t5 t3)
+  ;; group 13
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xd4))
+  (inst movdqa t1 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xca #xec))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc2 #x02))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc9 #xdc))
+  (inst pxor t6 t4)
+  ;; group 14
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xcd))
+  (inst movdqa t2 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xca #xf5))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc1 #x02))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc9 #xe5))
+  (inst pxor t3 t5)
+  ;; group 15
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xd6))
+  (inst movdqa t1 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xca #xde))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc2 #x03))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc9 #xee))
+  (inst pxor t4 t6)
+  ;; group 16
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xcb))
+  (inst movdqa t2 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xca #xe3))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc1 #x03))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc9 #xf3))
+  (inst pxor t5 t3)
+  ;; group 17
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xd4))
+  (inst movdqa t1 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xca #xec))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc2 #x03))
+  (inst pxor t6 t4)
+  ;; group 18
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xcd))
+  (inst movdqa t2 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xca #xf5))
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc1 #x03))
+  ;; group 19
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x38 #xc8 #xd6))
+  (inst movdqa t1 t0)
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x0f #x3a #xcc #xc2 #x03))
+  ;; final add
+      (sb-assem:emit sb-assem::*current-destination* '(.byte #x41 #x0f #x38 #xc8 #xc9))
+  (inst paddd t0 t8)
+  (inst pshufd t0 t0 #x1b)
+  (inst movdqu (ea (+ disp 0) state) t0)
+  (inst pextrd etmp t1 3)
+  (dword-inst mov (dword-ea (+ disp 16) state) etmp)
+  (values))
+))

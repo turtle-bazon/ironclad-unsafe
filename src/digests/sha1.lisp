@@ -41,6 +41,43 @@
 
 (defconst +pristine-sha1-registers+ (initial-sha1-regs))
 
+(defun sha1ni-compress (regs block)
+  "Compress one 16-word big-endian BLOCK into REGS with SHA-NI.
+BLOCK is the eighty-word schedule area; only the first sixteen words
+are read."
+  (declare (type sha1-regs regs)
+           (type (simple-array (unsigned-byte 32) (80)) block)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (progn
+    (sha1ni-compress-block regs block)
+    regs)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
+  (progn
+    (expand-block block)
+    (update-sha1-block regs block)
+    regs))
+
+(defun sha1-compress-block (regs block)
+  "Compress one 16-word big-endian BLOCK into REGS, computing the
+message schedule in place for the portable path and in hardware for
+the SHA-NI path.  Every compression goes through this function so that
+the final block of a message is as fast as the streaming ones."
+  (declare (type sha1-regs regs)
+           (type (simple-array (unsigned-byte 32) (80)) block)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64)
+  (if (sha-ni-supported-p)
+      (sha1ni-compress regs block)
+      (progn
+        (expand-block block)
+        (update-sha1-block regs block)))
+  #-(and sbcl x86-64)
+  (progn
+    (expand-block block)
+    (update-sha1-block regs block))
+  regs)
+
 (defun update-sha1-block (regs block)
   (declare (type sha1-regs regs)
            (type (simple-array (unsigned-byte 32) (80)) block)
@@ -172,8 +209,7 @@ available."
   (flet ((compress (state sequence offset)
            (let ((block (sha1-block state)))
              (fill-block-ub8-be block sequence offset)
-             (expand-block block)
-             (update-sha1-block (sha1-regs state) block))))
+             (sha1-compress-block (sha1-regs state) block))))
     (declare (dynamic-extent #'compress))
     (declare (notinline mdx-updater))
     (mdx-updater state #'compress sequence start end)))
@@ -195,8 +231,7 @@ available."
          from (1+ buffer-index) below 64
          do (setf (aref buffer index) #x00))
       (fill-block-ub8-be block buffer 0)
-      (expand-block block)
-      (update-sha1-block regs block)
+      (sha1-compress-block regs block)
       (loop for index of-type (integer 0 16)
          from 0 below 16
          do (setf (aref block index) #x00000000)))
@@ -208,8 +243,7 @@ available."
       (fill-block-ub8-be block buffer 0))
     ;; fill in the remaining block data
     (store-data-length block total-length 14 t)
-    (expand-block block)
-    (update-sha1-block regs block)
+    (sha1-compress-block regs block)
     (finalize-registers state regs)))
 
 (defdigest sha1 :digest-length 20 :block-length 64)

@@ -90,6 +90,14 @@
   :overwrite-fndb-silently t)
 
 #+x86-64
+#+x86-64
+(defknown ironclad-unsafe::sha1ni-compress-block
+  ((simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 32) (*)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+
 (defknown ironclad-unsafe::sha256ni-compress-block
   ((simple-array (unsigned-byte 32) (*))
    (simple-array (unsigned-byte 32) (*))
