@@ -204,3 +204,35 @@ point operations.
   `(simple-array fixnum)` instead of `(unsigned-byte 32)`: the values
   are below the prime, so tagging/un-tagging on every access was pure
   overhead.  Falcon verify 304 -> 294 us.
+
+## Update (Falcon verify pipeline, this session)
+
+Verify was 304 us: recursive NTT 48 + inverse 98, compressed-signature
+decode 56, SHAKE hash-to-point 48, pointwise 6, rest.
+
+### Iterative NTT
+The recursive split/merge transform copied the whole polynomial twice per
+level and allocated a two-buffer pool per call.  Replaced with the
+standard iterative negacyclic NTT: twist by a primitive 2n-th root PSI
+(found from the smallest primitive root, q-1 = 3*2^12), in-place cyclic
+DFT of size n with OMEGA = PSI^2 over a bit-reversed array, and untwist
+with PSI^-j and n^-1 on the inverse.  Per-size plans (bit reversal,
+twist/untwist, stage twiddles) are built lazily and cached.
+  forward 54 -> 37.6 us, inverse 89 -> 28.0 us
+Validated for n = 2..1024: intt(ntt(f)) = f, and the product matches a
+schoolbook negacyclic convolution at every size.
+
+### Byte-oriented decompress
+`falcon-decompress` used to expand the whole encoding into a bit vector
+(one `setf` per bit) and then read it back.  It now walks the bytes with
+a bit index; the seven low bits of a coefficient are extracted with one
+`ldb` from a two-byte window.  The end of the stream is the lowest set
+bit of the last nonzero byte (trailing zero *bits*, not bytes, so a
+naive `integer-length` of that byte is wrong).  Decode 56 -> 16.8 us;
+compared coefficient-for-coefficient against the old bit-vector decoder
+on 200 fresh signatures.
+
+### Results
+  falcon-512 verify  304 -> 178 us (gap 7.6x -> 4.45x)
+  falcon-512 sign    unchanged (~20 ms, complex FFT path)
+  All 677 tests pass; 60 fresh keygen/sign/verify round trips pass.

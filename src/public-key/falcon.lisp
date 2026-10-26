@@ -123,124 +123,183 @@ The entry for the size 2^k is at the index k-1.")
   "The twiddles of the merge of a transform of size N."
   (aref +falcon-ntt-twiddles+ (- (integer-length n) 2)))
 
-(defun falcon-ntt-merge-scalar (out f0 f1 tw)
-  "The merge of the transform, one element at a time.
-OUT[2I] = F0[I] + TW[I]*F1[I] and OUT[2I+1] = F0[I] - TW[I]*F1[I]."
-  (declare (type (simple-array fixnum (*)) out f0 f1 tw)
-           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((h (length f0)))
-    (dotimes (i h)
-      (let ((p (falcon-mulmod (aref tw i) (aref f1 i)))
-            (u (aref f0 i)))
-        (setf (aref out (* 2 i)) (falcon-addmod u p)
-              (aref out (+ (* 2 i) 1)) (falcon-submod u p))))))
+;;; Iterative negacyclic NTT.
+;;;
+;;; The transform is the standard one for arithmetic in Z_q[x]/(x^n + 1):
+;;; twist the coefficients by the powers of a primitive 2n-th root of
+;;; unity PSI, run an ordinary cyclic NTT of size n with OMEGA = PSI^2,
+;;; and untwist on the way back.  The earlier implementation was a
+;;; recursive split-and-merge transform; it was correct but copied the
+;;; whole polynomial twice per level and allocated a buffer pool on every
+;;; call.  The iterative form does one in-place pass over a bit-reversed
+;;; array and reuses precomputed stage twiddles.
 
-(defun falcon-ntt-merge (out f0 f1 tw)
-  "The merge of the transform."
-  (declare (type (simple-array fixnum (*)) out f0 f1 tw)
+(defun falcon-powmod (b e)
+  "B^E modulo the Falcon prime, for a reduced B."
+  (declare (type fixnum b e)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (falcon-ntt-merge-scalar out f0 f1 tw))
+  (let ((r 1) (b (mod b +falcon-q+)))
+    (loop while (plusp e) do
+      (when (oddp e) (setf r (falcon-mulmod r b)))
+      (setf b (falcon-mulmod b b) e (ash e -1)))
+    r))
 
-(defun falcon-ntt-level (f pool level)
-  "The forward NTT of F, in place, using the buffer pool POOL.
-LEVEL is the depth of the recursion.  The transform splits the
-coefficients into the even and the odd ones, transforms each of them
-and merges them back, so it needs two buffers per level of the
-recursion; the pool holds them, and they are the only arrays the
-transform makes."
-  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let* ((n (length f))
-         (h (ash n -1)))
-    (if (= n 2)
-        (let ((tw (falcon-mulmod +falcon-ntt-sqr1+ (aref f 1)))
-              (a (aref f 0)))
-          (setf (aref f 0) (falcon-addmod a tw)
-                (aref f 1) (falcon-submod a tw)))
-        (let* ((bufs (or (aref pool level)
-                         (setf (aref pool level)
-                               (vector (make-array h :element-type
-                                                    'fixnum)
-                                       (make-array h :element-type
-                                                    'fixnum)))))
-               (f0 (aref bufs 0))
-               (f1 (aref bufs 1)))
-          (dotimes (i h)
-            (setf (aref f0 i) (aref f (* 2 i))
-                  (aref f1 i) (aref f (+ (* 2 i) 1))))
-          (falcon-ntt-level f0 pool (1+ level))
-          (falcon-ntt-level f1 pool (1+ level))
-          (falcon-ntt-merge f f0 f1 (falcon-ntt-twiddles n))))))
+(defun falcon-ntt-primitive-root ()
+  "The smallest primitive root modulo the Falcon prime."
+  (let ((q-1 (1- +falcon-q+)))
+    (loop for g of-type fixnum from 2 do
+      (when (and (= (falcon-powmod g (ash q-1 -1)) (1- +falcon-q+))
+                 (/= (falcon-powmod g (floor q-1 3)) 1))
+        (return g)))))
+
+(defvar *falcon-ntt-primitive-root* (falcon-ntt-primitive-root))
+
+(defstruct falcon-ntt-plan
+  brev twist untwist stages istages ninv)
+
+(defvar *falcon-ntt-plans* nil
+  "Alist of N -> falcon-ntt-plan, built on first use.")
+
+(defun falcon-ntt-plan-for (n)
+  "The transform plan for size N (a power of two)."
+  (declare (type fixnum n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (or (cdr (assoc n *falcon-ntt-plans*))
+      (let* ((logn (1- (integer-length n)))
+             (g *falcon-ntt-primitive-root*)
+             (q-1 (1- +falcon-q+))
+             (psi (falcon-powmod g (floor q-1 (* 2 n))))
+             (psi-inv (falcon-powmod psi (1- (* 2 n))))
+             (omega (falcon-mulmod psi psi))
+             (omega-inv (falcon-powmod omega (1- n)))
+             (ninv (falcon-powmod n (- +falcon-q+ 2)))
+             (brev (make-array n :element-type 'fixnum))
+             (twist (make-array n :element-type 'fixnum))
+             (untwist (make-array n :element-type 'fixnum))
+             (stages (make-array logn))
+             (istages (make-array logn)))
+        (declare (type fixnum logn g psi psi-inv omega omega-inv ninv)
+                 (type (simple-array fixnum (*)) brev twist untwist)
+                 (type simple-vector stages istages))
+        ;; Bit-reversal permutation, LOGlogn bits per index.
+        (dotimes (i n)
+          (let ((r 0) (x i))
+            (declare (type fixnum r x))
+            (dotimes (b logn)
+              (declare (ignore b))
+              (setf r (+ (* r 2) (logand x 1))
+                    x (ash x -1)))
+            (setf (aref brev i) r)))
+        ;; Twist factors PSI^i and PSI^-i.
+        (let ((w 1) (wi 1))
+          (dotimes (i n)
+            (setf (aref twist i) w
+                  (aref untwist i) wi)
+            (setf w (falcon-mulmod w psi)
+                  wi (falcon-mulmod wi psi-inv))))
+        ;; Stage twiddles: OMEGA^(n/len * j) for the forward pass and the
+        ;; same with OMEGA^-1 for the inverse.
+        (loop for level of-type fixnum from 1 to logn do
+          (let* ((len (ash 1 level))
+                 (half (ash len -1))
+                 (wlen (falcon-powmod omega (ash n (- level))))
+                 (iwlen (falcon-powmod omega-inv (ash n (- level))))
+                 (ws (make-array half :element-type 'fixnum))
+                 (iws (make-array half :element-type 'fixnum)))
+            (declare (type fixnum len half wlen iwlen)
+                     (type (simple-array fixnum (*)) ws iws))
+            (let ((w 1) (iw 1))
+              (dotimes (j half)
+                (setf (aref ws j) w
+                      (aref iws j) iw)
+                (setf w (falcon-mulmod w wlen)
+                      iw (falcon-mulmod iw iwlen))))
+            (setf (aref stages (1- level)) ws
+                  (aref istages (1- level)) iws)))
+        (let ((plan (make-falcon-ntt-plan :brev brev :twist twist
+                                           :untwist untwist
+                                           :stages stages :istages istages
+                                           :ninv ninv)))
+          (push (cons n plan) *falcon-ntt-plans*)
+          plan))))
 
 (defun falcon-ntt (f)
-  "Forward NTT: coefficients -> NTT domain."
+  "Forward negacyclic NTT: coefficients -> NTT domain."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length f))
-         (pool (make-array 11 :initial-element nil)))
-    (let ((g (make-array n :element-type 'fixnum
-                           :initial-element 0)))
-      ;; The coefficients are reduced first: the polynomials of the
-      ;; NTRU have coefficients that may be negative, and the
-      ;; reduction of a product below assumes that the residues are
-      ;; below the prime.
-      (dotimes (i n) (setf (aref g i) (mod (aref f i) +falcon-q+)))
-      (falcon-ntt-level g pool 0)
-      (let ((r (make-array n :element-type 'fixnum)))
-        (dotimes (i n r) (setf (aref r i) (aref g i)))))))
-
-(defun falcon-intt-level (f pool level)
-  "The inverse NTT of F, in place, using the buffer pool POOL.
-LEVEL is the depth of the recursion.  The inverse transform splits
-the transform domain into the sums and the differences of the pairs
-of coefficients, transforms each of them and interleaves them back,
-so it needs two buffers per level of the recursion."
-  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let* ((n (length f))
-         (h (ash n -1)))
-    (if (= n 2)
-        (let ((a (aref f 0))
-              (b (aref f 1)))
-          (setf (aref f 0) (falcon-mulmod +falcon-ntt-i2+ (falcon-addmod a b))
-                (aref f 1) (falcon-mulmod
-                            (falcon-mulmod +falcon-ntt-i2+
-                                           (aref +falcon-ntt-inv-mod-q+
-                                                 +falcon-ntt-sqr1+))
-                            (falcon-submod a b))))
-        (let* ((bufs (or (aref pool level)
-                         (setf (aref pool level)
-                               (vector (make-array h :element-type
-                                                    'fixnum)
-                                       (make-array h :element-type
-                                                    'fixnum)))))
-               (f0 (aref bufs 0))
-               (f1 (aref bufs 1))
-               (w (falcon-ntt-roots n)))
-          (dotimes (i h)
-            (let* ((a (aref f (* 2 i)))
-                   (b (aref f (+ (* 2 i) 1)))
-                   (tw (falcon-submod a b)))
-              (setf (aref f0 i) (falcon-mulmod +falcon-ntt-i2+ (falcon-addmod a b))
-                    (aref f1 i) (falcon-mulmod
-                                 (falcon-mulmod +falcon-ntt-i2+
-                                                (aref +falcon-ntt-inv-mod-q+
-                                                      (aref w (* 2 i))))
-                                 tw))))
-          (falcon-intt-level f0 pool (1+ level))
-          (falcon-intt-level f1 pool (1+ level))
-          (dotimes (i h)
-            (setf (aref f (* 2 i)) (aref f0 i)
-                  (aref f (+ (* 2 i) 1)) (aref f1 i)))))))
+         (plan (falcon-ntt-plan-for n))
+         (a (make-array n :element-type 'fixnum))
+         (brev (falcon-ntt-plan-brev plan))
+         (twist (falcon-ntt-plan-twist plan))
+         (stages (falcon-ntt-plan-stages plan)))
+    (declare (type fixnum n)
+             (type (simple-array fixnum (*)) brev twist)
+             (type simple-vector stages))
+    (dotimes (i n)
+      (setf (aref a i)
+            (falcon-mulmod (mod (aref f i) +falcon-q+) (aref twist i))))
+    (dotimes (i n)
+      (let ((j (aref brev i)))
+        (when (< i j)
+          (let ((tmp (aref a i)))
+            (setf (aref a i) (aref a j)
+                  (aref a j) tmp)))))
+    (loop for len of-type fixnum = 2 then (ash len 1)
+          while (<= len n)
+          do (let* ((half (ash len -1))
+                    (ws (aref stages (- (integer-length len) 2))))
+               (declare (type fixnum half)
+                        (type (simple-array fixnum (*)) ws))
+               (loop for start of-type fixnum from 0 below n by len
+                     do (dotimes (j half)
+                          (let* ((u (aref a (+ start j)))
+                                 (v (falcon-mulmod
+                                     (aref a (+ start j half))
+                                     (aref ws j))))
+                            (setf (aref a (+ start j)) (falcon-addmod u v)
+                                  (aref a (+ start j half)) (falcon-submod u v)))))))
+    a))
 
 (defun falcon-intt (f-ntt)
-  "Inverse NTT: NTT domain -> coefficients."
+  "Inverse negacyclic NTT: NTT domain -> coefficients."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length f-ntt))
-         (pool (make-array 11 :initial-element nil)))
-    (let ((g (make-array n :element-type 'fixnum
-                           :initial-element 0)))
-      (dotimes (i n) (setf (aref g i) (aref f-ntt i)))
-      (falcon-intt-level g pool 0)
-      (let ((r (make-array n :element-type 'fixnum)))
-        (dotimes (i n r) (setf (aref r i) (aref g i)))))))
+         (plan (falcon-ntt-plan-for n))
+         (a (make-array n :element-type 'fixnum))
+         (brev (falcon-ntt-plan-brev plan))
+         (untwist (falcon-ntt-plan-untwist plan))
+         (istages (falcon-ntt-plan-istages plan))
+         (ninv (falcon-ntt-plan-ninv plan)))
+    (declare (type fixnum n ninv)
+             (type (simple-array fixnum (*)) brev untwist)
+             (type simple-vector istages))
+    (dotimes (i n) (setf (aref a i) (aref f-ntt i)))
+    (dotimes (i n)
+      (let ((j (aref brev i)))
+        (when (< i j)
+          (let ((tmp (aref a i)))
+            (setf (aref a i) (aref a j)
+                  (aref a j) tmp)))))
+    (loop for len of-type fixnum = 2 then (ash len 1)
+          while (<= len n)
+          do (let* ((half (ash len -1))
+                    (ws (aref istages (- (integer-length len) 2))))
+               (declare (type fixnum half)
+                        (type (simple-array fixnum (*)) ws))
+               (loop for start of-type fixnum from 0 below n by len
+                     do (dotimes (j half)
+                          (let* ((u (aref a (+ start j)))
+                                 (v (falcon-mulmod
+                                     (aref a (+ start j half))
+                                     (aref ws j))))
+                            (setf (aref a (+ start j)) (falcon-addmod u v)
+                                  (aref a (+ start j half)) (falcon-submod u v)))))))
+    ;; Scale by N^-1 and untwist by PSI^-j.
+    (dotimes (i n)
+      (setf (aref a i)
+            (falcon-mulmod (falcon-mulmod (aref a i) ninv)
+                           (aref untwist i))))
+    a))
 
 (defun falcon-mul-ntt (a b)
   (let* ((n (length a))
@@ -315,38 +374,61 @@ so it needs two buffers per level of the recursion."
   "Decode ENC (<= slen bytes) into an n-coefficient poly, or NIL if invalid."
   (when (> (length enc) slen)
     (return-from falcon-decompress nil))
-  ;; Build bit string MSB-first per byte.
-  (let ((bits (make-array (* 8 (length enc)) :element-type 'bit)))
-    (dotimes (i (length enc))
-      (dotimes (b 8)
-        (setf (aref bits (+ (* i 8) b)) (ldb (byte 1 (- 7 b)) (aref enc i)))))
-    ;; Strip trailing zeros; empty remainder means invalid.
-    (let ((len (length bits)))
-      (loop while (and (plusp len) (zerop (aref bits (1- len))))
-            do (decf len))
-      (when (zerop len)
-        (return-from falcon-decompress nil))
-      (let ((v (make-array n :element-type 'fixnum :initial-element 0))
-            (nv 0)
-            (pos 0))
+  ;; Work directly on the bytes with a bit index instead of expanding the
+  ;; whole encoding into a bit vector.  A coefficient is one sign bit,
+  ;; seven low bits, then the unary-coded high part: as many zero bits as
+  ;; the high value, followed by a one.
+  (let ((nbytes (length enc)))
+    (declare (type fixnum nbytes))
+    ;; Skip trailing zero bytes, then the trailing zero bits of the last
+    ;; byte that is not zero; the decoder must not read past that point.
+    (loop while (and (plusp nbytes) (zerop (aref enc (1- nbytes))))
+          do (decf nbytes))
+    (when (zerop nbytes)
+      (return-from falcon-decompress nil))
+    (let* ((last (aref enc (1- nbytes)))
+           ;; The decoder must stop just after the last one bit, which is
+           ;; the lowest set bit of the last nonzero byte.
+           (tz (1- (integer-length (logand last (- last)))))
+           (len (- (* 8 nbytes) tz))
+           (v (make-array n :element-type 'fixnum :initial-element 0))
+           (nv 0)
+           (pos 0)
+           (start 0))
+      (declare (type fixnum len nv pos start))
+      (labels ((bit-at (i)
+                 (ldb (byte 1 (- 7 (logand i 7))) (aref enc (ash i -3))))
+               ;; The seven bits that follow START, as an integer.
+               (low7 ()
+                 (let* ((p (1+ start))
+                        (idx (ash p -3))
+                        (off (logand p 7))
+                        (b0 (aref enc idx))
+                        (b1 (if (< (1+ idx) nbytes) (aref enc (1+ idx)) 0)))
+                   (declare (type fixnum idx off))
+                   (ldb (byte 7 (- 9 off)) (logior (ash b0 8) b1)))))
         (loop while (and (< pos len) (< nv n))
-              do (let ((sign (if (= (aref bits pos) 1) -1 1)))
-                   (when (> (+ pos 8) len)
-                     (return-from falcon-decompress nil))
-                   (let ((low 0))
-                     (dotimes (b 7)
-                       (setf low (+ (* low 2) (aref bits (+ pos 1 b)))))
-                     (let ((i (+ pos 8)) (high 0))
-                       (loop while (and (< i len) (zerop (aref bits i)))
-                             do (incf i) (incf high))
-                       (when (>= i len)
+              do (setf start pos)
+                 (when (> (+ start 8) len)
+                   (return-from falcon-decompress nil))
+                 (let ((sign (if (= (bit-at start) 1) -1 1))
+                       (i (+ start 8)))
+                   (declare (type fixnum sign i))
+                   (setf pos (1+ start))
+                   (let ((low (low7)))
+                     (declare (type fixnum low))
+                     (loop while (and (< i len) (zerop (bit-at i)))
+                           do (incf i))
+                     (when (>= i len)
+                       (return-from falcon-decompress nil))
+                     (let* ((high (- i (+ start 8)))
+                            (coef (* sign (+ low (ash high 7)))))
+                       (declare (type fixnum high coef))
+                       (when (and (zerop coef) (minusp sign))
                          (return-from falcon-decompress nil))
-                       (let ((coef (* sign (+ low (ash high 7)))))
-                         (when (and (zerop coef) (minusp sign))
-                           (return-from falcon-decompress nil))
-                         (setf (aref v nv) coef)
-                         (incf nv)
-                         (setf pos (+ i 1)))))))
+                       (setf (aref v nv) coef)
+                       (incf nv)
+                       (setf pos (1+ i))))))
         (if (= nv n) v nil)))))
 
 
