@@ -154,3 +154,25 @@ product by a 2048-bit modulus costs ~3.8 us, while the multiply alone is
   gain needs a VOP with a variable modulus (CIOS over 64-bit limbs).
 - The window table for `expt-mod` can be reused across calls for a fixed
   modulus (RSA CRT exponents are the same for every signature).
+
+## Update (P-256 reduction with sparse P, this session)
+
+The Montgomery VOP's reduction phase multiplied by all four limbs of P,
+but P[0] = 2^64 - 1 and P[2] = 0 for secp256r1.  The first special case
+is exact in the Montgomery reduction: adding M*P[0] to the word C[i] = M
+zeroes it and leaves M as the carry.  The second just propagates the
+carry.  Only the multiplications by P[1] and P[3] remain, eight per
+multiply instead of sixteen.  The product phase also loads A[i] once
+per row instead of once per inner iteration.
+
+### Results
+  fe-mont-mul-asm  38 -> 32.8 ns
+  fe-mul-buf       40 -> 36 ns
+  secp256r1 verify 244 -> 228 us
+  secp256r1 sign   68 -> 66.4 us
+  2000 random (A, B) pairs checked against the bignum Montgomery
+  reference; no mismatches.
+
+The remaining per-limb cost is the memory-resident accumulator; the
+store/reload traffic is what keeps the VOP above the ~12 ns a
+register-resident Comba/Montgomery loop would reach.

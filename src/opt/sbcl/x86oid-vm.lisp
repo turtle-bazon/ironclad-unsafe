@@ -4146,9 +4146,10 @@
           (inst mov (c64 k) tmp))
         ;; The product, eight words, in C[0..7].
         (dotimes (i 4)
+          (inst mov limb (a64 i))
           (inst mov carry 0)
           (dotimes (j 4)
-            (inst mov rax-tmp (a64 i))
+            (inst mov rax-tmp limb)
             (inst mov tmp (b64 j))
             (inst mul tmp)
             (inst add rax-tmp (c64 (+ i j)))
@@ -4158,20 +4159,43 @@
             (inst mov (c64 (+ i j)) rax-tmp)
             (inst mov carry rdx-tmp))
           (inst mov (c64 (+ i 4)) carry))
-        ;; The reduction: C += C[i] * P * 2^(64 i), four times.
+        ;; The reduction: C += C[i] * P * 2^(64 i), four times.  Two of
+        ;; the four limbs of P are special: P[0] = 2^64 - 1 makes the
+        ;; C[i] word cancel exactly (leaving M as the carry), and P[2] is
+        ;; zero so that step is a plain carry propagation.  Only the
+        ;; multiplications by P[1] and P[3] remain.
         (dotimes (i 4)
           (inst mov limb (c64 i))
+          (inst mov tmp2 0)
+          (inst mov (c64 i) tmp2)
+          (inst mov carry limb)
+          ;; j = 1, P[1] = 0x00000000ffffffff.
+          (inst mov rax-tmp limb)
+          (inst mov tmp (pw 1))
+          (inst mul tmp)
+          (inst add rax-tmp (c64 (+ i 1)))
+          (inst adc rdx-tmp 0)
+          (inst add rax-tmp carry)
+          (inst adc rdx-tmp 0)
+          (inst mov (c64 (+ i 1)) rax-tmp)
+          (inst mov carry rdx-tmp)
+          ;; j = 2, P[2] = 0: propagate the carry.
+          (inst mov rax-tmp (c64 (+ i 2)))
+          (inst add rax-tmp carry)
+          (inst mov (c64 (+ i 2)) rax-tmp)
           (inst mov carry 0)
-          (dotimes (j 4)
-            (inst mov rax-tmp limb)
-            (inst mov tmp (pw j))
-            (inst mul tmp)
-            (inst add rax-tmp (c64 (+ i j)))
-            (inst adc rdx-tmp 0)
-            (inst add rax-tmp carry)
-            (inst adc rdx-tmp 0)
-            (inst mov (c64 (+ i j)) rax-tmp)
-            (inst mov carry rdx-tmp))
+          (inst adc carry 0)
+          ;; j = 3, P[3] = 0xffffffff00000001.
+          (inst mov rax-tmp limb)
+          (inst mov tmp (pw 3))
+          (inst mul tmp)
+          (inst add rax-tmp (c64 (+ i 3)))
+          (inst adc rdx-tmp 0)
+          (inst add rax-tmp carry)
+          (inst adc rdx-tmp 0)
+          (inst mov (c64 (+ i 3)) rax-tmp)
+          (inst mov carry rdx-tmp)
+          ;; Propagate the final carry into C[i+4..8].
           (inst mov tmp2 carry)
           (loop for k from (+ i 4) to 8
                 do (inst mov rax-tmp (c64 k))

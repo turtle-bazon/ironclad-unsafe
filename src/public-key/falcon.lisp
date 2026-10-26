@@ -107,7 +107,7 @@ The merge multiplies the element I by the entry 2I of the roots
 table, so the table of the twiddles is the even-indexed entries of
 the roots table, in order."
   (let ((w (falcon-ntt-roots n))
-        (tw (make-array (ash n -1) :element-type '(unsigned-byte 32)
+        (tw (make-array (ash n -1) :element-type 'fixnum
                           :initial-element 0)))
     (dotimes (i (ash n -1) tw)
       (setf (aref tw i) (aref w (* 2 i))))))
@@ -126,7 +126,7 @@ The entry for the size 2^k is at the index k-1.")
 (defun falcon-ntt-merge-scalar (out f0 f1 tw)
   "The merge of the transform, one element at a time.
 OUT[2I] = F0[I] + TW[I]*F1[I] and OUT[2I+1] = F0[I] - TW[I]*F1[I]."
-  (declare (type (simple-array (unsigned-byte 32) (*)) out f0 f1 tw)
+  (declare (type (simple-array fixnum (*)) out f0 f1 tw)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((h (length f0)))
     (dotimes (i h)
@@ -137,7 +137,7 @@ OUT[2I] = F0[I] + TW[I]*F1[I] and OUT[2I+1] = F0[I] - TW[I]*F1[I]."
 
 (defun falcon-ntt-merge (out f0 f1 tw)
   "The merge of the transform."
-  (declare (type (simple-array (unsigned-byte 32) (*)) out f0 f1 tw)
+  (declare (type (simple-array fixnum (*)) out f0 f1 tw)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (falcon-ntt-merge-scalar out f0 f1 tw))
 
@@ -159,9 +159,9 @@ transform makes."
         (let* ((bufs (or (aref pool level)
                          (setf (aref pool level)
                                (vector (make-array h :element-type
-                                                    '(unsigned-byte 32))
+                                                    'fixnum)
                                        (make-array h :element-type
-                                                    '(unsigned-byte 32))))))
+                                                    'fixnum)))))
                (f0 (aref bufs 0))
                (f1 (aref bufs 1)))
           (dotimes (i h)
@@ -176,7 +176,7 @@ transform makes."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length f))
          (pool (make-array 11 :initial-element nil)))
-    (let ((g (make-array n :element-type '(unsigned-byte 32)
+    (let ((g (make-array n :element-type 'fixnum
                            :initial-element 0)))
       ;; The coefficients are reduced first: the polynomials of the
       ;; NTRU have coefficients that may be negative, and the
@@ -208,9 +208,9 @@ so it needs two buffers per level of the recursion."
         (let* ((bufs (or (aref pool level)
                          (setf (aref pool level)
                                (vector (make-array h :element-type
-                                                    '(unsigned-byte 32))
+                                                    'fixnum)
                                        (make-array h :element-type
-                                                    '(unsigned-byte 32))))))
+                                                    'fixnum)))))
                (f0 (aref bufs 0))
                (f1 (aref bufs 1))
                (w (falcon-ntt-roots n)))
@@ -235,7 +235,7 @@ so it needs two buffers per level of the recursion."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length f-ntt))
          (pool (make-array 11 :initial-element nil)))
-    (let ((g (make-array n :element-type '(unsigned-byte 32)
+    (let ((g (make-array n :element-type 'fixnum
                            :initial-element 0)))
       (dotimes (i n) (setf (aref g i) (aref f-ntt i)))
       (falcon-intt-level g pool 0)
