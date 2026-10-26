@@ -176,3 +176,31 @@ per row instead of once per inner iteration.
 The remaining per-limb cost is the memory-resident accumulator; the
 store/reload traffic is what keeps the VOP above the ~12 ns a
 register-resident Comba/Montgomery loop would reach.
+
+## Update (P-521 windows, this session)
+
+P-521 kept its points as bignums, so the only lever was to do fewer
+point operations.
+
+- `secp521r1-base-mult` now uses eight-bit windows over a 256-entry
+  table of V*G instead of four-bit windows over sixteen entries: 66
+  additions instead of 131 (the table is built once, lazily).  The
+  selection still scans every entry.
+- `secp521r1-shamir-mult` (new, used by verify) is a five-bit joint
+  multiplication with a 32-entry table for the public key and the first
+  32 entries of the generator table: 105 windows with at most two
+  additions each, instead of the plain Shamir trick's ~390 additions.
+- Both tables are built with ordinary `ec-add`/`ec-double`, so they
+  allocate, but only once per key or per verify.
+
+### Results (Zen 2 host, 66-byte message)
+  secp521r1 sign    2160 -> 1973 us  (~507 ops/s, gap 8.4x -> 7.1x)
+  secp521r1 verify  3040 -> 2600 us  (~385 ops/s, gap 6.5x -> 5.0x)
+  keygen             ~2.0 ms, dh ~3.8 ms (unchanged; ladder not touched)
+  All 677 tests pass.
+
+### Also in this commit
+- The Falcon NTT working arrays (forward, inverse, merge, twiddles) are
+  `(simple-array fixnum)` instead of `(unsigned-byte 32)`: the values
+  are below the prime, so tagging/un-tagging on every access was pure
+  overhead.  Falcon verify 304 -> 294 us.
