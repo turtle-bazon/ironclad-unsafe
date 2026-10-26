@@ -603,3 +603,25 @@ moduli plus cl:expt on gated sizes (0 failures); full suite green.
 Note: DSA-sign/verify use expt-mod/power-mod2, not power-mod -- an
 earlier A/B confusion (1024-bit vs 2048-bit keys) briefly suggested
 larger wins; the numbers above are apples-to-apples at 2048-bit.
+
+## Update (ECL SLH-DSA-128s sign hang: pre-existing, this session)
+
+While validating rev 1048 on ECL, the full suite stalled at
+:ml-dsa-signature output (i.e. inside the following SLH-DSA vectors):
+an isolated ECL SLH-DSA-SHA2-128s sign runs 0.1 s keygen then never
+finishes (>11 min CPU, still going when killed), while SBCL signs in
+0.7 s and ECL signs the -128f variant instantly.  SBCL 128s/128f ratio
+is ~14x; ECL's is effectively infinite -- an ECL-specific pathology
+or infinite loop in the -s hypertree/FORS path, not mere slowness.
+
+Proven pre-existing and unrelated to this session: the identical hang
+reproduces on a pristine rev 1042 checkout (before all Montgomery/VOP
+work), and SLH-DSA signing on ECL executes byte-identical code in both
+revs -- hash-based, no modexp, VOPs and math.lisp additions are
+reader-excluded on ECL, whirlpool is unused by SLH-DSA.
+
+ECL validation status: per-key vectors all pass on rev 1048 (rsa,
+elgamal, dsa, ed25519, ed448, secp224r1/256k1/256r1/384r1/521r1,
+ecdsa, dh-secp384r1/521r1, ecdsa-dh, ml-dsa vectors, KATs); the full
+suite runs clean through ML-DSA-SIGNATURE and stalls only at the
+SLH-DSA fresh-sign vectors above.  CCL/ABCL smoke checks still pending.
