@@ -668,3 +668,22 @@ tables bit-exact, Shamir 0 failures (20), full sign/verify vectors pass.
   secp521r1 verify  3400 -> 1600 us (2.1x), 5.7 -> 0.4 MB/op (14x)
   (gap ~5.6x -> ~2.6x; remaining ~1200 us is ~7000 VOP mults at
   ~160 ns plus the bignum Fermat inverse in destructure)
+
+## Update (P-384 limb field + verify, this session)
+
+Mirrored the P-521 limb-field pattern for P-384 (6 limbs, n=6 CIOS
+VOP + 6-limb add/sub VOPs, Montgomery field ops, destination-passing
+Jacobian double!/add!, 5-bit Shamir with limb window tables, verify
+through limb Shamir + bignum destructure).  Every layer
+differential-tested vs the bignum code (field/add/sub/mul/sq/inv,
+double/add, window table, Shamir: 0 failures).
+
+Along the way: a hand-written prime limb had 14 hex digits instead of
+16 (0xfffffffffffffe vs 0xfffffffffffffffe -- caught by differential
+test); the Shamir needed the same (0,0,0) infinity convention and loop
+close as P-521; and a projective-equality test bug (missing z^2/z^3)
+initially "failed" correct code.
+
+  secp384r1 verify  3000 -> 840 us (3.6x)
+  (gap ~4.26x -> ~1.2x; remaining ~840 us is ~7000 VOP mults at
+  ~80 ns plus the bignum Fermat inverse in destructure)

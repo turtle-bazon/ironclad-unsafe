@@ -43,6 +43,477 @@
   (make-instance 'secp384r1-point :x 1 :y 1 :z 0))
 
 
+(defconst +secp384r1-point-at-infinity+
+  (make-instance 'secp384r1-point :x 1 :y 1 :z 0))
+
+
+;;; Limb field for P-384 (six 64-bit words, Montgomery form).
+;;;
+;;; R = 2^384.  Residues stay in Montgomery form between operations;
+;;; conversion happens only at the curve boundary.  Bignum intermediates
+;;; never appear inside the hot loop.
+
+(deftype secp384r1-fe () '(simple-array (unsigned-byte 64) (6)))
+
+(defconstant +secp384r1-r-mod-p+ #x100000000ffffffffffffffff00000001
+  "R = 2^384 modulo P, i.e. 2^128 + 2^96 - 2^32 + 1.")
+
+(defconstant +secp384r1-r-inv-mod-p+
+  #x14000000140000000c00000002fffffffcfffffffafffffffbfffffffdffffffebffffffd8ffffffe100000006
+  "R^-1 mod P.")
+
+(defconstant +secp384r1-n0+ #x100000001
+  "Montgomery word: -P^-1 mod 2^64.")
+
+(defconst +secp384r1-modulus-limbs+
+  (integer-to-limbs64 +secp384r1-p+ 6))
+;; The prime as six little-endian 64-bit limbs, for the VOP.
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun secp384r1-fe-zero ()
+    (make-array 6 :element-type '(unsigned-byte 64) :initial-element 0)))
+
+(defun secp384r1-fe-from-int (n)
+  "The Montgomery form of N modulo P."
+  (declare (type integer n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  ;; NB: the limb split is unrolled by hand.  SBCL 2.6.7 miscompiles
+  ;; (LDB (BYTE 64 (* I 64)) V) with a variable position at safety 0.
+  (let* ((v (mod (* (mod n +secp384r1-p+) +secp384r1-r-mod-p+)
+                 +secp384r1-p+))
+         (r (secp384r1-fe-zero)))
+    (setf (aref r 0) (ldb (byte 64 0) v)
+          (aref r 1) (ldb (byte 64 64) v)
+          (aref r 2) (ldb (byte 64 128) v)
+          (aref r 3) (ldb (byte 64 192) v)
+          (aref r 4) (ldb (byte 64 256) v)
+          (aref r 5) (ldb (byte 64 320) v))
+    r))
+
+(defun secp384r1-fe-to-int (a)
+  "The value of the Montgomery field element A, an integer below P."
+  (declare (type secp384r1-fe a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((v (+ (aref a 0)
+              (ash (aref a 1) 64)
+              (ash (aref a 2) 128)
+              (ash (aref a 3) 192)
+              (ash (aref a 4) 256)
+              (ash (aref a 5) 320))))
+    (mod (* v +secp384r1-r-inv-mod-p+) +secp384r1-p+)))
+
+(defun secp384r1-fe-copy (a)
+  (declare (type secp384r1-fe a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((r (secp384r1-fe-zero)))
+    (dotimes (i 6 r)
+      (setf (aref r i) (aref a i)))))
+
+(declaim (inline secp384r1-fe-add secp384r1-fe-sub secp384r1-fe-mul
+                         secp384r1-fe-sq secp384r1-fe-mul-buf
+                         secp384r1-fe-sq-buf))
+
+(defun secp384r1-fe-add (r a b)
+  "R := (A + B) mod P, all reduced residues in Montgomery form."
+  (declare (type secp384r1-fe r a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (progn
+    (secp384r1-fe-add-asm r a b)
+    r)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
+  (progn
+    (let ((v (mod (+ (secp384r1-fe-to-int a) (secp384r1-fe-to-int b))
+                  +secp384r1-p+)))
+      (let ((mont (secp384r1-fe-from-int v)))
+        (dotimes (i 6 r)
+          (setf (aref r i) (aref mont i)))))))
+
+(defun secp384r1-fe-sub (r a b)
+  "R := (A - B) mod P, all reduced residues in Montgomery form."
+  (declare (type secp384r1-fe r a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (progn
+    (secp384r1-fe-sub-asm r a b)
+    r)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
+  (progn
+    (let ((v (mod (- (secp384r1-fe-to-int a) (secp384r1-fe-to-int b))
+                  +secp384r1-p+)))
+      (let ((mont (secp384r1-fe-from-int v)))
+        (dotimes (i 6 r)
+          (setf (aref r i) (aref mont i)))))))
+
+(defun secp384r1-fe-mont-mul (r a b c)
+  "R := A * B * R^-1 mod P, with C a scratch of thirteen 64-bit words."
+  (declare (type secp384r1-fe r a b)
+           (type (simple-array (unsigned-byte 64) (*)) c)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (progn
+    (mont-mul-6-asm r a b +secp384r1-modulus-limbs+ +secp384r1-n0+ c)
+    r)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
+  (progn
+    (let ((v (mod (* (secp384r1-fe-to-int a) (secp384r1-fe-to-int b))
+                  +secp384r1-p+)))
+      (let ((mont (secp384r1-fe-from-int v)))
+        (dotimes (i 6 r)
+          (setf (aref r i) (aref mont i)))))))
+
+(defun secp384r1-fe-mul (r a b)
+  "R := A * B in Montgomery form, allocating the scratch."
+  (declare (type secp384r1-fe r a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((c (make-array 13 :element-type '(unsigned-byte 64)
+                       :initial-element 0)))
+    ;; NB: the scratch must stay in the heap.  The assembly multiply
+    ;; assumes the usual heap layout of a simple vector.
+    (secp384r1-fe-mont-mul r a b c)
+    r))
+
+(defun secp384r1-fe-mul-buf (r a b c)
+  "R := A * B in Montgomery form, using the scratch C.  C holds thirteen
+64-bit words; the caller reuses it, so a multiply inside a point
+operation allocates nothing."
+  (declare (type secp384r1-fe r a b)
+           (type (simple-array (unsigned-byte 64) (*)) c)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (secp384r1-fe-mont-mul r a b c)
+  r)
+
+(defun secp384r1-fe-sq (r a)
+  "R := A^2 in Montgomery form, allocating the scratch."
+  (declare (type secp384r1-fe r a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (secp384r1-fe-mul r a a))
+
+(defun secp384r1-fe-sq-buf (r a c)
+  "R := A^2 in Montgomery form, using the scratch C."
+  (declare (type secp384r1-fe r a)
+           (type (simple-array (unsigned-byte 64) (*)) c)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (secp384r1-fe-mul-buf r a a c)
+  r)
+
+(defun secp384r1-fe-equal (a b)
+  "Whether the field elements A and B hold the same residue."
+  (declare (type secp384r1-fe a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (dotimes (i 6 t)
+    (unless (= (aref a i) (aref b i))
+      (return nil))))
+
+(defun secp384r1-fe-is-zero (a)
+  "Whether the field element A is zero."
+  (declare (type secp384r1-fe a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (dotimes (i 6 t)
+    (unless (zerop (aref a i))
+      (return nil))))
+
+(defun secp384r1-fe-copy! (dst src)
+  "Copy field element SRC into DST."
+  (declare (type secp384r1-fe dst src)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (setf (aref dst 0) (aref src 0)
+        (aref dst 1) (aref src 1)
+        (aref dst 2) (aref src 2)
+        (aref dst 3) (aref src 3)
+        (aref dst 4) (aref src 4)
+        (aref dst 5) (aref src 5))
+  dst)
+
+(defun secp384r1-fe-inv (r a)
+  "R := A^-1 mod P, in Montgomery form.  A must be nonzero."
+  (declare (type secp384r1-fe r a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  ;; Fermat: A^(P-2), binary square-and-multiply in Montgomery form.
+  (let ((acc (secp384r1-fe-from-int 1))
+        (base (secp384r1-fe-copy a))
+        (e (- +secp384r1-p+ 2))
+        (c (make-array 13 :element-type '(unsigned-byte 64)
+                       :initial-element 0)))
+    (declare (type integer e)
+             (type secp384r1-fe acc base)
+             (type (simple-array (unsigned-byte 64) (*)) c))
+    (loop for i of-type fixnum downfrom (1- (integer-length e)) to 0 do
+      (secp384r1-fe-mont-mul acc acc acc c)
+      (when (logbitp i e)
+        (secp384r1-fe-mont-mul acc acc base c)))
+    (dotimes (i 6 r)
+      (setf (aref r i) (aref acc i)))))
+
+;;; Limb point operations for P-384 (six 64-bit Montgomery coordinates).
+;;; Destination-passing with a scratch pool: no allocation inside.
+
+(defun secp384r1-fe-copy! (dst src)
+  "Copy field element SRC into DST."
+  (declare (type secp384r1-fe dst src)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (setf (aref dst 0) (aref src 0)
+        (aref dst 1) (aref src 1)
+        (aref dst 2) (aref src 2)
+        (aref dst 3) (aref src 3)
+        (aref dst 4) (aref src 4)
+        (aref dst 5) (aref src 5))
+  dst)
+
+(defun secp384r1-make-scratch ()
+  "A fresh scratch pool: forty field elements plus the 13-word product
+buffer, so the point operations allocate nothing."
+  (let ((s (make-array 41)))
+    (dotimes (i 40 s)
+      (setf (svref s i) (secp384r1-fe-zero)))
+    (setf (svref s 40)
+          (make-array 13 :element-type '(unsigned-byte 64)
+                      :initial-element 0))
+    s))
+
+(defun secp384r1-point-double! (dx dy dz x1 y1 z1 s)
+  "DX:DY:DZ := 2*X1:Y1:Z1 reusing scratch pool S. DST must differ from SRC."
+  (declare (type secp384r1-fe dx dy dz x1 y1 z1)
+           (type simple-vector s)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((xx (svref s 0))
+        (yy (svref s 1))
+        (yyyy (svref s 2))
+        (zz (svref s 3))
+        (x1+yy (svref s 4))
+        (y1+z1 (svref s 5))
+        (s0 (svref s 6))
+        (ss (svref s 7))
+        (m0 (svref s 8))
+        (mm (svref s 9))
+        (uu (svref s 10))
+        (y2yyyy (svref s 11))
+        (y4yyyy (svref s 12))
+        (y2 (svref s 13))
+        (z2 (svref s 14))
+        (cbuf (svref s 40)))
+    (declare (type secp384r1-fe xx yy yyyy zz x1+yy y1+z1 s0 ss m0 mm
+                               uu y2yyyy y4yyyy y2 z2))
+    (if (secp384r1-fe-is-zero z1)
+        ;; Infinity is all-zero limbs.
+        (progn
+          (dotimes (i 6)
+            (setf (aref dx i) 0
+                  (aref dy i) 0
+                  (aref dz i) 0))
+          (values dx dy dz))
+        (progn
+          (secp384r1-fe-sq-buf xx x1 cbuf)
+          (secp384r1-fe-sq-buf yy y1 cbuf)
+          (secp384r1-fe-sq-buf yyyy yy cbuf)
+          (secp384r1-fe-sq-buf zz z1 cbuf)
+          (secp384r1-fe-add x1+yy x1 yy)
+          (secp384r1-fe-add y1+z1 y1 z1)
+          ;; s = 2*((x1+yy)^2 - xx - yyyy).
+          (secp384r1-fe-mul-buf s0 x1+yy x1+yy cbuf)
+          (secp384r1-fe-sub s0 s0 xx)
+          (secp384r1-fe-sub s0 s0 yyyy)
+          (secp384r1-fe-add ss s0 s0)
+          ;; m = 3*(xx - zz^2).
+          (secp384r1-fe-mul-buf m0 zz zz cbuf)
+          (secp384r1-fe-sub m0 xx m0)
+          (secp384r1-fe-add mm m0 m0)
+          (secp384r1-fe-add mm mm m0)
+          ;; u = m^2 - 2*s.
+          (secp384r1-fe-mul-buf uu mm mm cbuf)
+          (secp384r1-fe-sub uu uu ss)
+          (secp384r1-fe-sub uu uu ss)
+          (secp384r1-fe-copy! dx uu)
+          ;; y2 = m*(s-u) - 8*yyyy.
+          (secp384r1-fe-sub y2 ss uu)
+          (secp384r1-fe-mul-buf y2 mm y2 cbuf)
+          (secp384r1-fe-add y2yyyy yyyy yyyy)
+          (secp384r1-fe-add y4yyyy y2yyyy y2yyyy)
+          (secp384r1-fe-add y4yyyy y4yyyy y4yyyy)
+          (secp384r1-fe-sub y2 y2 y4yyyy)
+          (secp384r1-fe-copy! dy y2)
+          ;; z2 = (y1+z1)^2 - yy - zz.
+          (secp384r1-fe-mul-buf z2 y1+z1 y1+z1 cbuf)
+          (secp384r1-fe-sub z2 z2 yy)
+          (secp384r1-fe-sub z2 z2 zz)
+          (secp384r1-fe-copy! dz z2)
+          (values dx dy dz)))))
+
+(defun secp384r1-point-add! (dx dy dz x1 y1 z1 x2 y2 z2 s)
+  "DX:DY:DZ := X1:Y1:Z1 + X2:Y2:Z2 reusing scratch pool S.
+DST must differ from both inputs."
+  (declare (type secp384r1-fe dx dy dz x1 y1 z1 x2 y2 z2)
+           (type simple-vector s)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((z1z1 (svref s 0))
+        (z2z2 (svref s 1))
+        (u1 (svref s 2))
+        (u2 (svref s 3))
+        (s1 (svref s 4))
+        (s2 (svref s 5))
+        (h (svref s 6))
+        (hh (svref s 7))
+        (hh2 (svref s 8))
+        (ii (svref s 9))
+        (jj (svref s 10))
+        (s2-s1 (svref s 11))
+        (rr (svref s 12))
+        (r2 (svref s 24))
+        (vv (svref s 13))
+        (vv2 (svref s 14))
+        (x3 (svref s 15))
+        (rvx (svref s 16))
+        (y3 (svref s 17))
+        (s1d (svref s 18))
+        (t2 (svref s 19))
+        (z1+z2 (svref s 20))
+        (d1 (svref s 21))
+        (d2 (svref s 22))
+        (z3 (svref s 23))
+        (cbuf (svref s 40)))
+    (declare (type secp384r1-fe z1z1 z2z2 u1 u2 s1 s2 h hh hh2 ii jj
+                               s2-s1 rr r2 vv vv2 x3 rvx y3 s1d t2
+                               z1+z2 d1 d2 z3))
+    (cond ((secp384r1-fe-is-zero z1)
+           (secp384r1-fe-copy! dx x2)
+           (secp384r1-fe-copy! dy y2)
+           (secp384r1-fe-copy! dz z2)
+           (values dx dy dz))
+          ((secp384r1-fe-is-zero z2)
+           (secp384r1-fe-copy! dx x1)
+           (secp384r1-fe-copy! dy y1)
+           (secp384r1-fe-copy! dz z1)
+           (values dx dy dz))
+          (t
+           (secp384r1-fe-mul-buf z1z1 z1 z1 cbuf)
+           (secp384r1-fe-mul-buf z2z2 z2 z2 cbuf)
+           (secp384r1-fe-mul-buf u1 x1 z2z2 cbuf)
+           (secp384r1-fe-mul-buf u2 x2 z1z1 cbuf)
+           (secp384r1-fe-mul-buf s1 y1 z2 cbuf)
+           (secp384r1-fe-mul-buf s1 s1 z2z2 cbuf)
+           (secp384r1-fe-mul-buf s2 y2 z1 cbuf)
+           (secp384r1-fe-mul-buf s2 s2 z1z1 cbuf)
+           (if (secp384r1-fe-equal u1 u2)
+               (if (secp384r1-fe-equal s1 s2)
+                   (secp384r1-point-double! dx dy dz x1 y1 z1 s)
+                   (progn
+                     (dotimes (i 6)
+                       (setf (aref dx i) 0
+                             (aref dy i) 0
+                             (aref dz i) 0))
+                     (values dx dy dz)))
+               (progn
+                 (secp384r1-fe-sub h u2 u1)
+                 (secp384r1-fe-mul-buf hh h h cbuf)
+                 (secp384r1-fe-add hh2 hh hh)
+                 (secp384r1-fe-add ii hh2 hh2)
+                 (secp384r1-fe-mul-buf jj h ii cbuf)
+                 (secp384r1-fe-sub s2-s1 s2 s1)
+                 (secp384r1-fe-add rr s2-s1 s2-s1)
+                 (secp384r1-fe-mul-buf vv u1 ii cbuf)
+                 (secp384r1-fe-mul-buf r2 rr rr cbuf)
+                 (secp384r1-fe-add vv2 vv vv)
+                 (secp384r1-fe-sub x3 r2 jj)
+                 (secp384r1-fe-sub x3 x3 vv2)
+                 (secp384r1-fe-copy! dx x3)
+                 (secp384r1-fe-sub rvx vv x3)
+                 (secp384r1-fe-add s1d s1 s1)
+                 (secp384r1-fe-mul-buf t2 s1d jj cbuf)
+                 (secp384r1-fe-mul-buf y3 rr rvx cbuf)
+                 (secp384r1-fe-sub y3 y3 t2)
+                 (secp384r1-fe-copy! dy y3)
+                 (secp384r1-fe-add z1+z2 z1 z2)
+                 (secp384r1-fe-mul-buf d1 z1+z2 z1+z2 cbuf)
+                 (secp384r1-fe-sub d1 d1 z1z1)
+                 (secp384r1-fe-sub d2 d1 z2z2)
+                 (secp384r1-fe-mul-buf z3 d2 h cbuf)
+                 (secp384r1-fe-copy! dz z3)
+                 (values dx dy dz)))))))
+
+(defun secp384r1-make-window-table-limbs (bx by bz)
+  "The table V * (BX:BY:BZ) for V in [0, 32), as vectors of three
+Montgomery limb arrays.  Entry 0 is all-zero (infinity)."
+  (declare (type secp384r1-fe bx by bz)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((table (make-array 32))
+        (sc (secp384r1-make-scratch)))
+    (declare (type simple-vector table sc))
+    (setf (aref table 0) (vector (secp384r1-fe-zero)
+                                 (secp384r1-fe-zero)
+                                 (secp384r1-fe-zero)))
+    (setf (aref table 1) (vector (secp384r1-fe-copy bx)
+                                 (secp384r1-fe-copy by)
+                                 (secp384r1-fe-copy bz)))
+    (loop for v of-type fixnum from 2 below 32 do
+      (let ((dx (secp384r1-fe-zero))
+            (dy (secp384r1-fe-zero))
+            (dz (secp384r1-fe-zero)))
+        (declare (type secp384r1-fe dx dy dz))
+        (if (evenp v)
+            (let ((e (aref table (ash v -1))))
+              (declare (type simple-vector e))
+              (secp384r1-point-double! dx dy dz
+                                       (aref e 0) (aref e 1) (aref e 2) sc))
+            (let ((e (aref table (1- v))))
+              (declare (type simple-vector e))
+              (secp384r1-point-add! dx dy dz
+                                    (aref e 0) (aref e 1) (aref e 2)
+                                    bx by bz sc)))
+        (setf (aref table v) (vector dx dy dz))))
+    table))
+
+(defun secp384r1-shamir-mult-limbs (px py pz qx qy qz a b)
+  "A * P + B * Q in the limb field, public only, five-bit windows.  All
+coordinates are Montgomery field elements; the result is integers."
+  (declare (type secp384r1-fe px py pz qx qy qz)
+           (type integer a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((w 5)
+         (abit (integer-length a))
+         (bbit (integer-length b))
+         (bits (max abit bbit 1))
+         (nwin (ceiling bits w))
+         (tp (secp384r1-make-window-table-limbs px py pz))
+         (tq (secp384r1-make-window-table-limbs qx qy qz))
+         (s (secp384r1-make-scratch))
+         (rx (secp384r1-fe-zero))
+         (ry (secp384r1-fe-zero))
+         (rz (secp384r1-fe-zero))
+         (tx (secp384r1-fe-zero))
+         (ty (secp384r1-fe-zero))
+         (tz (secp384r1-fe-zero)))
+    (declare (type fixnum w abit bbit bits nwin)
+             (type simple-vector tp tq s)
+             (type secp384r1-fe rx ry rz tx ty tz))
+    (loop for wi of-type fixnum downfrom (1- nwin) to 0 do
+      (unless (= wi (1- nwin))
+        (dotimes (i w)
+          (declare (ignore i))
+          (secp384r1-point-double! tx ty tz rx ry rz s)
+          (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))
+      (let* ((shift (* wi w))
+             (va (if (< shift abit) (ldb (byte w shift) a) 0))
+             (vb (if (< shift bbit) (ldb (byte w shift) b) 0)))
+        (declare (type fixnum shift)
+                 (type (unsigned-byte 5) va vb))
+        (unless (zerop va)
+          (let ((e (aref tp va)))
+            (declare (type simple-vector e))
+            (secp384r1-point-add! tx ty tz rx ry rz
+                                  (aref e 0) (aref e 1) (aref e 2) s)
+            (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))
+        (unless (zerop vb)
+          (let ((e (aref tq vb)))
+            (declare (type simple-vector e))
+            (secp384r1-point-add! tx ty tz rx ry rz
+                                  (aref e 0) (aref e 1) (aref e 2) s)
+            (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))))
+    (list (secp384r1-fe-to-int rx)
+          (secp384r1-fe-to-int ry)
+          (secp384r1-fe-to-int rz))))
+
+
+
 (defmethod ec-scalar-inv ((kind (eql :secp384r1)) n)
   (expt-mod n (- +secp384r1-p+ 2) +secp384r1-p+))
 
@@ -391,17 +862,29 @@ additions and no doublings."
          (w (modular-inverse-with-blinding s +secp384r1-l+ :prime t))
          (u1 (mod (* e w) +secp384r1-l+))
          (u2 (mod (* r w) +secp384r1-l+))
-         ;; Joint multiplication: one pass instead of two.
-         (rp (secp384r1-shamir-mult +secp384r1-g+ pk u1 u2))
-         (x (subseq (ec-encode-point rp) 1 (1+ (/ +secp384r1-bits+ 8))))
-         (v (ec-decode-scalar :secp384r1 x))
-         (v (mod v +secp384r1-l+)))
-     (and (< 0 r +secp384r1-l+)
-          (< 0 s +secp384r1-l+)
-          ;; RP is the point at infinity only for invalid signatures;
-          ;; answer NIL instead of failing inside EC-ENCODE-POINT.
-          (not (ec-point-equal rp +secp384r1-point-at-infinity+))
-          (= v r)))))
+         ;; Joint multiplication in the limb field: one pass instead
+         ;; of two, no bignum allocation inside the loop.
+         (qx (slot-value pk 'x))
+         (qy (slot-value pk 'y))
+         (qz (slot-value pk 'z))
+         (rp (secp384r1-shamir-mult-limbs (secp384r1-fe-from-int (slot-value +secp384r1-g+ 'x))
+                                          (secp384r1-fe-from-int (slot-value +secp384r1-g+ 'y))
+                                          (secp384r1-fe-from-int (slot-value +secp384r1-g+ 'z))
+                                          (secp384r1-fe-from-int qx)
+                                          (secp384r1-fe-from-int qy)
+                                          (secp384r1-fe-from-int qz)
+                                          u1 u2))
+         (rz (third rp)))
+      ;; RP is the point at infinity only for invalid signatures.
+      (if (zerop rz)
+          nil
+          (let* ((invz (ec-scalar-inv :secp384r1 rz))
+                 (x (mod (* (first rp) (mod (* invz invz) +secp384r1-p+))
+                         +secp384r1-p+))
+                 (v (mod x +secp384r1-l+)))
+            (and (< 0 r +secp384r1-l+)
+                 (< 0 s +secp384r1-l+)
+                 (= v r)))))))
 
 (defmethod make-public-key ((kind (eql :secp384r1)) &key y &allow-other-keys)
   (unless y

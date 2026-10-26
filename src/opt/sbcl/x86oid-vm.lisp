@@ -4487,6 +4487,8 @@
 
 #+x86-64
 #+x86-64
+#+x86-64
+(define-mont-mul-vop mont-mul-6 ironclad-unsafe::mont-mul-6-asm 6)
 (define-mont-mul-vop mont-mul-9 ironclad-unsafe::mont-mul-9-asm 9)
 #+x86-64
 (define-mont-mul-vop mont-mul-16 ironclad-unsafe::mont-mul-16-asm 16)
@@ -4603,4 +4605,18 @@
     (#xffffffffffffffff #xffffffffffffffff #xffffffffffffffff
      #xffffffffffffffff #xffffffffffffffff #xffffffffffffffff
      #xffffffffffffffff #xffffffffffffffff #x1ff)
+  :sub)
+
+#+x86-64
+(define-fe-addsub-vop secp384r1-fe-add-asm
+    ironclad-unsafe::secp384r1-fe-add-asm 6
+    (#x00000000ffffffff #xffffffff00000000 #xfffffffffffffffe
+     #xffffffffffffffff #xffffffffffffffff #xffffffffffffffff)
+  :add)
+
+#+x86-64
+(define-fe-addsub-vop secp384r1-fe-sub-asm
+    ironclad-unsafe::secp384r1-fe-sub-asm 6
+    (#x00000000ffffffff #xffffffff00000000 #xfffffffffffffffe
+     #xffffffffffffffff #xffffffffffffffff #xffffffffffffffff)
   :sub)
