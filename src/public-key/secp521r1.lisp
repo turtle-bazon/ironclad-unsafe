@@ -634,6 +634,72 @@ coordinates are Montgomery field elements; the result is integers."
           (secp521r1-fe-to-int ry)
           (secp521r1-fe-to-int rz))))
 
+(defvar *secp521r1-limb-base-table* nil
+  "Positional limb table ROWS[J][V] = V * 256^J * G, built on first use
+by converting the bignum positional table.")
+
+(defun secp521r1-ensure-limb-base-table ()
+  "The cached limb positional table for the generator."
+  (or *secp521r1-limb-base-table*
+      (let ((bignum-table (secp521r1-ensure-base-table))
+            (limb-table (make-array 66)))
+        (declare (type simple-vector bignum-table limb-table))
+        (dotimes (j 66 limb-table)
+          (declare (type fixnum j))
+          (let ((brow (aref bignum-table j))
+                (lrow (make-array 256)))
+            (declare (type simple-vector brow lrow))
+            (dotimes (v 256)
+              (let ((p (aref brow v)))
+                (declare (type secp521r1-point p))
+                (setf (aref lrow v)
+                      (vector (secp521r1-fe-from-int (slot-value p 'x))
+                              (secp521r1-fe-from-int (slot-value p 'y))
+                              (secp521r1-fe-from-int (slot-value p 'z))))))
+            (setf (aref limb-table j) lrow)))
+        (setf *secp521r1-limb-base-table* limb-table))))
+
+(declaim (inline secp521r1-select-limb-base))
+(defun secp521r1-select-limb-base (table v)
+  "Select index V from the limb positional table.  Linear scan over all
+256 entries of the row, so the memory access pattern does not depend
+on V."
+  (declare (type simple-vector table)
+           (type (unsigned-byte 8) v)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((sel (aref table 0)))
+    (dotimes (i 256 sel)
+      (when (= i v)
+        (setf sel (aref table i))))))
+
+(defun secp521r1-base-mult-limbs (k)
+  "Fixed-base multiplication K*G via the limb positional table: 66
+additions and no doublings.  Returns three Montgomery limbs."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
+           (type integer k))
+  (let ((table (secp521r1-ensure-limb-base-table))
+        (acc (vector (secp521r1-fe-zero) (secp521r1-fe-zero) (secp521r1-fe-zero)))
+        (tx (secp521r1-fe-zero))
+        (ty (secp521r1-fe-zero))
+        (tz (secp521r1-fe-zero))
+        (s (secp521r1-make-scratch)))
+    (declare (type simple-vector table acc)
+             (type secp521r1-fe tx ty tz)
+             (type simple-vector s))
+    (loop for j of-type fixnum from 65 downto 0 do
+      (let ((v (ldb (byte 8 (* j 8)) k)))
+        (declare (type (unsigned-byte 8) v))
+        (unless (zerop v)
+          (let ((sel (secp521r1-select-limb-base (aref table j) v)))
+            (declare (type simple-vector sel))
+            (secp521r1-point-add! tx ty tz
+                                  (aref acc 0) (aref acc 1) (aref acc 2)
+                                  (aref sel 0) (aref sel 1) (aref sel 2) s)
+            (rotatef (aref acc 0) tx)
+            (rotatef (aref acc 1) ty)
+            (rotatef (aref acc 2) tz)))))
+    (values (aref acc 0) (aref acc 1) (aref acc 2))))
+
 (defmethod ec-scalar-inv ((kind (eql :secp521r1)) n)
   "The inverse of N modulo the prime of P-521, via the reference
 addition chain (ecp_nistp521.c), far fewer multiplications than Fermat."
@@ -964,18 +1030,26 @@ additions and no doublings."
          (sk (ec-decode-scalar :secp521r1 (secp521r1-key-x key)))
          (h (subseq message start end))
          (k (generate-signature-nonce key h digest))
-         (invk (modular-inverse-with-blinding k +secp521r1-l+ :prime t))
-         (r (ec-scalar-mult +secp521r1-g+ k))
-         (x (subseq (ec-encode-point r) 1 (1+ (ceiling +secp521r1-bits+ 8))))
-         (r (ec-decode-scalar :secp521r1 x))
-         (r (mod r +secp521r1-l+))
-         (e (ec-decode-scalar :secp521r1 h))
-         (s (mod (* invk (+ e (* sk r))) +secp521r1-l+)))
-    (if (not (or (zerop r) (zerop s)))
-        (make-signature :secp521r1
-                        :r (ec-encode-scalar :secp521r1 r)
-                        :s (ec-encode-scalar :secp521r1 s))
-        (sign-message key message :start start :end end))))
+         (invk (modular-inverse-with-blinding k +secp521r1-l+ :prime t)))
+    ;; Fixed-base k*G in the limb field: 66 additions, no doublings,
+    ;; no bignum allocation inside the loop.  Destructure with the
+    ;; bignum addition-chain inverse.
+    (multiple-value-bind (rx ry rz) (secp521r1-base-mult-limbs k)
+      (declare (ignore ry))
+      (if (zerop (secp521r1-fe-to-int rz))
+          (sign-message key message :start start :end end)
+          (let* ((ix (secp521r1-fe-to-int rx))
+                 (iz (secp521r1-fe-to-int rz))
+                 (invz (ec-scalar-inv :secp521r1 iz))
+                 (x (secp521r1-mulmod ix (secp521r1-mulmod invz invz)))
+                 (r (mod x +secp521r1-l+))
+                 (e (ec-decode-scalar :secp521r1 h))
+                 (s (mod (* invk (+ e (* sk r))) +secp521r1-l+)))
+            (if (not (or (zerop r) (zerop s)))
+                (make-signature :secp521r1
+                                :r (ec-encode-scalar :secp521r1 r)
+                                :s (ec-encode-scalar :secp521r1 s))
+                (sign-message key message :start start :end end)))))))
 
 ;;; Windowed joint multiplication for verification.
 ;;;

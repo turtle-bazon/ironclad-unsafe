@@ -699,3 +699,17 @@ SBCL never executes, so they were validated on the other Lisps:
   dh, ml-dsa); full suite still blocked on the pre-existing SLH-DSA
   sign hang (baseline rev hangs identically; hash-based, unrelated).
 SBCL full suite green with limb verify active (677/677 + new paths).
+
+## Update (P-521 limb sign, this session)
+
+Wired SIGN-MESSAGE through the limb positional base table (66 rows x
+256, converted once from the validated bignum table): 66 limb adds, no
+doublings, destructure via the bignum addition-chain inverse.
+Differential-tested base-mult-limbs vs bignum base-mult (20 random +
+0/1/l-1 edges, projective equality, 0 failures).  Along the way fixed
+a wrong infinity init in the new accumulator ((0,R,R) is affine (0,1),
+not infinity -- must be all-zero limbs for the z=0 check).
+
+  secp521r1 sign  1920 -> 480 us (4.0x)
+  (remaining ~480 us is ~66 VOP adds plus nonce HMAC, scalar invs,
+  and the destructure inverse)
