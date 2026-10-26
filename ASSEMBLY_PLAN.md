@@ -282,3 +282,22 @@ the previous table.
 
 The falcon keygen row fluctuates with the C reference; its Lisp time is
 the complex-FFT keygen, which this session did not touch.
+
+## Update (P-384 windows, this session)
+
+P-384's points are bignums, so as with P-521 the win was fewer point
+operations, not faster field arithmetic.  (An attempt to replace every
+`(mod (* a b) p)` with the Barrett reduction made `ec-double` slower:
+a single reduction for a multi-factor product beats two reductions per
+factor.  It was reverted.)
+
+- `secp384r1-base-mult` uses eight-bit windows over a 256-entry table
+  (48 additions instead of 96).
+- `secp384r1-shamir-mult`, used by verify, is a five-bit joint window:
+  77 windows with at most two additions each instead of the plain
+  Shamir trick's ~290 additions.  The generator table's first 32 entries
+  serve the five-bit windows.
+
+  sign    2597 -> 2184 us (gap 2.88x -> 2.42x)
+  verify  3700 -> 2968 us (gap 4.72x -> 3.86x)
+  Signature and DH test vectors pass.
