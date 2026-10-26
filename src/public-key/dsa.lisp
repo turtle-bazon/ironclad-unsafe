@@ -166,7 +166,7 @@
            (x (dsa-key-x key))
            (k (generate-signature-nonce key message q))
            (r (mod (expt-mod g k p) q))
-           (k-inverse (modular-inverse-with-blinding k q))
+           (k-inverse (modular-inverse-with-blinding k q :prime t))
            (s (mod (* k-inverse (+ (* x r) m)) q)))
       (assert (= (mod (* k k-inverse) q) 1))
       (if (not (or (zerop r) (zerop s)))

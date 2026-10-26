@@ -238,7 +238,7 @@
          (sk (ec-decode-scalar :secp256k1 (secp256k1-key-x key)))
          (h (subseq message start end))
          (k (generate-signature-nonce key h digest))
-         (invk (modular-inverse-with-blinding k +secp256k1-l+))
+         (invk (modular-inverse-with-blinding k +secp256k1-l+ :prime t))
          (r (ec-scalar-mult +secp256k1-g+ k))
          (x (subseq (ec-encode-point r) 1 (1+ (/ +secp256k1-bits+ 8))))
          (r (ec-decode-scalar :secp256k1 x))
@@ -266,7 +266,7 @@
       (return-from verify-signature nil))
     (let* ((h (subseq message start end))
          (e (ec-decode-scalar :secp256k1 h))
-         (w (modular-inverse-with-blinding s +secp256k1-l+))
+         (w (modular-inverse-with-blinding s +secp256k1-l+ :prime t))
          (u1 (mod (* e w) +secp256k1-l+))
          (u2 (mod (* r w) +secp256k1-l+))
          ;; Joint multiplication (Shamir's trick): one pass instead of two.

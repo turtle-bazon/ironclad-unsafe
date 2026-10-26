@@ -349,7 +349,7 @@ multiplications, all in the limb field."
          (sk (ec-decode-scalar :secp224r1 (secp224r1-key-x key)))
          (h (subseq message start end))
          (k (generate-signature-nonce key h digest))
-         (invk (modular-inverse-with-blinding k +secp224r1-l+))
+         (invk (modular-inverse-with-blinding k +secp224r1-l+ :prime t))
          (r (ec-scalar-mult +secp224r1-g+ k))
          (x (subseq (ec-encode-point r) 1 (1+ (/ +secp224r1-bits+ 8))))
          (r (ec-decode-scalar :secp224r1 x))
@@ -377,7 +377,7 @@ multiplications, all in the limb field."
       (return-from verify-signature nil))
     (let* ((h (subseq message start end))
          (e (ec-decode-scalar :secp224r1 h))
-         (w (modular-inverse-with-blinding s +secp224r1-l+))
+         (w (modular-inverse-with-blinding s +secp224r1-l+ :prime t))
          (u1 (mod (* e w) +secp224r1-l+))
          (u2 (mod (* r w) +secp224r1-l+))
          ;; Joint multiplication (Shamir's trick): one pass instead of

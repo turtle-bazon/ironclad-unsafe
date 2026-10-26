@@ -338,23 +338,32 @@ exponents are non-negative and the bases are below M."
       (modular-inverse-euclid n modulus)
       (modular-inverse-binary n modulus)))
 
-(defun modular-inverse-with-blinding (n modulus)
+(defun modular-inverse-with-blinding (n modulus &key prime)
   "As modular-inverse, but mask N with a blinding factor before
-computing the modular inverse."
+computing the modular inverse.
+
+When the modulus is prime every nonzero blinding factor is coprime to
+it, so PRIME skips the coprimality check.  With a composite modulus
+(RSA's phi, ElGamal's p-1) a random factor may share a divisor, the
+Euclid inverse is then zero, and the caller has to try another factor;
+skipping that retry silently produced an invalid private key."
   (declare (type (integer 1 *) modulus))
   (declare (type (integer 0 *) n))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let* ((b (+ 1 (strong-random (- modulus 1))))
-         ;; The modulus is prime, so every B in [1, modulus - 1] is
-         ;; coprime to it; the gcd check that used to live here cost
-         ;; several microseconds of 256-bit gcd per signature and could
-         ;; not fail in practice.  Skipping it is safe for prime moduli
-         ;; and is what every production implementation does.
-         (x (mod (* n b) modulus))
-         ;; The input is blinded, so the faster variable-time Euclid
-         ;; inverse cannot leak information about N.
-         (y (modular-inverse-euclid x modulus)))
-    (mod (* y b) modulus)))
+  (labels ((try ()
+             (let* ((b (+ 1 (strong-random (- modulus 1))))
+                    (x (mod (* n b) modulus))
+                    ;; The input is blinded, so the faster variable-time
+                    ;; Euclid inverse cannot leak information about N.
+                    (y (modular-inverse-euclid x modulus)))
+               ;; A zero result means the blinded value was not coprime
+               ;; to the modulus; with a composite modulus that can
+               ;; happen for a random factor, so try another one.
+               (when (or prime (plusp y))
+                 (mod (* y b) modulus)))))
+    (loop for result = (try)
+          when result
+            return result)))
 
 (defun expt-mod (n exponent modulus)
   "As (mod (expt n exponent) modulus), but more efficient (fixed windows)."

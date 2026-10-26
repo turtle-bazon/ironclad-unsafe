@@ -432,7 +432,7 @@ addition chain (ecp_nistp521.c), far fewer multiplications than Fermat."
          (sk (ec-decode-scalar :secp521r1 (secp521r1-key-x key)))
          (h (subseq message start end))
          (k (generate-signature-nonce key h digest))
-         (invk (modular-inverse-with-blinding k +secp521r1-l+))
+         (invk (modular-inverse-with-blinding k +secp521r1-l+ :prime t))
          (r (ec-scalar-mult +secp521r1-g+ k))
          (x (subseq (ec-encode-point r) 1 (1+ (ceiling +secp521r1-bits+ 8))))
          (r (ec-decode-scalar :secp521r1 x))
@@ -516,7 +516,7 @@ addition chain (ecp_nistp521.c), far fewer multiplications than Fermat."
       (return-from verify-signature nil))
     (let* ((h (subseq message start end))
          (e (ec-decode-scalar :secp521r1 h))
-         (w (modular-inverse-with-blinding s +secp521r1-l+))
+         (w (modular-inverse-with-blinding s +secp521r1-l+ :prime t))
          (u1 (mod (* e w) +secp521r1-l+))
          (u2 (mod (* r w) +secp521r1-l+))
          ;; Joint multiplication: one pass instead of two.

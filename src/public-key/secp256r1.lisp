@@ -708,7 +708,7 @@ reusing scratch pool S. DST must differ from P."
          (sk (ec-decode-scalar :secp256r1 (secp256r1-key-x key)))
          (h (subseq message start end))
          (k (generate-signature-nonce key h digest))
-         (invk (modular-inverse-with-blinding k +secp256r1-l+))
+         (invk (modular-inverse-with-blinding k +secp256r1-l+ :prime t))
          (r (ec-scalar-mult +secp256r1-g+ k))
          (x (subseq (ec-encode-point r) 1 (1+ (/ +secp256r1-bits+ 8))))
          (r (ec-decode-scalar :secp256r1 x))

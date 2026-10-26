@@ -180,7 +180,7 @@
            (message-elements (destructure-message :elgamal (subseq msg start end)))
            (c1 (getf message-elements :c1))
            (c2 (getf message-elements :c2))
-           (m (mod (* c2 (modular-inverse-with-blinding (expt-mod c1 x p) p)) p)))
+           (m (mod (* c2 (modular-inverse-with-blinding (expt-mod c1 x p) p :prime t)) p)))
       (if oaep
           (oaep-decode oaep (integer-to-octets m :n-bits pbits))
           (integer-to-octets m :n-bits n-bits)))))

@@ -301,3 +301,19 @@ factor.  It was reverted.)
   sign    2597 -> 2184 us (gap 2.88x -> 2.42x)
   verify  3700 -> 2968 us (gap 4.72x -> 3.86x)
   Signature and DH test vectors pass.
+
+## Fix: blinded inverse with a composite modulus
+
+`modular-inverse-with-blinding` had dropped the coprimality check for
+every modulus, on the reasoning that the modulus is always prime.  It is
+not: RSA passes phi = (p-1)(q-1) and ElGamal passes p-1.  A random
+blinding factor is then frequently even and not coprime, the Euclid
+inverse returns zero, and the resulting private exponent is garbage.
+RSA key generation produced an unusable key about half the time (the
+benchmark reported "signature roundtrip failed" and "OAEP decoding
+failed"); fixed-key test vectors never noticed.
+
+The function now takes `:prime`; prime moduli (curve orders, DSA q,
+ElGamal p) keep the fast path, and composite moduli retry with a fresh
+factor until the inverse is nonzero.  Callers updated.  Six fresh
+2048-bit RSA keys now pass sign/verify and OAEP round trips.
