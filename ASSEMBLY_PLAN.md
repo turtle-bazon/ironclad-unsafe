@@ -317,3 +317,19 @@ The function now takes `:prime`; prime moduli (curve orders, DSA q,
 ElGamal p) keep the fast path, and composite moduli retry with a fresh
 factor until the inverse is nonzero.  Callers updated.  Six fresh
 2048-bit RSA keys now pass sign/verify and OAEP round trips.
+
+## Benchmark refresh after the RSA fix
+
+Full run (IRONCLAD_BENCH_TRIALS=1) with the composite-modulus inverse
+fix and the P-384 windows.  RSA now produces a working key on the first
+try in every run.  Single-trial numbers are noisy at the 10-20% level
+(the C reference moves too); the targeted microbenchmarks in the
+sections above are the reliable figures.
+
+Representative public-key rows (Lisp ops/s):
+  dsa sign            583 -> 1005
+  falcon-512 verify   3.34k -> 6.135k
+  secp256r1 sign      14.74k -> 13.0-15.3k (noise)
+  secp384r1 verify    270 -> 295-330
+  rsa sign            330 -> 370
+  rsa verify          13.68k -> 13.89k
