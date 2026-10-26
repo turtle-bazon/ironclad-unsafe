@@ -55,6 +55,69 @@ denominator."
                 (setf a (rem b r))
                 (setf b r)))))))
 
+;;; Barrett reduction.
+;;;
+;;; A modular exponentiation is a long chain of multiplies each followed
+;;; by a division.  SBCL's bignum division is several times more
+;;; expensive than a multiplication of the same size, and the divisor is
+;;; the same for every step, so the quotient estimate is precomputed once
+;;; per modulus (Barrett, HAC 14.42).  The reduction then costs two
+;;; multiplications and some shifts instead of a division.
+;;;
+;;; k is the number of 64-bit words of the modulus, so that
+;;; B^(k-1) <= M < B^k with B = 2^64.  For X < B^(2k):
+;;;   Q1 = X >> 64(k-1), Q2 = Q1 * MU, Q3 = Q2 >> 64(k+1)
+;;;   R  = (X mod B^(k+1)) - (Q3 * M mod B^(k+1))
+;;; and at most two subtractions of M leave the true residue.
+
+(defstruct (barrett-context (:constructor %make-barrett-context))
+  (mod 0 :type integer)
+  (k 1 :type fixnum)
+  (mu 0 :type integer)
+  (shift-low 0 :type fixnum)
+  (shift-high 0 :type fixnum)
+  (mask 0 :type integer))
+
+(defun make-barrett-context (m)
+  "Precompute the Barrett constants of the modulus M (M > 1)."
+  (declare (type integer m)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((k (ceiling (integer-length m) 64))
+         (b2k (ash 1 (* 128 k)))
+         (b2k1 (ash 1 (* 64 (1+ k)))))
+    (%make-barrett-context
+     :mod m
+     :k k
+     :mu (floor b2k m)
+     :shift-low (* 64 (1- k))
+     :shift-high (* 64 (1+ k))
+     :mask (1- b2k1))))
+
+(declaim (inline barrett-mul))
+(defun barrett-mul (a b ctx)
+  "A * B mod M, for reduced A and B and a matching Barrett context."
+  (declare (type integer a b)
+           (type barrett-context ctx)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((m (barrett-context-mod ctx))
+         (x (* a b))
+         (q3 (ash (* (ash x (- (barrett-context-shift-low ctx)))
+                     (barrett-context-mu ctx))
+                  (- (barrett-context-shift-high ctx))))
+         (mask (barrett-context-mask ctx))
+         (r (- (logand x mask)
+               (logand (* q3 m) mask))))
+    (declare (type integer x q3 r))
+    (when (minusp r)
+      (incf r (1+ mask)))
+    ;; With reduced inputs the estimate is exact up to one unit, so at
+    ;; most two subtractions are needed; the MOD branch is a safety net
+    ;; that also keeps a caller passing an unreduced operand from
+    ;; looping for a very long time.
+    (when (>= r m) (decf r m))
+    (when (>= r m) (decf r m))
+    (if (>= r m) (mod r m) r)))
+
 (defun power-mod-tab (b k m)
   (declare (optimize (speed 3) (safety 0)))
   (let* ((l (ash 1 (1- k)))
@@ -73,20 +136,34 @@ denominator."
     ((zerop e)
       (mod 1 m))
     ((typep e 'fixnum)
-      (do ((res 1)) (())
-        (when (logbitp 0 e)
-          (setq res (mod (* res b) m))
-          (when (= 1 e) (return res)))
-        (setq e (ash e -1)
-              b (mod (* b b) m))))
+      (if (and (> e 1) (> (integer-length m) 256))
+          ;; Large modulus: amortize the Barrett setup over the squarings.
+          (let ((ctx (make-barrett-context m))
+                (res 1)
+                (bb (mod b m)))
+            (do ((ee e))
+                (())
+              (when (logbitp 0 ee)
+                (setq res (barrett-mul res bb ctx))
+                (when (= 1 ee) (return res)))
+              (setq ee (ash ee -1)
+                    bb (barrett-mul bb bb ctx))))
+          (do ((res 1)) (())
+            (when (logbitp 0 e)
+              (setq res (mod (* res b) m))
+              (when (= 1 e) (return res)))
+            (setq e (ash e -1)
+                  b (mod (* b b) m)))))
     (t ;; sliding window variant:
-      (let* ((l (integer-length e))
+      (let* ((b (mod b m))
+             (l (integer-length e))
              (k (cond ((< l  65) 3)
                       ((< l 161) 4)
                       ((< l 385) 5)
                       ((< l 897) 6)
                       (t         7)))
              (tab (power-mod-tab b k m))
+             (ctx (make-barrett-context m))
              (res 1) s u tmp)
         (do ((i (1- l)))
             ((< i 0) res)
@@ -95,12 +172,12 @@ denominator."
               (setq s (max (1+ (- i k)) 0))
               (do () ((logbitp s e)) (incf s))
               (setq tmp (1+ (- i s)))
-              (dotimes (h tmp) (setq res (mod (* res res) m)))
+              (dotimes (h tmp) (setq res (barrett-mul res res ctx)))
               (setq u (ldb (byte tmp s) e))
-              (unless (= u 0) (setq res (mod (* res (svref tab (ash u -1))) m)))
+              (unless (= u 0) (setq res (barrett-mul res (svref tab (ash u -1)) ctx)))
               (setq i (1- s)))
             (t
-              (setq res (mod (* res res) m))
+              (setq res (barrett-mul res res ctx))
               (decf i))))))))
 
 (defun power-mod2 (a e1 b e2 m)
@@ -114,18 +191,21 @@ exponents are non-negative and the bases are below M."
     (return-from power-mod2
       (mod (* (power-mod a e1 m) (power-mod b e2 m)) m)))
   (let* ((nbits (max (integer-length e1) (integer-length e2)))
-         (ab (mod (* a b) m))
+         (a (mod a m))
+         (b (mod b m))
+         (ctx (make-barrett-context m))
+         (ab (barrett-mul a b ctx))
          (res 1))
     (declare (type fixnum nbits) (type integer res ab))
     (do ((i (1- nbits) (1- i)))
         ((minusp i) res)
       (declare (type fixnum i))
-      (setq res (mod (* res res) m))
+      (setq res (barrett-mul res res ctx))
       (let ((bit1 (logbitp i e1))
             (bit2 (logbitp i e2)))
-        (cond ((and bit1 bit2) (setq res (mod (* res ab) m)))
-              (bit1 (setq res (mod (* res a) m)))
-              (bit2 (setq res (mod (* res b) m))))))))
+        (cond ((and bit1 bit2) (setq res (barrett-mul res ab ctx)))
+              (bit1 (setq res (barrett-mul res a ctx)))
+              (bit2 (setq res (barrett-mul res b ctx))))))))
 
 (defun miller-rabin-decomposition (n) ;; assume n > 2 (n-1 is even)
   ;; return values q,k with n-1 = q*2^k
@@ -275,22 +355,51 @@ computing the modular inverse."
     (mod (* y b) modulus)))
 
 (defun expt-mod (n exponent modulus)
-  "As (mod (expt n exponent) modulus), but more efficient (Montgomery ladder)."
+  "As (mod (expt n exponent) modulus), but more efficient (fixed windows)."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer n exponent modulus))
   (assert (<= 0 exponent modulus))
   (assert (> modulus 1))
-  (do ((r0 1)
-       (r1 n)
-       (i (1- (integer-length modulus)) (1- i)))
-      ((minusp i) r0)
-    (declare (type fixnum i)
-             (type integer r0 r1))
-    (if (logbitp i exponent)
-        (setf r0 (mod (* r0 r1) modulus)
-              r1 (mod (* r1 r1) modulus))
-        (setf r1 (mod (* r0 r1) modulus)
-              r0 (mod (* r0 r0) modulus)))))
+  (let ((bits (integer-length exponent)))
+    (cond
+      ((zerop bits) (mod 1 modulus))
+      ((<= bits 4)
+       (power-mod n exponent modulus))
+      (t
+       ;; Four-bit fixed windows: sixteen entry table, four squarings and
+       ;; one multiply per window.  The table is scanned in full for each
+       ;; window so the memory access pattern does not depend on the
+       ;; exponent, matching the branch-free schedule of the old ladder.
+       (let* ((ctx (make-barrett-context modulus))
+              (one (mod 1 modulus))
+              (base (mod n modulus))
+              (w 4)
+              (nwin (ceiling bits w))
+              (tab (make-array 16)))
+         (setf (aref tab 0) one
+               (aref tab 1) base)
+         (loop for i of-type fixnum from 2 below 16 do
+           (setf (aref tab i) (barrett-mul (aref tab (1- i)) base ctx)))
+         (let ((acc one))
+           (declare (type integer acc))
+           (loop for wi of-type fixnum downfrom (1- nwin) to 0 do
+             (unless (= wi (1- nwin))
+               (dotimes (j w)
+                 (declare (ignore j))
+                 (setf acc (barrett-mul acc acc ctx))))
+             (let* ((shift (* wi w))
+                    (v (if (< shift bits)
+                           (ldb (byte w shift) exponent)
+                           0))
+                    (sel (aref tab 0)))
+               (declare (type fixnum shift)
+                        (type (unsigned-byte 4) v)
+                        (type integer sel))
+               (dotimes (i 16)
+                 (when (= i v) (setf sel (aref tab i))))
+               (unless (zerop v)
+                 (setf acc (barrett-mul acc sel ctx)))))
+           acc))))))
 
 (defun expt-mod/unsafe (n exponent modulus)
   "As (mod (expt n exponent) modulus), but more efficient. This function is

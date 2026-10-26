@@ -108,3 +108,49 @@ separated-operand-scanning form and fits the register budget.
 - fe-inv uses the addition chain (12 us); a 4-limb binary extended gcd
   would be ~2-3 us.  Note that the bignum-based modular-inverse-euclid
   already takes ~12 us, so there is no easy win without a limb-level GCD.
+## Update (Barrett modexp, this session)
+
+The modexp-heavy public-key algorithms (DSA, ElGamal, RSA) spent most of
+their time in `(mod (* a b) m)`: SBCL's bignum division of a 4096-bit
+product by a 2048-bit modulus costs ~3.8 us, while the multiply alone is
+~0.9 us.
+
+### Changes in src/math.lisp
+- `barrett-context` / `make-barrett-context` / `barrett-mul`: HAC 14.42
+  reduction with a per-modulus reciprocal `mu = floor(B^2k / M)`,
+  B = 2^64.  One context per exponentiation; each reduction is three
+  multiplications plus masks.  Measured 3.2 us vs 3.76 us for the
+  division on a 2048-bit modulus (about 15%).
+- `power-mod` uses the Barrett reduction for the sliding-window path, and
+  for fixnum exponents when the modulus is above 256 bits (RSA verify).
+  The base is reduced once up front; unreduced bases would violate the
+  Barrett bound and made the final correction loop pathological.
+- `power-mod2` (Shamir's trick, used by DSA verify) uses Barrett too.
+- `expt-mod` is now a four-bit fixed-window exponentiation instead of the
+  bit-at-a-time ladder.  The exponent is processed in windows from the
+  most significant one, the 16-entry table is scanned in full so the
+  memory pattern does not depend on the exponent, and zero windows are
+  skipped.  This is the same leakage class as the old branchy ladder but
+  does ~280 modular multiplies instead of ~450 for a 224-bit exponent.
+- `barrett-mul` allows two corrective subtractions and falls back to
+  `mod` if the invariant is ever violated, so an unreduced operand can
+  never turn the correction into a long loop.
+
+### Results (Zen 2 host)
+- DSA sign (2048-bit p, 224-bit q, 224-bit nonce): 1715 us -> 933 us
+  (583 -> ~1070 ops/s), the benchmark gap falls from 7.7x to about 3.9x.
+- DSA verify: unchanged (~1.3 ms); its sliding-window path was already
+  near the reduction limit, and the Barrett saving is within noise.
+- Modexp microbenchmarks: 2048-bit modulus, 224-bit exponent
+  1.6 ms -> 1.2 ms; 2048-bit exponent 15.2 ms -> 8.8 ms.
+- `(mod (* a b) m)` 3.76 us -> `barrett-mul` 3.20 us.
+- All 677 tests pass.  A 1500-case fuzz of power-mod, power-mod2 and
+  expt-mod against a schoolbook reference found no mismatches.
+
+### Remaining for modexp
+- The multiplies themselves dominate now (~0.9 us for 2048x2048 in
+  SBCL).  A word-level Montgomery implementation in Lisp would need
+  128-bit intermediates, which SBCL does not have, so a further large
+  gain needs a VOP with a variable modulus (CIOS over 64-bit limbs).
+- The window table for `expt-mod` can be reused across calls for a fixed
+  modulus (RSA CRT exponents are the same for every signature).
