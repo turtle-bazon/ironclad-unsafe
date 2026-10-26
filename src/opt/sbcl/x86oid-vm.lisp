@@ -4487,6 +4487,8 @@
 
 #+x86-64
 #+x86-64
+(define-mont-mul-vop mont-mul-9 ironclad-unsafe::mont-mul-9-asm 9)
+#+x86-64
 (define-mont-mul-vop mont-mul-16 ironclad-unsafe::mont-mul-16-asm 16)
 #+x86-64
 (define-mont-mul-vop mont-mul-32 ironclad-unsafe::mont-mul-32-asm 32)
@@ -4494,3 +4496,111 @@
 (define-mont-mul-vop mont-mul-48 ironclad-unsafe::mont-mul-48-asm 48)
 #+x86-64
 (define-mont-mul-vop mont-mul-64 ironclad-unsafe::mont-mul-64-asm 64)
+
+;;; Fixed-modulus add/sub VOPs for the P-521 limb field (9 x 64-bit).
+;;; R := (A + B) mod P resp. (A - B) mod P, fully unrolled.
+
+(defmacro define-fe-addsub-vop (vop-name fun-name n prime-limbs op)
+  "Define an add (:add) or subtract (:sub) VOP for N limbs."
+  (let ((pw (coerce prime-limbs 'vector)))
+    `(define-vop (,vop-name)
+       (:translate ,fun-name)
+       (:policy :fast-safe)
+       (:args (r :scs (descriptor-reg))
+              (a :scs (descriptor-reg))
+              (b :scs (descriptor-reg)))
+       (:arg-types simple-array-unsigned-byte-64
+                   simple-array-unsigned-byte-64
+                   simple-array-unsigned-byte-64)
+       (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+       (:temporary (:sc unsigned-reg) tmp carry borrow limb)
+       (:generator 1000
+         (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                                other-pointer-lowtag))
+               (done (gen-label)))
+           (flet ((a64 (i) (ea (+ data-offset (* 8 i)) a))
+                  (b64 (i) (ea (+ data-offset (* 8 i)) b))
+                  (r64 (i) (ea (+ data-offset (* 8 i)) r))
+                  (pw (i) (aref ,pw i)))
+             ,(ecase op
+                (:add
+                 `(progn
+                    (inst mov carry 0)
+                    (dotimes (i ,n)
+                      (inst mov rax-tmp (a64 i))
+                      (inst add rax-tmp (b64 i))
+                      (inst mov tmp 0)
+                      (inst adc tmp 0)
+                      (inst add rax-tmp carry)
+                      (inst adc tmp 0)
+                      (inst mov (r64 i) rax-tmp)
+                      (inst mov carry tmp))
+                    (inst mov borrow 0)
+                    (dotimes (i ,n)
+                      (inst mov rax-tmp (r64 i))
+                      (inst mov limb (pw i))
+                      (inst sub rax-tmp limb)
+                      (inst mov tmp 0)
+                      (inst adc tmp 0)
+                      (inst sub rax-tmp borrow)
+                      (inst adc tmp 0)
+                      (inst mov (r64 i) rax-tmp)
+                      (inst mov borrow tmp))
+                    (inst test borrow borrow)
+                    (inst jmp :z done)
+                    (inst test carry carry)
+                    (inst jmp :nz done)
+                    (inst mov carry 0)
+                    (dotimes (i ,n)
+                      (inst mov rax-tmp (r64 i))
+                      (inst mov limb (pw i))
+                      (inst add rax-tmp limb)
+                      (inst mov tmp 0)
+                      (inst adc tmp 0)
+                      (inst add rax-tmp carry)
+                      (inst adc tmp 0)
+                      (inst mov (r64 i) rax-tmp)
+                      (inst mov carry tmp))
+                    (emit-label done)))
+                (:sub
+                 `(progn
+                    (inst mov borrow 0)
+                    (dotimes (i ,n)
+                      (inst mov rax-tmp (a64 i))
+                      (inst sub rax-tmp (b64 i))
+                      (inst mov tmp 0)
+                      (inst adc tmp 0)
+                      (inst sub rax-tmp borrow)
+                      (inst adc tmp 0)
+                      (inst mov (r64 i) rax-tmp)
+                      (inst mov borrow tmp))
+                    (inst test borrow borrow)
+                    (inst jmp :z done)
+                    (inst mov carry 0)
+                    (dotimes (i ,n)
+                      (inst mov rax-tmp (r64 i))
+                      (inst mov limb (pw i))
+                      (inst add rax-tmp limb)
+                      (inst mov tmp 0)
+                      (inst adc tmp 0)
+                      (inst add rax-tmp carry)
+                      (inst adc tmp 0)
+                      (inst mov (r64 i) rax-tmp)
+                      (inst mov carry tmp))
+                    (emit-label done))))))))))
+
+#+x86-64
+(define-fe-addsub-vop secp521r1-fe-add-asm
+    ironclad-unsafe::secp521r1-fe-add-asm 9
+    (#xffffffffffffffff #xffffffffffffffff #xffffffffffffffff
+     #xffffffffffffffff #xffffffffffffffff #xffffffffffffffff
+     #xffffffffffffffff #xffffffffffffffff #x1ff)
+  :add)
+
+#+x86-64
+(define-fe-addsub-vop secp521r1-fe-sub-asm
+    ironclad-unsafe::secp521r1-fe-sub-asm 9
+    (#xffffffffffffffff #xffffffffffffffff #xffffffffffffffff
+     #xffffffffffffffff #xffffffffffffffff #xffffffffffffffff
+     #xffffffffffffffff #xffffffffffffffff #x1ff)
+  :sub)

@@ -114,6 +114,205 @@ X is reduced, so the double needs one subtraction at most."
         (- s +secp521r1-p+)
         s)))
 
+;;; Limb field for P-521 (nine 64-bit words, Montgomery form).
+;;;
+;;; R = 2^576, so R mod P is 2^55 and R^-1 mod P is 2^466 (Mersenne
+;;; arithmetic: 2^521 == 1).  Residues stay in Montgomery form between
+;;; operations; conversion happens only at the curve boundary.
+;;; Bignum intermediates never appear inside the hot path.
+
+(deftype secp521r1-fe () '(simple-array (unsigned-byte 64) (9)))
+
+(defconstant +secp521r1-r-mod-p+ #x80000000000000
+  "R = 2^576 modulo P, i.e. 2^55.")
+
+(defconstant +secp521r1-r-inv-mod-p+
+  #x400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+  "R^-1 modulo P, i.e. 2^466.")
+
+(defconstant +secp521r1-n0+ 1
+  "Montgomery word: -P^-1 mod 2^64.  P[0] is all ones (-1), so N0 is 1.")
+
+(defconst +secp521r1-modulus-limbs+
+  (integer-to-limbs64 +secp521r1-p+ 9))
+;; The prime as nine little-endian 64-bit limbs, for the VOP.
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun secp521r1-fe-zero ()
+    (make-array 9 :element-type '(unsigned-byte 64) :initial-element 0)))
+
+(defun secp521r1-fe-from-int (n)
+  "The Montgomery form of N modulo P."
+  (declare (type integer n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  ;; NB: the limb split is unrolled by hand.  SBCL 2.6.7 miscompiles
+  ;; (LDB (BYTE 64 (* I 64)) V) with a variable position at safety 0.
+  (let* ((v (mod (* (mod n +secp521r1-p+) +secp521r1-r-mod-p+)
+                 +secp521r1-p+))
+         (r (secp521r1-fe-zero)))
+    (setf (aref r 0) (ldb (byte 64 0) v)
+          (aref r 1) (ldb (byte 64 64) v)
+          (aref r 2) (ldb (byte 64 128) v)
+          (aref r 3) (ldb (byte 64 192) v)
+          (aref r 4) (ldb (byte 64 256) v)
+          (aref r 5) (ldb (byte 64 320) v)
+          (aref r 6) (ldb (byte 64 384) v)
+          (aref r 7) (ldb (byte 64 448) v)
+          (aref r 8) (ldb (byte 64 512) v))
+    r))
+
+(defun secp521r1-fe-to-int (a)
+  "The value of the Montgomery field element A, an integer below P."
+  (declare (type secp521r1-fe a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((v (+ (aref a 0)
+              (ash (aref a 1) 64)
+              (ash (aref a 2) 128)
+              (ash (aref a 3) 192)
+              (ash (aref a 4) 256)
+              (ash (aref a 5) 320)
+              (ash (aref a 6) 384)
+              (ash (aref a 7) 448)
+              (ash (aref a 8) 512))))
+    (mod (* v +secp521r1-r-inv-mod-p+) +secp521r1-p+)))
+
+(defun secp521r1-fe-copy (a)
+  (declare (type secp521r1-fe a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((r (secp521r1-fe-zero)))
+    (dotimes (i 9 r)
+      (setf (aref r i) (aref a i)))))
+
+(declaim (inline secp521r1-fe-add secp521r1-fe-sub secp521r1-fe-mul
+                         secp521r1-fe-sq secp521r1-fe-mul-buf
+                         secp521r1-fe-sq-buf))
+
+(defun secp521r1-fe-add (r a b)
+  "R := (A + B) mod P, all reduced residues in Montgomery form."
+  (declare (type secp521r1-fe r a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (progn
+    (secp521r1-fe-add-asm r a b)
+    r)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
+  (progn
+    (let ((v (secp521r1-addmod (secp521r1-fe-to-int a)
+                               (secp521r1-fe-to-int b))))
+      (let ((mont (secp521r1-fe-from-int v)))
+        (dotimes (i 9 r)
+          (setf (aref r i) (aref mont i)))))))
+
+(defun secp521r1-fe-sub (r a b)
+  "R := (A - B) mod P, all reduced residues in Montgomery form."
+  (declare (type secp521r1-fe r a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (progn
+    (secp521r1-fe-sub-asm r a b)
+    r)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
+  (progn
+    (let ((v (secp521r1-submod (secp521r1-fe-to-int a)
+                               (secp521r1-fe-to-int b))))
+      (let ((mont (secp521r1-fe-from-int v)))
+        (dotimes (i 9 r)
+          (setf (aref r i) (aref mont i)))))))
+
+(defun secp521r1-fe-mont-mul (r a b c)
+  "R := A * B * R^-1 mod P, with C a scratch of nineteen 64-bit words."
+  (declare (type secp521r1-fe r a b)
+           (type (simple-array (unsigned-byte 64) (*)) c)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (progn
+    (mont-mul-9-asm r a b +secp521r1-modulus-limbs+ +secp521r1-n0+ c)
+    r)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
+  (progn
+    (let ((v (secp521r1-mulmod (secp521r1-fe-to-int a)
+                               (secp521r1-fe-to-int b))))
+      ;; Back to Montgomery form.
+      (let ((mont (secp521r1-fe-from-int v)))
+        (dotimes (i 9 r)
+          (setf (aref r i) (aref mont i)))))))
+
+(defun secp521r1-fe-mul (r a b)
+  "R := A * B in Montgomery form, allocating the scratch."
+  (declare (type secp521r1-fe r a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((c (make-array 19 :element-type '(unsigned-byte 64)
+                       :initial-element 0)))
+    ;; NB: the scratch must stay in the heap.  The assembly multiply
+    ;; assumes the usual heap layout of a simple vector.
+    (secp521r1-fe-mont-mul r a b c)
+    r))
+
+(defun secp521r1-fe-mul-buf (r a b c q)
+  "R := A * B in Montgomery form, using the scratch C and ignoring Q.
+C holds nineteen 64-bit words; the caller reuses it, so a multiply
+inside a point operation allocates nothing."
+  (declare (type secp521r1-fe r a b)
+           (type (simple-array (unsigned-byte 64) (*)) c)
+           (type secp521r1-fe q)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (secp521r1-fe-mont-mul r a b c)
+  r)
+
+(defun secp521r1-fe-sq (r a)
+  "R := A^2 in Montgomery form, allocating the scratch."
+  (declare (type secp521r1-fe r a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (secp521r1-fe-mul r a a))
+
+(defun secp521r1-fe-sq-buf (r a c q)
+  "R := A^2 in Montgomery form, using the scratch C and ignoring Q."
+  (declare (type secp521r1-fe r a)
+           (type (simple-array (unsigned-byte 64) (*)) c)
+           (type secp521r1-fe q)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (secp521r1-fe-mul-buf r a a c q)
+  r)
+
+(defun secp521r1-fe-equal (a b)
+  "Whether the field elements A and B hold the same residue."
+  (declare (type secp521r1-fe a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (dotimes (i 9 t)
+    (unless (= (aref a i) (aref b i))
+      (return nil))))
+
+(defun secp521r1-fe-is-zero (a)
+  "Whether the field element A is zero."
+  (declare (type secp521r1-fe a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (dotimes (i 9 t)
+    (unless (zerop (aref a i))
+      (return nil))))
+
+(defun secp521r1-fe-inv (r a)
+  "R := A^-1 mod P, in Montgomery form.  A must be nonzero."
+  (declare (type secp521r1-fe r a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  ;; Fermat: A^(P-2), binary square-and-multiply in Montgomery form.
+  ;; The addition chain in EC-SCALAR-INV does fewer multiplies; this
+  ;; straightforward version validates the field layer first.
+  (let ((acc (secp521r1-fe-from-int 1))
+        (base (secp521r1-fe-copy a))
+        (e (- +secp521r1-p+ 2))
+        (c (make-array 19 :element-type '(unsigned-byte 64)
+                       :initial-element 0)))
+    (declare (type integer e)
+             (type secp521r1-fe acc base)
+             (type (simple-array (unsigned-byte 64) (*)) c))
+    ;; Binary square-and-multiply, msb to lsb.
+    (loop for i of-type fixnum downfrom (1- (integer-length e)) to 0 do
+      (secp521r1-fe-mont-mul acc acc acc c)
+      (when (logbitp i e)
+        (secp521r1-fe-mont-mul acc acc base c)))
+    (dotimes (i 9 r)
+      (setf (aref r i) (aref acc i)))))
+
 (defmethod ec-scalar-inv ((kind (eql :secp521r1)) n)
   "The inverse of N modulo the prime of P-521, via the reference
 addition chain (ecp_nistp521.c), far fewer multiplications than Fermat."

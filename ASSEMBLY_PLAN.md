@@ -625,3 +625,25 @@ elgamal, dsa, ed25519, ed448, secp224r1/256k1/256r1/384r1/521r1,
 ecdsa, dh-secp384r1/521r1, ecdsa-dh, ml-dsa vectors, KATs); the full
 suite runs clean through ML-DSA-SIGNATURE and stalls only at the
 SLH-DSA fresh-sign vectors above.  CCL/ABCL smoke checks still pending.
+
+## Update (P-521 limb field, phase 1: field layer done, this session)
+
+P-521 verify (3400 us, 5.7 MB/op) is 80% bignum double/add with only
+~28% in raw multiplies -- the cost is allocation, normalization, and
+dispatch, not the Mersenne fold (already division-free).  A 9-limb
+Montgomery field reuses the CIOS VOP macro (n=9 instantiation) plus
+new 9-limb add/sub VOPs; all intermediates stay unboxed.
+
+Phase 1 (field primitives) is done and validated bit-exact vs the
+bignum ops (roundtrip/add/sub/mul/sq/inv, 0 failures): fe-mul 160 ns
+vs mulmod 360 ns (2.25x), fe-add 80 ns vs addmod 160 ns (2x).
+Along the way: the new fe-from-int initially failed because SBCL 2.6.7
+miscompiles (LDB (BYTE 64 (* I 64)) V) with a constant dotimes bound
+at safety 0 (unrolled by hand, as P-256 does); a hand-written prime
+limb table used a 57-bit top limb instead of 9 bits (0x1FF) -- caught
+by the differential test; and the first Fermat loop mixed LSB/msb
+order (caught ditto).
+
+Phase 2 (point layer on limbs: double!/add!, Shamir/ladder, tables,
+conversions at encode/decode) remains.  Projected verify 3400 ->
+~1800 us.
