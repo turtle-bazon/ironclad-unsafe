@@ -69,6 +69,127 @@ denominator."
 ;;;   Q1 = X >> 64(k-1), Q2 = Q1 * MU, Q3 = Q2 >> 64(k+1)
 ;;;   R  = (X mod B^(k+1)) - (Q3 * M mod B^(k+1))
 ;;; and at most two subtractions of M leave the true residue.
+;;;
+;;; On SBCL/x86-64 with assembly enabled, Montgomery multiplication in
+;;; unboxed 64-bit limbs (mont-mul-*-asm VOPs) replaces Barrett for odd
+;;; moduli: one 64-bit multiply-accumulate per limb pair with no bignum
+;;; allocation at all inside the loop.  The driver converts to and from
+;;; Montgomery form once per exponentiation; every intermediate product
+;;; stays in limb arrays.
+
+(defun integer-to-limbs64 (x n)
+  "X as N little-endian unsigned-64 limbs.  X must be below 2^(64N)."
+  (declare (type integer x)
+           (type (integer 1 64) n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((r (make-array n :element-type '(unsigned-byte 64) :initial-element 0)))
+    (dotimes (i n r)
+      (setf (aref r i) (ldb (byte 64 (* 64 i)) x)))))
+
+(defun limbs64-to-integer (a)
+  "Integer value of the little-endian limb vector A."
+  (declare (type (simple-array (unsigned-byte 64) (*)) a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((r 0))
+    (declare (type integer r))
+    (loop for i of-type fixnum downfrom (1- (length a)) to 0 do
+      (setf r (+ (ash r 64) (aref a i))))
+    r))
+
+(defun montgomery-n0 (m)
+  "N0 = -M^-1 mod 2^64, via Newton iteration.  M must be odd."
+  (declare (type integer m)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((m0 (ldb (byte 64 0) m))
+        (mask (1- (ash 1 64)))
+        (x 1))
+    (declare (type (unsigned-byte 64) m0 x))
+    (dotimes (i 6)
+      (setf x (logand (* x (- 2 (logand (* m0 x) mask))) mask)))
+    ;; Newton yields M^-1; negate for -M^-1.
+    (logand (- x) mask)))
+
+#+(and sbcl x86-64 ironclad-unsafe-assembly)
+(progn
+
+(declaim (inline mont-mul-limbs))
+(defun mont-mul-limbs (r a b m n0 tmp n)
+  "Montgomery multiply of the N-limb residues A and B into R, reusing
+the 2N+1-limb scratch TMP.  All arrays stay in Montgomery form."
+  (declare (type (simple-array (unsigned-byte 64) (*)) r a b m tmp)
+           (type (unsigned-byte 64) n0)
+           (type (member 16 32 48 64) n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (ecase n
+    (16 (mont-mul-16-asm r a b m n0 tmp))
+    (32 (mont-mul-32-asm r a b m n0 tmp))
+    (48 (mont-mul-48-asm r a b m n0 tmp))
+    (64 (mont-mul-64-asm r a b m n0 tmp)))
+  r)
+
+(defun montgomery-expt (base exp mod)
+  "BASE^EXP mod MOD via Montgomery form and the limb VOPs.  MOD must be
+odd with bit-length in [512, 4096]; callers gate this.  The sliding
+window from POWER-MOD is mirrored here to save ~20% of the multiplies."
+  (declare (type integer base exp mod)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (if (zerop exp)
+      (mod 1 mod)
+      (let* ((bits (integer-length mod))
+             (n (cond ((<= bits 1024) 16)
+                      ((<= bits 2048) 32)
+                      ((<= bits 3072) 48)
+                      (t 64)))
+             (r (ash 1 (* 64 n)))
+             (n0 (montgomery-n0 mod))
+             (m (integer-to-limbs64 mod n))
+             (ar (integer-to-limbs64 (mod (* (mod base mod) r) mod) n))
+             (res (integer-to-limbs64 (mod r mod) n))
+             (one (integer-to-limbs64 1 n))
+             (tmp (make-array (1+ (* 2 n)) :element-type '(unsigned-byte 64)
+                              :initial-element 0))
+             (l (integer-length exp))
+             (k (cond ((< l 65) 3) ((< l 161) 4) ((< l 385) 5)
+                      ((< l 897) 6) (t 7)))
+             (tab (make-array (ash 1 (1- k)))))
+        (declare (type fixnum bits n l k)
+                 (type integer r))
+        ;; Table of odd powers: TAB[i] = AR^(2i+1), Montgomery form.
+        (setf (aref tab 0) (copy-seq ar))
+        (let ((acc (make-array n :element-type '(unsigned-byte 64)
+                               :initial-element 0)))
+          (declare (type (simple-array (unsigned-byte 64) (*)) acc))
+          (mont-mul-limbs acc ar ar m n0 tmp n)
+          (let ((ar2 (copy-seq acc)))
+            (declare (type (simple-array (unsigned-byte 64) (*)) ar2))
+            (loop for i of-type fixnum from 1 below (length tab) do
+              (mont-mul-limbs acc (aref tab (1- i)) ar2 m n0 tmp n)
+              (setf (aref tab i) (copy-seq acc)))))
+        ;; Sliding window, msb to lsb.
+        (do ((i (1- l) (1- i)))
+            ((minusp i))
+          (declare (type fixnum i))
+          (cond ((logbitp i exp)
+                 (let ((s (max (1+ (- i k)) 0)))
+                   (declare (type fixnum s))
+                   (loop while (and (< s i) (not (logbitp s exp))) do (incf s))
+                   (let ((wlen (1+ (- i s))))
+                     (declare (type fixnum wlen))
+                     (dotimes (h wlen)
+                       (declare (ignore h))
+                       (mont-mul-limbs res res res m n0 tmp n))
+                     (let ((u (ldb (byte wlen s) exp)))
+                       (declare (type integer u))
+                       (unless (zerop u)
+                         (mont-mul-limbs res res (aref tab (ash u -1)) m n0 tmp n)))
+                     (setf i s))))
+                (t
+                 (mont-mul-limbs res res res m n0 tmp n))))
+        ;; Convert out of Montgomery form.
+        (mont-mul-limbs res res one m n0 tmp n)
+        (limbs64-to-integer res))))
+
+) ; end #+sbcl progn
 
 (defstruct (barrett-context (:constructor %make-barrett-context))
   (mod 0 :type integer)
@@ -134,6 +255,12 @@ denominator."
 
 (defun power-mod (b e m)
   (declare (optimize (speed 3) (safety 0)))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (when (and (oddp m) (<= 512 (integer-length m) 4096) (plusp e))
+    ;; Montgomery VOP path: unboxed limb arithmetic with no bignum
+    ;; allocation inside the loop.  Even moduli and out-of-range sizes
+    ;; keep the Barrett/generic paths below.
+    (return-from power-mod (montgomery-expt b e m)))
   (cond
     ((zerop e)
       (mod 1 m))

@@ -4363,3 +4363,134 @@
           (inst mov (r64 i) rax-tmp)
           (inst mov carry tmp))
         (emit-label done)))))
+
+;;; Variable-modulus Montgomery multiply VOPs (CIOS form).
+;;;
+;;; R := A * B * R^-1 mod M with R = 2^(64N), for odd M of N limbs.
+;;; The product and reduction are separated (SOS): T[0..2N] accumulates
+;;; the full product, then each word is reduced in turn.  Only the
+;;; multiplier, a carry word and temporaries are live besides RAX/RDX,
+;;; with the accumulator in the TMP scratch array (driver-allocated).
+;;; N0 = -M^-1 mod 2^64 comes in as an untagged word; TMP has 2N+1
+;;; limbs (the top one holds the final overflow).
+
+(defmacro define-mont-mul-vop (vop-name fun-name n)
+  "Define a CIOS Montgomery multiply VOP for N 64-bit limbs."
+  (let ((tmp-size (1+ (* 2 n))))
+    `(define-vop (,vop-name)
+       (:translate ,fun-name)
+       (:policy :fast-safe)
+       (:args (r :scs (descriptor-reg))
+              (a :scs (descriptor-reg))
+              (b :scs (descriptor-reg))
+              (m :scs (descriptor-reg))
+              (n0 :scs (unsigned-reg))
+              (tt :scs (descriptor-reg)))
+       (:arg-types simple-array-unsigned-byte-64
+                   simple-array-unsigned-byte-64
+                   simple-array-unsigned-byte-64
+                   simple-array-unsigned-byte-64
+                   unsigned-num
+                   simple-array-unsigned-byte-64)
+       (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+       (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
+       (:temporary (:sc unsigned-reg) tmp carry limb)
+       (:temporary (:sc unsigned-reg) tmp2)
+       (:generator 1000
+         (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                              other-pointer-lowtag))
+               (done (gen-label)))
+           (flet ((a64 (i) (ea (+ data-offset (* 8 i)) a))
+                  (b64 (i) (ea (+ data-offset (* 8 i)) b))
+                  (m64 (i) (ea (+ data-offset (* 8 i)) m))
+                  (r64 (i) (ea (+ data-offset (* 8 i)) r))
+                  (t64 (i) (ea (+ data-offset (* 8 i)) tt)))
+             ;; T[0..2N] := 0.
+             (inst mov tmp 0)
+             (dotimes (k ,tmp-size)
+               (inst mov (t64 k) tmp))
+             ;; The product, 2N words, in T[0..2N-1].
+             (dotimes (i ,n)
+               (inst mov limb (a64 i))
+               (inst mov carry 0)
+               (dotimes (j ,n)
+                 (inst mov rax-tmp limb)
+                 (inst mov tmp (b64 j))
+                 (inst mul tmp)
+                 (inst add rax-tmp (t64 (+ i j)))
+                 (inst adc rdx-tmp 0)
+                 (inst add rax-tmp carry)
+                 (inst adc rdx-tmp 0)
+                 (inst mov (t64 (+ i j)) rax-tmp)
+                 (inst mov carry rdx-tmp))
+               (inst mov (t64 (+ i ,n)) carry))
+             ;; The reduction: T += T[i] * N0 * M * 2^(64 i), N times.
+             ;; The low word of each step cancels by construction.
+             (dotimes (i ,n)
+               ;; MRED := T[i] * N0 mod 2^64.
+               (inst mov rax-tmp (t64 i))
+               (inst mul n0)
+               (inst mov limb rax-tmp)
+               ;; T[i..i+N] += MRED * M[0..N-1], with carry.
+               (inst mov carry 0)
+               (dotimes (j ,n)
+                 (inst mov rax-tmp limb)
+                 (inst mov tmp (m64 j))
+                 (inst mul tmp)
+                 (inst add rax-tmp (t64 (+ i j)))
+                 (inst adc rdx-tmp 0)
+                 (inst add rax-tmp carry)
+                 (inst adc rdx-tmp 0)
+                 (inst mov (t64 (+ i j)) rax-tmp)
+                 (inst mov carry rdx-tmp))
+               ;; Propagate the final carry into T[i+N..2N].
+               (inst mov tmp2 carry)
+               (loop for k from (+ i ,n) to ,(* 2 n) do
+                 (inst mov rax-tmp (t64 k))
+                 (inst add rax-tmp tmp2)
+                 (inst mov (t64 k) rax-tmp)
+                 (inst mov tmp2 0)
+                 (inst adc tmp2 0)))
+             ;; R := T[N..2N-1] - M, remembering the borrow.  The carry
+             ;; of the first subtraction is materialized before the
+             ;; borrow of the previous limb is subtracted, for chaining
+             ;; the two would lose it.
+             (inst mov limb 0)
+             (dotimes (i ,n)
+               (inst mov rax-tmp (t64 (+ i ,n)))
+               (inst mov tmp (m64 i))
+               (inst sub rax-tmp tmp)
+               (inst mov tmp2 0)
+               (inst adc tmp2 0)
+               (inst sub rax-tmp limb)
+               (inst adc tmp2 0)
+               (inst mov (r64 i) rax-tmp)
+               (inst mov limb tmp2))
+             ;; The top word is the overflow; the reduced value is below
+             ;; twice the modulus, so one subtraction is enough, and it
+             ;; is undone when it borrowed with no overflow to spend.
+             (inst mov tmp (t64 ,(* 2 n)))
+             (inst sub tmp limb)
+             (inst jmp :nc done)
+             (inst mov limb 0)
+             (dotimes (i ,n)
+               (inst mov rax-tmp (r64 i))
+               (inst mov tmp (m64 i))
+               (inst add rax-tmp tmp)
+               (inst mov tmp2 0)
+               (inst adc tmp2 0)
+               (inst add rax-tmp limb)
+               (inst adc tmp2 0)
+               (inst mov (r64 i) rax-tmp)
+               (inst mov limb tmp2))
+             (emit-label done)))))))
+
+#+x86-64
+#+x86-64
+(define-mont-mul-vop mont-mul-16 ironclad-unsafe::mont-mul-16-asm 16)
+#+x86-64
+(define-mont-mul-vop mont-mul-32 ironclad-unsafe::mont-mul-32-asm 32)
+#+x86-64
+(define-mont-mul-vop mont-mul-48 ironclad-unsafe::mont-mul-48-asm 48)
+#+x86-64
+(define-mont-mul-vop mont-mul-64 ironclad-unsafe::mont-mul-64-asm 64)

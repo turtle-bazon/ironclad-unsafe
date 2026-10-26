@@ -543,3 +543,44 @@ result limb by limb.  The durable fix for P-384 is a full limb field
 decode, as P-256/ed25519 do), not a bignum-in/bignum-out fold.  That
 is a large rewrite; deferred.  P-384 sign already beats C (0.65x);
 verify stays 4.2x.
+
+## Update (variable-modulus Montgomery VOPs, this session)
+
+RSA/DSA/DH/ElGamal modexps were Barrett-bound: barrett-mul does three
+full multiplications plus normalization per op, and power-mod showed
+94% in bignum multiply/normalize on RSA-verify.  A CIOS Montgomery
+multiply needs one multiply-accumulate per limb pair with no bignum
+allocation at all -- but only if the limbs stay unboxed, i.e. assembly.
+
+Added `define-mont-mul-vop` (macro generating the unrolled CIOS form
+from the proven P-256 separated-operand pattern: memory scratch TMP,
+untagged N0 word, final conditional subtract with add-back) plus fndb
+entries, instantiated for N = 16/32/48/64 limbs (1024/2048/3072/4096
+bits).  math.lisp gained portable limb conversions, Newton N0, a
+sliding-window Montgomery exponentiation driver reusing one scratch
+vector, and a power-mod dispatch gate (SBCL+x86-64+assembly, odd
+modulus, 512..4096 bits; everything else keeps the Barrett path, and
+non-SBCL Lisps never see the VOP functions).
+
+Validation: VOP bit-exact vs `mod` on 280+ random odd moduli per size
+plus convert-out/edge cases (0 failures); driver bit-exact vs expt-mod
+on 120 random moduli 512..4096 bits plus edges (0 failures); full SBCL
+suite green with the dispatch active (so RSA/DSA/DH/ElGamal/primality
+all exercise it).  Non-SBCL behavior is unchanged (reader-conditional
+exclusion, verified by construction; ECL/CCL re-validation pending).
+
+  mont-mul per-op:    ~1.6 us (2048-bit) vs ~4-9 us Barrett (2-3x)
+  rsa-verify (2048):  160 -> 60 us
+  rsa-sign (2048):    ~2700 -> 800 us (CRT halves, n=16 VOP each)
+  dsa sign/verify:    measured faster (key-size caveat: verify path
+                      uses power-mod2, still Barrett -- re-measure
+                      at 2048-bit before claiming)
+  whirlpool (bonus, same session): safety-0 on update-whirlpool-block,
+  19.5 -> 29.3 MB/s (1.5x; remaining gap is structural table-driven
+  work, deferred).
+
+Two negative-result notes from the same session (kept out of the tree):
+P-521 verify via destination-passing was considered but its cost is
+bignum math, not allocation shape (limb field is the real fix);
+P-384 Solinas fold and Keccak/u32 and Falcon/workspace experiments all
+reverted with findings logged above.
