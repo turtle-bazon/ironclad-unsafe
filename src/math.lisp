@@ -76,7 +76,8 @@ denominator."
   (mu 0 :type integer)
   (shift-low 0 :type fixnum)
   (shift-high 0 :type fixnum)
-  (mask 0 :type integer))
+  (mask 0 :type integer)
+  (top 0 :type integer))
 
 (defun make-barrett-context (m)
   "Precompute the Barrett constants of the modulus M (M > 1)."
@@ -91,7 +92,8 @@ denominator."
      :mu (floor b2k m)
      :shift-low (* 64 (1- k))
      :shift-high (* 64 (1+ k))
-     :mask (1- b2k1))))
+     :mask (1- b2k1)
+     :top b2k1)))
 
 (declaim (inline barrett-mul))
 (defun barrett-mul (a b ctx)
@@ -109,7 +111,7 @@ denominator."
                (logand (* q3 m) mask))))
     (declare (type integer x q3 r))
     (when (minusp r)
-      (incf r (1+ mask)))
+      (incf r (barrett-context-top ctx)))
     ;; With reduced inputs the estimate is exact up to one unit, so at
     ;; most two subtractions are needed; the MOD branch is a safety net
     ;; that also keeps a caller passing an unreduced operand from

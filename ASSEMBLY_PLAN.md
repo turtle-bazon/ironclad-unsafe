@@ -260,3 +260,25 @@ Keccak is now the largest remaining cost (about 35%).  The state is
 are set, so the round function and the output extraction box; a two
 32-bit-halves representation would keep it in fixnums but is a rewrite
 of the macro-generated round code.
+
+## Benchmark refresh (this session)
+
+Full run with IRONCLAD_BENCH_TRIALS=1 after the commits above.  The C
+reference was re-measured too, so only the Lisp column is comparable to
+the previous table.
+
+  algorithm          before      after
+  dsa sign           583         995     ops/s
+  dsa verify         785         760
+  secp256r1 sign     14.74k      15.27k
+  secp256r1 verify   4.03k       4.36k
+  secp521r1 sign     445         500
+  secp521r1 verify   295         380
+  falcon-512 verify  3.34k       6.215k
+  falcon-512 keygen  5.0         3.85
+  ml-dsa-65 verify   1.48k       1.59k
+  rsa sign           330         365
+  rsa verify         13.68k      13.95k
+
+The falcon keygen row fluctuates with the C reference; its Lisp time is
+the complex-FFT keygen, which this session did not touch.
