@@ -491,3 +491,27 @@ Remaining Keccak cost is the absorb/squeeze byte loops, not the rounds;
 further work there has low ROI.  Better next targets: Falcon keygen
 (Karatsuba allocation churn), P-384/P-521 verify (modexp-bound --
 Montgomery VOP would hit DSA/RSA/ElGamal too), ML-DSA NTT.
+
+## Update (Falcon Karatsuba workspace: no measurable win, reverted, this session)
+
+Falcon keygen conses ~200 MB per key (~86-100 ms, high retry variance).
+falcon-karatsuba allocates six fresh arrays per recursion node (~40K
+arrays per 512-bit product), so a workspace version was implemented:
+falcon-karatsuba-into threads an 8N scratch vector through the
+recursion (AX/BX/A0B0/A1B1/AXBX carved at fixed offsets, final assembly
+written straight into the output), one scratch vector per top-level
+falcon-karamul-ws call.
+
+Validated bit-exact vs the reference (sizes 1-512, small/bignum/sparse
+coefficients, 0 failures).  Microbenchmark on 512x512 with 120-bit
+coefficients: 4.8 -> 4.0 ms/mult, 8.9 -> 6.9 MB/mult.  But full-keygen
+A/B (12 samples each): 97.0 vs 94.3 ms -- no signal; the NTRU retry
+variance (68-204 ms range) swamps the per-mult saving, and the remaining
+consing is inherent bignum coefficient arithmetic, not containers.
+
+Reverted: the extra code path is not worth carrying for no measurable
+keygen win.  Falcon keygen's gap is structural (exact integer NTRU
+arithmetic + Gaussian samplerz + rejection retries in Lisp vs C), not
+container churn.  Cheaper future leads, if revisited: fixnum-only
+falcon-basesampler (currently builds a 72-bit bignum U per sample),
+fewer randbytes funcalls in falcon-berexp.
