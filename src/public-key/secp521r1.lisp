@@ -244,54 +244,66 @@ addition chain (ecp_nistp521.c), far fewer multiplications than Fermat."
                  (make-instance 'secp521r1-point :x x3 :y y3 :z z3)))))))))
 
 
-;;; Fixed-base comb for the generator point.
+;;; Fixed-base positional table for the generator point.
 ;;;
 ;;; SIGN-MESSAGE and key generation always multiply G by a secret scalar.
-;;; An eight-bit window needs 66 additions and 528 doublings instead of
-;;; the 4-bit comb's 131 additions, which is worth the one-off cost of
-;;; building the 256-entry table.  The window index is secret, so the
-;;; selection scans all 256 entries.
+;;; Row J holds V * 256^J * G for V in [0, 256), so a multiplication is
+;;; 66 additions and no doublings (instead of the ladder's ~260 adds and
+;;; 520 doublings, or a standard window's 66 adds and 528 doublings).
+;;; The selection scans all 256 entries of a row, so the memory pattern
+;;; does not depend on the secret scalar.
+;;;
+;;; The table is built lazily on first use: 66 rows of 256 points.
 
 (defvar *secp521r1-base-table* nil
-  "Precomputed I * G for I in [0, 256). Built on first use.")
+  "Positional table ROWS[J][V] = V * 256^J * G. Built on first use.")
 
 (defun secp521r1-ensure-base-table ()
   (or *secp521r1-base-table*
       (setf *secp521r1-base-table*
-            (let ((table (make-array 256)))
-              (setf (aref table 0) +secp521r1-point-at-infinity+)
-              (setf (aref table 1) +secp521r1-g+)
-              (loop for i from 2 below 256
-                    do (setf (aref table i)
-                             (if (evenp i)
-                                 (ec-double (aref table (ash i -1)))
-                                 (ec-add (aref table (1- i)) +secp521r1-g+))))
-              table))))
+            (let ((rows (make-array 66))
+                  (base +secp521r1-g+))
+              (dotimes (j 66 rows)
+                (declare (type fixnum j))
+                (let ((row (make-array 256)))
+                  (setf (aref row 0) +secp521r1-point-at-infinity+
+                        (aref row 1) base)
+                  (loop for v of-type fixnum from 2 below 256 do
+                    (setf (aref row v)
+                          (if (evenp v)
+                              (ec-double (aref row (ash v -1)))
+                              (ec-add (aref row (1- v)) base))))
+                  (setf (aref rows j) row)
+                  ;; base := 256 * base for the next row.
+                  (dotimes (i 8)
+                    (declare (ignore i))
+                    (setf base (ec-double base)))))))))
 
 (declaim (inline secp521r1-select-base))
-(defun secp521r1-select-base (table v)
-  "Select TABLE[V].  Linear scan over the cached table."
-  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
-           (type (unsigned-byte 8) v))
-  (let ((sel (aref table 0)))
+(defun secp521r1-select-base (row v)
+  "Select index V from the positional-table ROW.  Linear scan over all
+256 entries, so the memory access pattern does not depend on V."
+  (declare (type simple-vector row)
+           (type (unsigned-byte 8) v)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((sel (aref row 0)))
     (dotimes (i 256 sel)
       (when (= i v)
-        (setf sel (aref table i))))))
+        (setf sel (aref row i))))))
 
 (defun secp521r1-base-mult (k)
-  "Fixed-base eight-bit window for G (secret scalar, fixed schedule)."
+  "Fixed-base multiplication K*G via the positional byte table: 66
+additions and no doublings."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer k))
   (let ((table (secp521r1-ensure-base-table))
         (acc +secp521r1-point-at-infinity+))
-    (loop for j from 65 downto 0 do          ; 521 bits / 8 = 66 octets
-      (unless (= j 65)
-        (dotimes (i 8)
-          (declare (ignore i))
-          (setf acc (ec-double acc))))
-      (let ((sel (secp521r1-select-base table (ldb (byte 8 (* j 8)) k))))
-        (unless (eq sel +secp521r1-point-at-infinity+)
-          (setf acc (ec-add acc sel)))))
+    (declare (type simple-vector table))
+    (loop for j of-type fixnum from 65 downto 0 do
+      (let ((v (ldb (byte 8 (* j 8)) k)))
+        (declare (type (unsigned-byte 8) v))
+        (unless (zerop v)
+          (setf acc (ec-add acc (secp521r1-select-base (aref table j) v))))))
     acc))
 
 (defmethod ec-scalar-mult ((p secp521r1-point) e)
@@ -478,10 +490,10 @@ addition chain (ecp_nistp521.c), far fewer multiplications than Fermat."
          (bbit (integer-length b))
          (bits (max abit bbit 1))
          (nwin (ceiling bits w))
-         ;; The generator's 256-entry positional table starts with V*G for
-         ;; V in [0, 32), so it serves the five-bit windows directly.
+         ;; Row 0 of the positional table is V*G for V in [0, 256),
+         ;; so its first 32 entries serve the five-bit windows directly.
          (tp (if (eq p +secp521r1-g+)
-                 (secp521r1-ensure-base-table)
+                 (aref (secp521r1-ensure-base-table) 0)
                  (secp521r1-make-window-table p)))
          (tq (secp521r1-make-window-table q))
          (acc +secp521r1-point-at-infinity+))

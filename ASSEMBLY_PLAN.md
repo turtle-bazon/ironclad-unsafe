@@ -417,3 +417,22 @@ sign (8.1x), dsa verify (6.5x), secp521r1 verify (6.0x), ml-dsa-65
 verify (6.0x) and mceliece keygen (~5-7x, noisy C reference).  The
 modexp, P-521/P-384 field and McEliece elimination gaps need
 SIMD/VOP work or full limb ports; see the per-area notes above.
+
+## Update (positional fixed-base tables for P-521/P-384, this session)
+
+P-521 and P-384 used standard eight-bit windows: 66 (resp. 48) adds
+plus 528 (resp. 376) doublings per fixed-base multiplication.  Since
+the table held V*G (not positional multiples), every window needed
+eight doublings -- nearly all of the 1.7 ms a P-521 mult cost.
+
+Both curves now use positional tables ROWS[J][V] = V * 256^J * G, so a
+multiplication is pure addition: 66 adds for P-521, 48 for P-384, zero
+doublings (the same construction the P-256 field layer already used).
+P-521: 66 rows x 256 points; P-384: 48 rows x 256.  The five-bit
+joint Shamir verifiers keep working: row 0 is V*G, whose first 32
+entries serve the windows.  Selection still scans the full row.
+
+  secp521r1 base-mult  1680 -> 300 us
+  secp521r1 sign       1920 -> 440 us (gap ~8x -> ~3.6x)
+  secp384r1 sign       2184 -> 568 us (gap ~2.8x -> ~1.9x)
+  Signature and DH vectors pass on both curves.
