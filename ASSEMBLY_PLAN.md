@@ -739,3 +739,12 @@ KAT expectations had typos (9c vs 9d nibbles) -- always verify KAT
 vectors against hashlib, not memory.
 
   sha1 8k-block  513 -> ~1560 MB/s (3.0x, gap 3.14 -> ~1.0)
+
+## Update (SHA-1 NI validation, this session)
+
+SHA-1 NI VOP validated on all Lisps: SBCL KATs (empty/abc/56-byte/
+1000xa/incremental, 0 failures) + full SBCL suite green; CCL digest
+vectors pass (sha1, sha256, sha512); ABCL sha1("abc") roundtrip passes.
+The NI path is SBCL-only (#+(and sbcl x86-64 ironclad-unsafe-assembly)
+with runtime sha-ni-supported-p dispatch); other Lisps use the
+unchanged portable path through the same sha1-compress-block wrapper.
