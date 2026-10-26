@@ -515,3 +515,31 @@ arithmetic + Gaussian samplerz + rejection retries in Lisp vs C), not
 container churn.  Cheaper future leads, if revisited: fixnum-only
 falcon-basesampler (currently builds a 72-bit bignum U per sample),
 fewer randbytes funcalls in falcon-berexp.
+
+## Update (P-384 Solinas fold: correct but 2x slower, reverted, this session)
+
+P-384's ec-double/ec-add/point-equal used 47 generic `mod` divisions.
+A Solinas reduction was implemented (2^384 == 2^128 + 2^96 - 2^32 + 1):
+24 fixnum limb extractions, two signed accumulation passes, single
+conditional subtract, zero division.  Validated exact vs `mod` on 3000
+random products plus edges, unreduced inputs, add/sub/inv (0 failures);
+P-384 signature and DH vectors passed; 2G matched an independent Python
+Jacobian doubling bit-for-bit (after catching a transcription bug:
+(- A B C) is A-B-C, not A-B*C).
+
+But end-to-end A/B: sign 540 -> 1080 us, verify 3000 -> 5070 us --
+TWICE as slow.  Root cause: the 12-limb result assembly needs ~22
+bignum ash/add allocations per multiplication (1454 bytes/mult measured
+vs 498 for generic `mod`), so the fold trades one ~0.5 us division for
+~1 us of allocation churn.  An early microbenchmark claiming 2.7x was
+an artifact (short loops under the wall-clock granularity plus
+optimizer effects); the allocation count and the full sign/verify A/B
+are decisive.  Reverted.
+
+Lesson: count allocations, not just instructions -- on SBCL a bignum
+division conses less than a "division-free" fold that assembles its
+result limb by limb.  The durable fix for P-384 is a full limb field
+(keep residues as limb vectors between ops, convert only at encode/
+decode, as P-256/ed25519 do), not a bignum-in/bignum-out fold.  That
+is a large rewrite; deferred.  P-384 sign already beats C (0.65x);
+verify stays 4.2x.
