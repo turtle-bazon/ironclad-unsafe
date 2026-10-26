@@ -458,3 +458,36 @@ Remaining Keccak work: the state itself is (unsigned-byte 64) lanes,
 so every round op boxes.  Splitting the state into 50 u32 halves
 keeps everything in fixnums; cshake only uses the high-level API so
 the change is contained to sha3.lisp.  KAT vectors will validate it.
+
+## Update (Keccak u32-lane experiment: negative result, reverted, this session)
+
+Hypothesis: keccak-state's (unsigned-byte 64) lanes box on every round
+op, so splitting the state into 50 u32 halves would keep everything in
+fixnums.  Implemented in full: split state type, split round constants,
+hi/lo accessor macros, constant-folded keccak-rol-into (all 64 rotations
+x 300 random values verified against ROL64, 0 failures), full rounds
+rewrite with combined rho+pi, native-halves IO.  Validated
+bit-identical to two independent references (a bignum spec
+implementation and an independent Python Keccak-f): 50 random states x
+25 lanes, 0 mismatches, plus the Keccak-f zero-state vector.
+
+Result: ml-dsa-65 verify got SLOWER, 602 -> 978 us, with keccak-rounds
+going from 17% to 40% of profile (0.6 -> 1.9 us per 24-round call).
+
+Root cause: at safety 0 with declared (unsigned-byte 64) types, SBCL
+already compiles 64-bit logxor/ash/ldb/rotate to single machine
+instructions -- there is no boxing to eliminate.  Splitting lanes
+DOUBLED the operation count (two 32-bit halves per 64-bit op), so the
+rewrite was bound to be ~2x slower.  The original premise was wrong;
+the old code was already at ~2 ops/cycle.
+
+Reverted to rev 1042 (kept the IO fix, which genuinely helped:
+732 -> 602-664 us).  Lesson: check the disassembly/derived types before
+assuming bignum overhead -- declared u64 arithmetic is free on SBCL,
+and the same holds for ECL (C uint64_t) and ABCL (JVM long).
+
+Keccak is now ~38% of ml-dsa-65 verify (rounds 18%, extract 21%).
+Remaining Keccak cost is the absorb/squeeze byte loops, not the rounds;
+further work there has low ROI.  Better next targets: Falcon keygen
+(Karatsuba allocation churn), P-384/P-521 verify (modexp-bound --
+Montgomery VOP would hit DSA/RSA/ElGamal too), ML-DSA NTT.
