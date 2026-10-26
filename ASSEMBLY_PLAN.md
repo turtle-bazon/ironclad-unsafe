@@ -687,3 +687,15 @@ initially "failed" correct code.
   secp384r1 verify  3000 -> 840 us (3.6x)
   (gap ~4.26x -> ~1.2x; remaining ~840 us is ~7000 VOP mults at
   ~80 ns plus the bignum Fermat inverse in destructure)
+
+## Update (non-SBCL validation of limb work, this session)
+
+The P-521/P-384 limb field added #-fallback paths (bignum-based) that
+SBCL never executes, so they were validated on the other Lisps:
+- CCL: P-521/P-384 signature + DH vectors, SHA3 KATs, RSA/DSA verify
+  vectors -- all pass.
+- ABCL: P-521 and P-384 sign/verify roundtrips -- pass.
+- ECL: per-key vectors pass (rsa, elgamal, dsa, ed*, secp*, ecdsa,
+  dh, ml-dsa); full suite still blocked on the pre-existing SLH-DSA
+  sign hang (baseline rev hangs identically; hash-based, unrelated).
+SBCL full suite green with limb verify active (677/677 + new paths).
