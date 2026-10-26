@@ -769,3 +769,22 @@ and single-block reference tests must not write through subseq copies
 
   aes-ctr-8k  ~195 -> ~1257 MB/s sustained (6.4x on the CTR kernel;
   CTR-mode gaps all move; GCM lifted via CTR)
+
+## Update (ChaCha 2-wide pipelining, this session)
+
+ChaCha did one SSE VOP call per 64-byte block (call overhead plus
+exposed AESENC-style latency, here for the quarter rounds).  New
+two-wide pipelined SSE VOP does two consecutive blocks per call
+(rounds for both blocks issued back-to-back so the independent chains
+overlap), xoring into the output in the same pass.  Integrated as a
+bulk section in chacha-crypt using a staged second state (counter+1),
+with the generic loop handling partials and remainders; only the
+three standard core functions take the bulk path (anything else uses
+the generic loop).  Validated bit-exact vs single-block plus
+length/variant/streaming roundtrips (0 failures); full SBCL suite
+green; CCL/ABCL pass (portable path).
+
+Along the way: my byte-level KAT expectations again had typos --
+always verify against hashlib, never memory; and SBCL hoists/CSEs
+VOP calls in microbenchmarks (0.0ns readings), so only sustained
+integrated runs and the official harness count.
