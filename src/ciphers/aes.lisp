@@ -985,3 +985,96 @@
   (:decrypt-function aes-decrypt-block)
   (:block-length 16)
   (:key-length (:fixed 16 24 32)))
+
+;;; AES CTR eight-wide fast path.
+;;;
+;;; The generic CTR loop encrypts one counter block per VOP call, which
+;;; leaves the AESENC latency exposed.  When AES-NI is available, eight
+;;; counter blocks are encrypted in a single pipelined VOP call (which
+;;; also serves GCM, CCM and EAX, since they run CTR underneath).  The
+;;; leading and trailing partial blocks use the ordinary single-block
+;;; path, so the stream state stays exactly in sync.
+
+#+x86-64
+(defvar *aes-ctr-8x-enabled* t
+  "Set to NIL to force the generic CTR loop (validation only).")
+
+#+x86-64
+(defmethod mode-crypt-functions ((cipher aes) (mode ctr-mode))
+  #+(and sbcl ironclad-unsafe-assembly)
+  (if (and *aes-ctr-8x-enabled* (aes-ni-supported-p))
+      (let ((iv (iv mode))
+            (encrypted-iv (make-array 16 :element-type '(unsigned-byte 8)))
+            (ctr-blocks (make-array 128 :element-type '(unsigned-byte 8)))
+            (round-keys (encryption-round-keys cipher))
+            (n-rounds (n-rounds cipher))
+            (function (encrypt-function cipher)))
+        (declare (type (simple-array (unsigned-byte 8) (16)) iv encrypted-iv)
+                 (type (simple-array (unsigned-byte 8) (128)) ctr-blocks)
+                 (type aes-round-keys round-keys)
+                 (type (integer 0 14) n-rounds)
+                 (type function function))
+        (flet ((aes-ctr-8x (in out in-start in-end out-start handle-final-block)
+                 (declare (type simple-octet-vector in out)
+                          (type index in-start in-end out-start)
+                          (ignorable handle-final-block)
+                          (optimize (speed 3) (space 0) (debug 0)))
+                 (let ((iv-position (iv-position mode))
+                       (keystream-blocks (keystream-blocks mode))
+                       (remaining (- in-end in-start))
+                       (offset in-start))
+                   (declare (type (integer 0 16) iv-position)
+                            (type (integer 0 *) keystream-blocks)
+                            (type index remaining offset))
+                   ;; Use remaining bytes in encrypted-iv
+                   (loop until (or (zerop iv-position) (zerop remaining)) do
+                     (setf (aref out out-start)
+                           (logxor (aref in offset) (aref encrypted-iv iv-position)))
+                     (setf iv-position (mod (1+ iv-position) 16))
+                     (incf offset)
+                     (incf out-start)
+                     (decf remaining))
+                   ;; Process data by block, eight blocks at a time
+                   (multiple-value-bind (q r)
+                       (truncate remaining 16)
+                     (multiple-value-bind (q8 q1)
+                         (truncate q 8)
+                       (dotimes (i q8)
+                         (declare (ignore i))
+                         (dotimes (j 8)
+                           (replace ctr-blocks iv :start1 (* j 16) :end1 (* (1+ j) 16))
+                           (increment-counter-block-1 16 iv))
+                         (aes-ni-ctr-encrypt-8x ctr-blocks 0 in offset out out-start
+                                                round-keys n-rounds)
+                         (incf offset 128)
+                         (incf out-start 128))
+                       (incf keystream-blocks (* q8 8))
+                       (dotimes (i q1)
+                         (declare (ignore i))
+                         (funcall function cipher iv 0 encrypted-iv 0)
+                         (increment-counter-block-1 16 iv)
+                         (xor-block 16 encrypted-iv 0 in offset out out-start)
+                         (incf offset 16)
+                         (incf out-start 16))
+                       (incf keystream-blocks q1)
+                       (setf remaining r)))
+                   ;; Process remaing bytes of data
+                   (loop until (zerop remaining) do
+                     (when (zerop iv-position)
+                       (funcall function cipher iv 0 encrypted-iv 0)
+                       (increment-counter-block-1 16 iv)
+                       (incf keystream-blocks))
+                     (setf (aref out out-start)
+                           (logxor (aref in offset) (aref encrypted-iv iv-position)))
+                     (setf iv-position (mod (1+ iv-position) 16))
+                     (incf offset)
+                     (incf out-start)
+                     (decf remaining))
+                   (setf (iv-position mode) iv-position)
+                   (setf (keystream-blocks mode) keystream-blocks)
+                   (let ((processed (- offset in-start)))
+                     (values processed processed)))))
+          (values #'aes-ctr-8x #'aes-ctr-8x)))
+      (call-next-method))
+  #-(and sbcl ironclad-unsafe-assembly)
+  (call-next-method))

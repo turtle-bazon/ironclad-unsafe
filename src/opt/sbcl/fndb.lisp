@@ -133,6 +133,20 @@
   :overwrite-fndb-silently t)
 
 #+x86-64
+#+x86-64
+(defknown ironclad-unsafe::aes-ni-ctr-encrypt-8x
+  ((simple-array (unsigned-byte 8) (*))
+   (unsigned-byte 64)
+   (simple-array (unsigned-byte 8) (*))
+   (unsigned-byte 64)
+   (simple-array (unsigned-byte 8) (*))
+   (unsigned-byte 64)
+   (simple-array (unsigned-byte 32) (*))
+   (integer 0 14))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+
 (defknown ironclad-unsafe::aes-ni-encrypt
   ((simple-array (unsigned-byte 8) (*))
    (unsigned-byte 64)

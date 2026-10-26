@@ -748,3 +748,24 @@ vectors pass (sha1, sha256, sha512); ABCL sha1("abc") roundtrip passes.
 The NI path is SBCL-only (#+(and sbcl x86-64 ironclad-unsafe-assembly)
 with runtime sha-ni-supported-p dispatch); other Lisps use the
 unchanged portable path through the same sha1-compress-block wrapper.
+
+## Update (AES-CTR eight-wide pipelining, this session)
+
+AES-CTR did one AES-NI VOP call per 16-byte block (latency-bound).
+New 8-wide pipelined VOP encrypts (and xors) eight counter blocks per
+call with all eight AESENCs of a round issued back-to-back, plus an
+AES-specialized CTR fast path that batches counter blocks (the generic
+loop is untouched; other ciphers and non-NI Lisps use it via
+call-next-method).  Validated bit-exact vs single-block (8-wide output
+== eight single-block outputs), plus length/keys/streaming/GCM
+roundtrips (0 failures) and the AES/CTR vectors; full SBCL suite green.
+
+Along the way: the new fndb entry first used bare
+simple-array-unsigned-byte-8 (unknown in sb-c -- copy the
+aes-ni-encrypt entry's full type specifiers instead); a (integer 0 14)
+declaration on n-rounds was needed for VOP translation to kick in;
+and single-block reference tests must not write through subseq copies
+(the writes vanish -- compare via temp buffers).
+
+  aes-ctr-8k  ~195 -> ~1257 MB/s sustained (6.4x on the CTR kernel;
+  CTR-mode gaps all move; GCM lifted via CTR)
