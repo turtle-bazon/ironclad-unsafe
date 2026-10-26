@@ -142,11 +142,12 @@
   (progn
     (let ((v (mod (+ (secp256r1-fe-to-int a) (secp256r1-fe-to-int b))
                   +secp256r1-p+)))
-      (setf (aref r 0) (ldb (byte 64 0) v)
-            (aref r 1) (ldb (byte 64 64) v)
-            (aref r 2) (ldb (byte 64 128) v)
-            (aref r 3) (ldb (byte 64 192) v))
-      r)))
+      (let ((mont (secp256r1-fe-from-int v)))
+        (setf (aref r 0) (aref mont 0)
+              (aref r 1) (aref mont 1)
+              (aref r 2) (aref mont 2)
+              (aref r 3) (aref mont 3))
+        r))))
 
 (defun secp256r1-fe-sub (r a b)
   "R := (A - B) mod P, all reduced residues."
@@ -160,11 +161,12 @@
   (progn
     (let ((v (mod (- (secp256r1-fe-to-int a) (secp256r1-fe-to-int b))
                   +secp256r1-p+)))
-      (setf (aref r 0) (ldb (byte 64 0) v)
-            (aref r 1) (ldb (byte 64 64) v)
-            (aref r 2) (ldb (byte 64 128) v)
-            (aref r 3) (ldb (byte 64 192) v))
-      r)))
+      (let ((mont (secp256r1-fe-from-int v)))
+        (setf (aref r 0) (aref mont 0)
+              (aref r 1) (aref mont 1)
+              (aref r 2) (aref mont 2)
+              (aref r 3) (aref mont 3))
+        r))))
 
 (defun secp256r1-fe-mont-mul (r a b c)
   "R := A * B * R^-1 mod P, with C a scratch of nine 64-bit words."
