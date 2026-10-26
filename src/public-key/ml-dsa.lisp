@@ -117,7 +117,11 @@
 
 (defun ml-dsa-montgomery-reduce (a)
   "Montgomery reduction; returns integer congruent to A * 2^-32 mod q."
-  (declare (type (signed-byte 64) a))
+  ;; A is the product of two coefficients below q, so it is well inside
+  ;; the fixnum range; declaring (signed-byte 64) would box every value
+  ;; because SBCL fixnums are 62 bits wide.
+  (declare (type fixnum a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((w (ldb (byte 32 0) (* (ldb (byte 32 0) a) 58728449)))
          (t32 (if (>= w (ash 1 31)) (- w (ash 1 32)) w)))
     (ash (- a (* t32 +ml-dsa-q+)) -32)))
@@ -222,12 +226,19 @@
 (defun ml-dsa-pointwise-acc (w u v n)
   "W = sum over N of pointwise products (no final reduction)."
   (declare (type ml-dsa-poly w)
-           (type fixnum n))
+           (type simple-vector u v)
+           (type fixnum n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  ;; Accumulate straight into W; the earlier version allocated a fresh
+  ;; polynomial for every matrix row and added it in a second pass.
   (ml-dsa-pointwise-montgomery w (aref u 0) (aref v 0))
-  (dotimes (i (1- n))
-    (let ((tt (ml-dsa-new-poly)))
-      (ml-dsa-pointwise-montgomery tt (aref u (1+ i)) (aref v (1+ i)))
-      (ml-dsa-poly-add w w tt)))
+  (loop for i of-type fixnum from 1 below n do
+    (let ((ui (aref u i))
+          (vi (aref v i)))
+      (declare (type ml-dsa-poly ui vi))
+      (dotimes (j 256)
+        (setf (aref w j)
+              (+ (aref w j) (ml-dsa-fqmul (aref ui j) (aref vi j)))))))
   (values))
 
 
@@ -274,8 +285,12 @@
 
 (defun ml-dsa-chknorm-p (r n bound)
   "T when any of the N polynomial coefficients has abs >= BOUND."
+  (declare (type simple-vector r)
+           (type fixnum n bound)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (vi n nil)
     (let ((p (aref r vi)))
+      (declare (type ml-dsa-poly p))
       (dotimes (i 256)
         (when (>= (abs (aref p i)) bound)
           (return-from ml-dsa-chknorm-p t))))))

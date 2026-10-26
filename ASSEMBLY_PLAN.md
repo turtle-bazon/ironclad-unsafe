@@ -236,3 +236,27 @@ on 200 fresh signatures.
   falcon-512 verify  304 -> 178 us (gap 7.6x -> 4.45x)
   falcon-512 sign    unchanged (~20 ms, complex FFT path)
   All 677 tests pass; 60 fresh keygen/sign/verify round trips pass.
+
+## Update (ML-DSA verify, this session)
+
+The verify profile was 30% Keccak, 15% NTT, but a surprising amount went
+to generic arithmetic.  Three fixes in src/public-key/ml-dsa.lisp:
+
+- `ml-dsa-montgomery-reduce` declared its argument `(signed-byte 64)`.
+  SBCL fixnums are 62 bits wide, so every product of two coefficients
+  was boxed and the shifts ran through the bignum code.  It is a
+  fixnum: the largest intermediate is below 2^56.
+- `ml-dsa-chknorm-p` reads a polyvec without declaring the element type,
+  so every `aref` and comparison was generic; declared the vector and
+  the polynomial.
+- `ml-dsa-pointwise-acc` allocated a fresh polynomial for every matrix
+  row and added it in a second pass; it now accumulates in place.
+
+  ml-dsa-65 verify  770 -> 650 us (gap ~5.7x -> ~5.5x)
+  All ML-DSA test vectors pass.
+
+Keccak is now the largest remaining cost (about 35%).  The state is
+`(unsigned-byte 64)` lanes, which are bignums whenever the top two bits
+are set, so the round function and the output extraction box; a two
+32-bit-halves representation would keep it in fixnums but is a rewrite
+of the macro-generated round code.
