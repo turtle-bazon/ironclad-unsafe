@@ -189,6 +189,57 @@ window from POWER-MOD is mirrored here to save ~20% of the multiplies."
         (mont-mul-limbs res res one m n0 tmp n)
         (limbs64-to-integer res))))
 
+(defun montgomery-expt-fixed (base exp mod)
+  "BASE^EXP mod MOD with a fixed four-bit window and full table scan,
+mirroring EXPT-MOD's side-channel posture.  MOD must be odd with
+bit-length in [512, 4096]; callers gate this."
+  (declare (type integer base exp mod)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (if (zerop exp)
+      (mod 1 mod)
+      (let* ((bits (integer-length mod))
+             (n (cond ((<= bits 1024) 16)
+                      ((<= bits 2048) 32)
+                      ((<= bits 3072) 48)
+                      (t 64)))
+             (r (ash 1 (* 64 n)))
+             (n0 (montgomery-n0 mod))
+             (m (integer-to-limbs64 mod n))
+             (ar (integer-to-limbs64 (mod (* (mod base mod) r) mod) n))
+             (one (integer-to-limbs64 1 n))
+             (tmp (make-array (1+ (* 2 n)) :element-type '(unsigned-byte 64)
+                              :initial-element 0))
+             (w 4)
+             (nwin (ceiling (integer-length exp) w))
+             (tab (make-array 16))
+             (acc (integer-to-limbs64 (mod r mod) n)))
+        (declare (type fixnum bits n w nwin)
+                 (type integer r))
+        (setf (aref tab 0) (copy-seq one)
+              (aref tab 1) (copy-seq ar))
+        (loop for i of-type fixnum from 2 below 16 do
+          (let ((next (make-array n :element-type '(unsigned-byte 64)
+                                  :initial-element 0)))
+            (mont-mul-limbs next (aref tab (1- i)) ar m n0 tmp n)
+            (setf (aref tab i) next)))
+        (loop for wi of-type fixnum downfrom (1- nwin) to 0 do
+          (unless (= wi (1- nwin))
+            (dotimes (j w)
+              (declare (ignore j))
+              (mont-mul-limbs acc acc acc m n0 tmp n)))
+          (let* ((shift (* wi w))
+                 (v (if (< shift (integer-length exp)) (ldb (byte w shift) exp) 0))
+                 (sel (aref tab 0)))
+            (declare (type fixnum shift)
+                     (type (unsigned-byte 4) v))
+            (dotimes (i 16)
+              (when (= i v)
+                (setf sel (aref tab i))))
+            (unless (zerop v)
+              (mont-mul-limbs acc acc sel m n0 tmp n))))
+        (mont-mul-limbs acc acc one m n0 tmp n)
+        (limbs64-to-integer acc))))
+
 ) ; end #+sbcl progn
 
 (defstruct (barrett-context (:constructor %make-barrett-context))
@@ -316,6 +367,10 @@ multiply for each bit where at least one exponent is set.  The
 exponents are non-negative and the bases are below M."
   (declare (optimize (speed 3) (safety 0))
            (type integer a e1 b e2 m))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (when (and (oddp m) (<= 512 (integer-length m) 4096))
+    ;; Montgomery VOP path; the zerop-exponent cases are handled inside.
+    (return-from power-mod2 (montgomery-expt-shamir a e1 b e2 m)))
   (when (or (zerop e1) (zerop e2))
     (return-from power-mod2
       (mod (* (power-mod a e1 m) (power-mod b e2 m)) m)))
@@ -335,6 +390,53 @@ exponents are non-negative and the bases are below M."
         (cond ((and bit1 bit2) (setq res (barrett-mul res ab ctx)))
               (bit1 (setq res (barrett-mul res a ctx)))
               (bit2 (setq res (barrett-mul res b ctx))))))))
+
+#+(and sbcl x86-64 ironclad-unsafe-assembly)
+(progn
+
+(defun montgomery-expt-shamir (a e1 b e2 mod)
+  "A^E1 * B^E2 mod MOD by Shamir's trick in Montgomery form.  MOD must
+be odd with bit-length in [512, 4096]; callers gate this."
+  (declare (type integer a e1 b e2 mod)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (if (or (zerop e1) (zerop e2))
+      (mod (* (montgomery-expt a e1 mod) (montgomery-expt b e2 mod)) mod)
+      (let* ((bits (integer-length mod))
+             (n (cond ((<= bits 1024) 16)
+                      ((<= bits 2048) 32)
+                      ((<= bits 3072) 48)
+                      (t 64)))
+             (r (ash 1 (* 64 n)))
+             (n0 (montgomery-n0 mod))
+             (m (integer-to-limbs64 mod n))
+             (ar (integer-to-limbs64 (mod (* (mod a mod) r) mod) n))
+             (br (integer-to-limbs64 (mod (* (mod b mod) r) mod) n))
+             (abr (let ((tmp (make-array (1+ (* 2 n)) :element-type '(unsigned-byte 64)
+                                         :initial-element 0))
+                        (ab (make-array n :element-type '(unsigned-byte 64)
+                                        :initial-element 0)))
+                    (mont-mul-limbs ab ar br m n0 tmp n)
+                    ab))
+             (res (integer-to-limbs64 (mod r mod) n))
+             (one (integer-to-limbs64 1 n))
+             (tmp (make-array (1+ (* 2 n)) :element-type '(unsigned-byte 64)
+                              :initial-element 0))
+             (nbits (max (integer-length e1) (integer-length e2))))
+        (declare (type fixnum bits n nbits)
+                 (type integer r))
+        (do ((i (1- nbits) (1- i)))
+            ((minusp i))
+          (declare (type fixnum i))
+          (mont-mul-limbs res res res m n0 tmp n)
+          (let ((bit1 (logbitp i e1))
+                (bit2 (logbitp i e2)))
+            (cond ((and bit1 bit2) (mont-mul-limbs res res abr m n0 tmp n))
+                  (bit1 (mont-mul-limbs res res ar m n0 tmp n))
+                  (bit2 (mont-mul-limbs res res br m n0 tmp n)))))
+        (mont-mul-limbs res res one m n0 tmp n)
+        (limbs64-to-integer res))))
+
+) ; end #+sbcl progn for shamir
 
 (defun miller-rabin-decomposition (n) ;; assume n > 2 (n-1 is even)
   ;; return values q,k with n-1 = q*2^k
@@ -498,6 +600,10 @@ skipping that retry silently produced an invalid private key."
            (type integer n exponent modulus))
   (assert (<= 0 exponent modulus))
   (assert (> modulus 1))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (when (and (oddp modulus) (<= 512 (integer-length modulus) 4096))
+    ;; Montgomery VOP path with the same fixed-window schedule.
+    (return-from expt-mod (montgomery-expt-fixed n exponent modulus)))
   (let ((bits (integer-length exponent)))
     (cond
       ((zerop bits) (mod 1 modulus))

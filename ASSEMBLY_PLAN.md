@@ -584,3 +584,22 @@ P-521 verify via destination-passing was considered but its cost is
 bignum math, not allocation shape (limb field is the real fix);
 P-384 Solinas fold and Keccak/u32 and Falcon/workspace experiments all
 reverted with findings logged above.
+
+## Update (Montgomery drivers for expt-mod/power-mod2, this session)
+
+Follow-up to the CIOS VOPs: the sliding-window driver only covered
+power-mod's bignum-exponent path.  Added montgomery-expt-fixed (fixed
+4-bit windows with full table scan, mirroring expt-mod's side-channel
+posture exactly) gated in expt-mod, and montgomery-expt-shamir gated
+in power-mod2.  Both differential-tested vs the Barrett paths on small
+moduli plus cl:expt on gated sizes (0 failures); full suite green.
+
+  dsa-sign (2048):   966 -> 400 us (2.4x; fixed-window driver)
+  dsa-verify (2048): 1333 -> 800 us (1.7x; Shamir driver)
+  dsa gaps now ~1.6x/~3.7x.  DSA-verify is mult-count-bound (~390
+  n=32 mults x 1.6 us); windowed Shamir was analyzed and rejected
+  (table cost exceeds the savings for two bases).
+
+Note: DSA-sign/verify use expt-mod/power-mod2, not power-mod -- an
+earlier A/B confusion (1024-bit vs 2048-bit keys) briefly suggested
+larger wins; the numbers above are apples-to-apples at 2048-bit.
