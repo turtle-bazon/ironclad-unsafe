@@ -537,6 +537,39 @@ The entry for the size 2^k is at the index k-1.")
 ;;; FFT over complex doubles (signing path).
 ;;;
 
+(defun falcon-specialize-croots (v)
+  "Copy the complex roots V into a specialized array."
+  (let ((r (make-array (length v) :element-type '(complex double-float))))
+    (dotimes (i (length v) r)
+      (setf (aref r i) (aref v i)))))
+
+(defvar +falcon-fft-croots-2+ (falcon-specialize-croots +falcon-fft-roots-2+))
+(defvar +falcon-fft-croots-4+ (falcon-specialize-croots +falcon-fft-roots-4+))
+(defvar +falcon-fft-croots-8+ (falcon-specialize-croots +falcon-fft-roots-8+))
+(defvar +falcon-fft-croots-16+ (falcon-specialize-croots +falcon-fft-roots-16+))
+(defvar +falcon-fft-croots-32+ (falcon-specialize-croots +falcon-fft-roots-32+))
+(defvar +falcon-fft-croots-64+ (falcon-specialize-croots +falcon-fft-roots-64+))
+(defvar +falcon-fft-croots-128+ (falcon-specialize-croots +falcon-fft-roots-128+))
+(defvar +falcon-fft-croots-256+ (falcon-specialize-croots +falcon-fft-roots-256+))
+(defvar +falcon-fft-croots-512+ (falcon-specialize-croots +falcon-fft-roots-512+))
+(defvar +falcon-fft-croots-1024+ (falcon-specialize-croots +falcon-fft-roots-1024+))
+
+(declaim (ftype (function (fixnum)
+                          (simple-array (complex double-float) (*)))
+               falcon-fft-croots))
+(defun falcon-fft-croots (n)
+  (ecase n
+    (2 +falcon-fft-croots-2+)
+    (4 +falcon-fft-croots-4+)
+    (8 +falcon-fft-croots-8+)
+    (16 +falcon-fft-croots-16+)
+    (32 +falcon-fft-croots-32+)
+    (64 +falcon-fft-croots-64+)
+    (128 +falcon-fft-croots-128+)
+    (256 +falcon-fft-croots-256+)
+    (512 +falcon-fft-croots-512+)
+    (1024 +falcon-fft-croots-1024+)))
+
 (defun falcon-fft-roots (n)
   (ecase n
     (2 +falcon-fft-roots-2+)
@@ -596,9 +629,10 @@ The entry for the size 2^k is at the index k-1.")
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length f))
          (h (ash n -1))
-         (w (falcon-fft-roots n))
+         (w (falcon-fft-croots n))
          (f0 (falcon-cvec h))
          (f1 (falcon-cvec h)))
+    (declare (type (simple-array (complex double-float) (*)) w))
     (dotimes (i h (values f0 f1))
       (setf (aref f0 i) (* 0.5d0 (+ (aref f (* 2 i)) (aref f (+ (* 2 i) 1))))
             (aref f1 i) (* (* 0.5d0 (- (aref f (* 2 i)) (aref f (+ (* 2 i) 1))))
@@ -609,116 +643,197 @@ The entry for the size 2^k is at the index k-1.")
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((h (length f0))
          (n (* 2 h))
-         (w (falcon-fft-roots n))
+         (w (falcon-fft-croots n))
          (f (falcon-cvec n)))
+    (declare (type (simple-array (complex double-float) (*)) w))
     (dotimes (i h f)
       (setf (aref f (* 2 i)) (+ (aref f0 i) (* (aref w (* 2 i)) (aref f1 i)))
             (aref f (+ (* 2 i) 1)) (- (aref f0 i) (* (aref w (* 2 i)) (aref f1 i)))))))
 
-(defun falcon-fft-buffers (pool level h)
-  "The buffers of a level of the transform: the two halves of the
-coefficients, and the two results of their transforms."
-  (or (aref pool level)
-      (setf (aref pool level)
-            (vector (make-array h :element-type 'double-float)
-                    (make-array h :element-type 'double-float)
-                    (falcon-cvec h)
-                    (falcon-cvec h)))))
-
-(defun falcon-fft-level (f pool level out)
-  "The forward FFT of F into OUT, using the buffer pool POOL.
-LEVEL is the depth of the recursion.  The transform splits the
-coefficients into the even and the odd ones, transforms each of them
-and merges them; the two halves and the two results of each level
-come from the pool, so that a transform allocates a few arrays
-rather than one for every node of its recursion.
-
-A vector of one coefficient has nothing to transform, and the
-transform of it is empty; the merge of a level whose halves are empty
-is empty too, and that emptiness is what the callers see."
-  (declare (type falcon-dvec f)
-           (type simple-vector pool)
-           (type falcon-cvec out)
-           (type fixnum level)
-           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let* ((n (length f))
-         (h (ash n -1)))
-    (cond ((= n 2)
-           (setf (aref out 0) (complex (float (aref f 0) 0d0) (float (aref f 1) 0d0))
-                 (aref out 1) (complex (float (aref f 0) 0d0) (- (float (aref f 1) 0d0))))
-           out)
-          ((< n 2)
-           nil)
-          (t
-           (let* ((bufs (falcon-fft-buffers pool level h))
-                  (f0 (aref bufs 0))
-                  (f1 (aref bufs 1))
-                  (r0buf (aref bufs 2))
-                  (r1buf (aref bufs 3))
-                  (w (falcon-fft-roots n)))
-             (declare (type simple-vector bufs w)
-                      (type falcon-dvec f0 f1)
-                      (type falcon-cvec r0buf r1buf))
-             (dotimes (i h)
-               (setf (aref f0 i) (float (aref f (* 2 i)) 0d0)
-                     (aref f1 i) (float (aref f (+ (* 2 i) 1)) 0d0)))
-             (let* ((r0 (falcon-fft-level f0 pool (1+ level) r0buf))
-                    (r1 (falcon-fft-level f1 pool (1+ level) r1buf))
-                    (h (length r0)))
-               (if (zerop h)
-                   nil
-                   (progn
-                     (dotimes (i h)
-                       (let ((tw (* (aref w (* 2 i)) (aref r1 i))))
-                         (setf (aref out (* 2 i)) (+ (aref r0 i) tw)
-                               (aref out (+ (* 2 i) 1)) (- (aref r0 i) tw))))
-                     out))))))))
-
 (defun falcon-fft (f)
   "Forward FFT: coefficient reals -> FFT domain.
 
-F may be any vector of reals; the coefficients are copied into a
-specialized vector first, so that the recursion can work on it with
-known types."
+F may be any vector of reals.  The iterative form replicates the old
+recursive transform bit for bit (same butterflies, same twiddles, same
+order); see falcon-fft-iter."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (falcon-fft-iter f))
+
+(defstruct falcon-cfft-plan
+  (brev nil :type (simple-array fixnum (*)))
+  (stages nil :type simple-vector))
+
+(defvar *falcon-cfft-plans* nil
+  "Alist of N -> falcon-cfft-plan, built on first use.")
+
+(defun falcon-cfft-plan-for (n)
+  "Iterative-FFT plan for size N: bit reversal plus one twiddle pair
+per stage, taken from the existing roots tables so the constants are
+identical to the recursive transform's."
+  (declare (type fixnum n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (or (cdr (assoc n *falcon-cfft-plans*))
+      (let* ((logn (1- (integer-length n)))
+             (brev (make-array n :element-type 'fixnum))
+             (stages (make-array logn)))
+        (dotimes (i n)
+          (let ((r 0) (x i))
+            (declare (type fixnum r x))
+            (dotimes (b logn)
+              (declare (ignore b))
+              (setf r (+ (* r 2) (logand x 1))
+                    x (ash x -1)))
+            (setf (aref brev i) r)))
+        (loop for level of-type fixnum from 1 to logn do
+          (let* ((len (ash 1 level))
+                 (half (ash len -1))
+                 (w (falcon-fft-roots len))
+                 (re (make-array half :element-type 'double-float))
+                 (im (make-array half :element-type 'double-float)))
+            (dotimes (j half)
+              (let ((tw (aref w (* 2 j))))
+                (setf (aref re j) (float (realpart tw) 0d0)
+                      (aref im j) (float (imagpart tw) 0d0))))
+            (setf (aref stages (1- level)) (cons re im))))
+        (let ((plan (make-falcon-cfft-plan :brev brev :stages stages)))
+          (push (cons n plan) *falcon-cfft-plans*)
+          plan))))
+
+(defun falcon-fft-iter (f)
+  "Forward FFT into a fresh cvec, bit-identical to the recursive transform.
+
+The recursion bit-reverses the reals, packs pairs as (x+iy, x-iy) and
+merges with an interleaved write; the loop below does the same stages
+bottom-up, ping-ponging two buffers because the interleaved write is
+not in place.  Twiddles come from the plan, i.e. from the same roots
+tables in the same order."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length f))
-         (v (falcon-dvec n))
-         (pool (make-array (+ 2 (integer-length n)) :initial-element nil)))
-    (dotimes (i n) (setf (aref v i) (float (aref f i) 0d0)))
-    (or (falcon-fft-level v pool 0 (falcon-cvec n))
-        (falcon-cvec 0))))
+         (plan (falcon-cfft-plan-for n))
+         (brev (falcon-cfft-plan-brev plan))
+         (stages (falcon-cfft-plan-stages plan))
+         (ra (make-array n :element-type 'double-float :initial-element 0d0))
+         (ia (make-array n :element-type 'double-float :initial-element 0d0))
+         (rb (make-array n :element-type 'double-float :initial-element 0d0))
+         (ib (make-array n :element-type 'double-float :initial-element 0d0)))
+    (declare (type fixnum n)
+             (type (simple-array fixnum (*)) brev)
+             (type simple-vector stages)
+             (type (simple-array double-float (*)) ra ia rb ib))
+    ;; Bit-reversed pack: pair (brev[2k], brev[2k+1]) becomes
+    ;; (x+iy, x-iy), exactly the recursion's size-2 nodes.
+    (loop for k of-type fixnum from 0 below (ash n -1) do
+      (let ((x (float (aref f (aref brev (* 2 k))) 0d0))
+            (y (float (aref f (aref brev (+ (* 2 k) 1))) 0d0)))
+        (setf (aref ra (* 2 k)) x (aref ia (* 2 k)) y
+              (aref ra (+ (* 2 k) 1)) x (aref ia (+ (* 2 k) 1)) (- y))))
+    ;; Merge stages len = 4 .. n, reading (ra, ia), writing (rb, ib).
+    (loop for len of-type fixnum = 4 then (ash len 1)
+          while (<= len n)
+          do (let* ((half (ash len -1))
+                    (tw (aref stages (- (integer-length len) 2)))
+                    (twre (car tw))
+                    (twim (cdr tw)))
+               (declare (type fixnum half)
+                        (type (simple-array double-float (*)) twre twim))
+               (loop for start of-type fixnum from 0 below n by len
+                     do (dotimes (j half)
+                          (let* ((ur (aref ra (+ start j)))
+                                 (ui (aref ia (+ start j)))
+                                 (vr (aref ra (+ start j half)))
+                                 (vi (aref ia (+ start j half)))
+                                 (wr (aref twre j))
+                                 (wi (aref twim j))
+                                 (tr (- (* wr vr) (* wi vi)))
+                                 (ti (+ (* wr vi) (* wi vr))))
+                            (setf (aref rb (+ start (* 2 j))) (+ ur tr)
+                                  (aref ib (+ start (* 2 j))) (+ ui ti)
+                                  (aref rb (+ start (* 2 j) 1)) (- ur tr)
+                                  (aref ib (+ start (* 2 j) 1)) (- ui ti))))))
+             (rotatef ra rb)
+             (rotatef ia ib))
+    ;; The last stage wrote into (rb, ib) after the final rotate...
+    ;; track: after each stage ra/rb swap; result is in ra.
+    (let ((out (falcon-cvec n)))
+      (dotimes (i n out)
+        (setf (aref out i) (complex (aref ra i) (aref ia i)))))))
 
-(defun falcon-split (f)
-  "Split a real-coefficient vector into even/odd halves (as doubles)."
+(declaim (inline falcon-cifft-stage))
+(defun falcon-cifft-stage (ra ia rb ib n len stages)
+  "One inverse merge stage of size LEN: halves with conjugated twiddles."
+  (declare (type (simple-array double-float (*)) ra ia rb ib)
+           (type fixnum n len)
+           (type simple-vector stages)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((half (ash len -1))
+         (tw (aref stages (- (integer-length len) 2)))
+         (twre (car tw))
+         (twim (cdr tw)))
+    (declare (type fixnum half)
+             (type (simple-array double-float (*)) twre twim))
+    (loop for start of-type fixnum from 0 below n by len
+          do (dotimes (j half)
+               (let* ((o0r (aref ra (+ start (* 2 j))))
+                      (o0i (aref ia (+ start (* 2 j))))
+                      (o1r (aref ra (+ start (* 2 j) 1)))
+                      (o1i (aref ia (+ start (* 2 j) 1)))
+                      (ur (* 0.5d0 (+ o0r o1r)))
+                      (ui (* 0.5d0 (+ o0i o1i)))
+                      (dr (* 0.5d0 (- o0r o1r)))
+                      (di (* 0.5d0 (- o0i o1i)))
+                      (wr (aref twre j))
+                      (wi (aref twim j)))
+                 ;; conj(w) = (wr, -wi): re = wr*dr + wi*di,
+                 ;; im = wr*di - wi*dr.
+                 (setf (aref rb (+ start j)) ur
+                       (aref ib (+ start j)) ui
+                       (aref rb (+ start j half))
+                       (+ (* wr dr) (* wi di))
+                       (aref ib (+ start j half))
+                       (- (* wr di) (* wi dr)))))))
+  (values))
+
+(defun falcon-ifft-iter (f)
+  "Inverse FFT into fresh doubles, bit-identical to the recursive transform.
+
+Reverses the forward pipeline: inverse merges from the top stage down
+(the twiddle is conjugated and each stage halves, matching split-fft),
+then unpacks each (x+iy, x-iy) pair and undoes the bit reversal."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length f))
-         (h (ash n -1))
-         (f0 (make-array h :element-type 'double-float))
-         (f1 (make-array h :element-type 'double-float)))
-    (dotimes (i h (values f0 f1))
-      (setf (aref f0 i) (float (aref f (* 2 i)) 0d0)
-            (aref f1 i) (float (aref f (+ (* 2 i) 1)) 0d0)))))
-
-(defun falcon-merge (f0 f1)
-  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let* ((h (length f0))
-         (f (make-array (* 2 h) :element-type 'double-float)))
-    (dotimes (i h f)
-      (setf (aref f (* 2 i)) (aref f0 i)
-            (aref f (+ (* 2 i) 1)) (aref f1 i)))))
+         (plan (falcon-cfft-plan-for n))
+         (brev (falcon-cfft-plan-brev plan))
+         (stages (falcon-cfft-plan-stages plan))
+         (ra (make-array n :element-type 'double-float :initial-element 0d0))
+         (ia (make-array n :element-type 'double-float :initial-element 0d0))
+         (rb (make-array n :element-type 'double-float :initial-element 0d0))
+         (ib (make-array n :element-type 'double-float :initial-element 0d0)))
+    (declare (type fixnum n)
+             (type (simple-array fixnum (*)) brev)
+             (type simple-vector stages)
+             (type (simple-array double-float (*)) ra ia rb ib))
+    (dotimes (i n)
+      (let ((v (aref f i)))
+        (setf (aref ra i) (float (realpart v) 0d0)
+              (aref ia i) (float (imagpart v) 0d0))))
+    (loop for len of-type fixnum = n then (ash len -1)
+          while (>= len 4)
+          do (falcon-cifft-stage ra ia rb ib n len stages)
+             (rotatef ra rb)
+             (rotatef ia ib))
+    (let ((out (make-array n :element-type 'double-float)))
+      (dotimes (k (ash n -1) out)
+        (let ((x (aref ra (* 2 k)))
+              (y (aref ia (* 2 k))))
+          (setf (aref out (aref brev (* 2 k))) x
+                (aref out (aref brev (+ (* 2 k) 1))) y))))))
 
 (defun falcon-ifft (f)
-  "Inverse FFT: FFT domain -> real coefficients (doubles)."
+  "Inverse FFT: FFT domain -> real coefficients (doubles).
+The iterative form replicates the old recursive transform bit for
+bit; see falcon-ifft-iter."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((n (length f)))
-    (cond ((> n 2)
-           (multiple-value-bind (f0 f1) (falcon-split-fft f)
-             (falcon-merge (falcon-ifft f0) (falcon-ifft f1))))
-          ((= n 2)
-           (let ((r (make-array 2 :element-type 'double-float)))
-             (setf (aref r 0) (realpart (aref f 0))
-                   (aref r 1) (imagpart (aref f 0)))
-             r)))))
+  (falcon-ifft-iter f))
 
 (defun falcon-add-fft (a b)
   (declare (type falcon-cvec a b)
@@ -861,7 +976,9 @@ so results are bit-identical to the reference."
   (s (make-array 14 :element-type '(unsigned-byte 32) :initial-element 0)
      :type (simple-array (unsigned-byte 32) (*)))
   (ctr 0 :type unsigned-byte)
-  (hexbytes "" :type string))
+  (bytes (make-array 0 :element-type '(unsigned-byte 8))
+         :type (simple-array (unsigned-byte 8) (*)))
+  (pos 0 :type fixnum))
 
 (defun falcon-prng-init (seed-bytes)
   "SEED-BYTES: 56 bytes."
@@ -920,41 +1037,83 @@ so results are bit-identical to the reference."
     (setf (falcon-prng-ctr prng) (1+ ctr))
     state))
 
-(defun falcon-prng-block-update (prng)
-  "8 updates interleaved into a hex string (matches reference)."
-  (let ((words (make-array 128 :element-type '(unsigned-byte 32))))
+(defun falcon-prng-block-bytes (prng)
+  "512 pseudorandom bytes from eight ChaCha blocks, little-endian words
+interleaved exactly as the reference hex construction (word j of block
+i lands at words[8j+i], then each word is emitted little-endian).
+Produces bytes identical to the old hex-string path, without FORMAT."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((words (make-array 128 :element-type '(unsigned-byte 32)))
+        (out (make-array 512 :element-type '(unsigned-byte 8))))
+    (declare (type (simple-array (unsigned-byte 32) (*)) words)
+             (type (simple-array (unsigned-byte 8) (*)) out))
     (dotimes (i 8)
       (let ((blk (falcon-prng-update prng)))
+        (declare (type (simple-array (unsigned-byte 32) (*)) blk))
         (dotimes (j 16)
           (setf (aref words (+ (* j 8) i)) (aref blk j)))))
     ;; Reference: elt.to_bytes(4, "little").hex() per word.
-    (with-output-to-string (out)
-      (dotimes (i 128)
-        (let ((w (aref words i)))
-          (format out "~2,'0X~2,'0X~2,'0X~2,'0X"
-                  (ldb (byte 8 0) w) (ldb (byte 8 8) w)
-                  (ldb (byte 8 16) w) (ldb (byte 8 24) w)))))))
+    (dotimes (m 128 out)
+      (let ((w (aref words m))
+            (p (* 4 m)))
+        (setf (aref out p) (ldb (byte 8 0) w)
+              (aref out (+ p 1)) (ldb (byte 8 8) w)
+              (aref out (+ p 2)) (ldb (byte 8 16) w)
+              (aref out (+ p 3)) (ldb (byte 8 24) w))))))
 
 (defun falcon-prng-randombytes (prng k)
-  (when (> (* 2 k) (length (falcon-prng-hexbytes prng)))
-    (setf (falcon-prng-hexbytes prng) (falcon-prng-block-update prng)))
-  (let* ((hex (falcon-prng-hexbytes prng))
-         (take (subseq hex 0 (* 2 k)))
-         (rest (subseq hex (* 2 k)))
-         (out (make-array k :element-type '(unsigned-byte 8))))
-    ;; The reference reverses the byte order twice (hex regrouping plus
-    ;; the final [::-1]), which cancels out; emit the buffer as-is.
-    (dotimes (i k)
-      (setf (aref out i) (parse-integer take :start (* 2 i) :end (* 2 (1+ i))
-                                        :radix 16)))
-    (setf (falcon-prng-hexbytes prng) rest)
-    out))
+  "K pseudorandom bytes from PRNG, buffering 512-byte blocks.
+On refill the remainder is dropped and fresh blocks are made, exactly
+like the old hex-string path (which replaced its buffer)."
+  (declare (type fixnum k)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((buf (falcon-prng-bytes prng))
+        (pos (falcon-prng-pos prng)))
+    (declare (type (simple-array (unsigned-byte 8) (*)) buf)
+             (type fixnum pos))
+    (when (> (+ pos k) (length buf))
+      (let* ((nblocks (max 1 (ceiling k 512)))
+             (nb (make-array (* 512 nblocks) :element-type '(unsigned-byte 8))))
+        (declare (type fixnum nblocks)
+                 (type (simple-array (unsigned-byte 8) (*)) nb))
+        (dotimes (b nblocks)
+          (replace nb (falcon-prng-block-bytes prng) :start1 (* b 512)))
+        (setf buf nb
+              pos 0
+              (falcon-prng-bytes prng) buf
+              (falcon-prng-pos prng) 0)))
+    (let ((out (subseq buf pos (+ pos k))))
+      (setf (falcon-prng-pos prng) (+ pos k))
+      out)))
 
 (defun falcon-make-randbytes (prng-or-nil)
   "Closure returning K random bytes; random-data when PRNG is NIL."
   (if (null prng-or-nil)
       (lambda (k) (random-data k))
       (lambda (k) (falcon-prng-randombytes prng-or-nil k))))
+
+(defun falcon-buffered-randbytes (randbytes &optional (size 4096))
+  "Wrap RANDBYTES with a refillable buffer; serves the identical byte
+stream with far fewer underlying calls.  The sampler reads 9 bytes,
+then single bytes; without buffering every one is a full call."
+  (declare (type fixnum size)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((buf (make-array 0 :element-type '(unsigned-byte 8)))
+        (pos 0))
+    (declare (type (simple-array (unsigned-byte 8) (*)) buf)
+             (type fixnum pos))
+    (lambda (k)
+      (declare (type fixnum k))
+      (when (> (+ pos k) (length buf))
+        (let* ((have (- (length buf) pos))
+               (need (max size (+ have k)))
+               (nb (make-array need :element-type '(unsigned-byte 8))))
+          (replace nb buf :start2 pos)
+          (replace nb (funcall randbytes (- need have)) :start1 have)
+          (setf buf nb
+                pos 0)))
+      (prog1 (subseq buf pos (+ pos k))
+        (incf pos k)))))
 
 
 ;;;
@@ -1173,15 +1332,16 @@ exactly like the reference."
          (sigmin (falcon-params-sigmin params))
          (bound (falcon-params-sig-bound params))
          (sig-bytelen (falcon-params-sig-bytelen params))
-         (salt (funcall randbytes 40))
+         (rb (falcon-buffered-randbytes randbytes))
+         (salt (funcall rb 40))
          (hashed (coerce (falcon-hash-to-point msg salt n)
                          '(simple-array fixnum (*)))))
     (multiple-value-bind (b0fft tree)
         (falcon-expand-sk f g ff gg params)
       (loop
-        (let ((seed (funcall randbytes 56)))
+        (let ((seed (funcall rb 56)))
           (multiple-value-bind (s0 s1)
-              (falcon-sample-preimage-seeded b0fft tree hashed sigmin randbytes seed)
+              (falcon-sample-preimage-seeded b0fft tree hashed sigmin rb seed)
             (let ((norm (+ (reduce #'+ (map 'vector (lambda (x) (* x x)) s0))
                            (reduce #'+ (map 'vector (lambda (x) (* x x)) s1)))))
               (when (<= norm bound)
@@ -1201,7 +1361,7 @@ exactly like the reference."
 
 (declaim (inline falcon-add-vectors))
 (defun falcon-add-vectors (a b)
-  (declare (type (simple-array * (*)) a b)
+  (declare (type (simple-array integer (*)) a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length a))
          (r (make-array n :element-type 'integer :initial-element 0)))
@@ -1210,7 +1370,7 @@ exactly like the reference."
 
 (defun falcon-add-vectors-range (a b ao bo n)
   "Elementwise sum of A[AO..AO+N) and B[BO..BO+N)."
-  (declare (type (simple-array * (*)) a b)
+  (declare (type (simple-array integer (*)) a b)
            (type fixnum ao bo n)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((r (make-array n :element-type 'integer :initial-element 0)))
@@ -1221,7 +1381,7 @@ exactly like the reference."
 (defun falcon-karatsuba (a b ao bo n)
   "Karatsuba product of A[AO..AO+N) and B[BO..BO+N); the result has 2N
 elements, the low half followed by the high half."
-  (declare (type (simple-array * (*)) a b)
+  (declare (type (simple-array integer (*)) a b)
            (type fixnum ao bo n)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (if (<= n 4)
@@ -1250,32 +1410,40 @@ elements, the low half followed by the high half."
         ab)))
 
 (defun falcon-karamul (a b)
-  (declare (type (simple-array * (*)) a b)
+  (declare (type (simple-array integer (*)) a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length a))
-         (ab (falcon-karatsuba (coerce a 'vector) (coerce b 'vector) 0 0 n))
+         (ab (falcon-karatsuba a b 0 0 n))
          (r (make-array n :element-type 'integer :initial-element 0)))
     (declare (type (simple-array integer (*)) r))
     (dotimes (i n r)
       (setf (aref r i) (- (aref ab i) (aref ab (+ i n)))))))
 
 (defun falcon-galois-conj (a)
+  (declare (type (simple-array integer (*)) a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length a))
-         (r (make-array n :initial-element 0)))
+         (r (make-array n :element-type 'integer :initial-element 0)))
+    (declare (type (simple-array integer (*)) r))
     (dotimes (i n r)
       (setf (aref r i) (if (evenp i) (aref a i) (- (aref a i)))))))
 
 (defun falcon-field-norm (a)
+  (declare (type (simple-array integer (*)) a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length a))
          (n2 (ash n -1))
-         (ae (make-array n2 :initial-element 0))
-         (ao (make-array n2 :initial-element 0)))
+         (ae (make-array n2 :element-type 'integer :initial-element 0))
+         (ao (make-array n2 :element-type 'integer :initial-element 0)))
+    (declare (type fixnum n n2)
+             (type (simple-array integer (*)) ae ao))
     (dotimes (i n2)
       (setf (aref ae i) (aref a (* 2 i))
             (aref ao i) (aref a (+ (* 2 i) 1))))
     (let ((ae2 (falcon-karamul ae ae))
           (ao2 (falcon-karamul ao ao))
-          (res (make-array n2 :initial-element 0)))
+          (res (make-array n2 :element-type 'integer :initial-element 0)))
+      (declare (type (simple-array integer (*)) ae2 ao2 res))
       (dotimes (i n2 res)
         (setf (aref res i) (aref ae2 i)))
       (dotimes (i (1- n2))
@@ -1284,8 +1452,12 @@ elements, the low half followed by the high half."
       res)))
 
 (defun falcon-lift (a)
+  (declare (type (simple-array integer (*)) a)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n (length a))
-         (r (make-array (* 2 n) :initial-element 0)))
+         (r (make-array (* 2 n) :element-type 'integer :initial-element 0)))
+    (declare (type fixnum n)
+             (type (simple-array integer (*)) r))
     (dotimes (i n r)
       (setf (aref r (* 2 i)) (aref a i)))))
 
@@ -1346,18 +1518,25 @@ elements, the low half followed by the high half."
               (decf (aref rG i) (ash (aref gk i) sh)))))))))
 
 (defun falcon-ntru-solve (f g)
+  (declare (type (simple-array integer (*)) f g)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((n (length f)))
+    (declare (type fixnum n))
     (if (= n 1)
         (multiple-value-bind (d u v) (falcon-xgcd (aref f 0) (aref g 0))
           (unless (= d 1)
             (error "NTRU equation unsolvable"))
-          (values (vector (- (* +falcon-q+ v))) (vector (* +falcon-q+ u))))
-        (let* ((fp (falcon-field-norm (coerce f 'vector)))
-               (gp (falcon-field-norm (coerce g 'vector))))
+          (let ((F (make-array 1 :element-type 'integer :initial-element 0))
+                (G (make-array 1 :element-type 'integer :initial-element 0)))
+            (setf (aref F 0) (- (* +falcon-q+ v))
+                  (aref G 0) (* +falcon-q+ u))
+            (values F G)))
+        (let* ((fp (falcon-field-norm f))
+               (gp (falcon-field-norm g)))
           (multiple-value-bind (Fp Gp) (falcon-ntru-solve fp gp)
-            (let ((rF (falcon-karamul (falcon-lift Fp) (falcon-galois-conj (coerce g 'vector))))
-                  (rG (falcon-karamul (falcon-lift Gp) (falcon-galois-conj (coerce f 'vector)))))
-              (falcon-babai-reduce (coerce f 'vector) (coerce g 'vector) rF rG)))))))
+            (let ((rF (falcon-karamul (falcon-lift Fp) (falcon-galois-conj g)))
+                  (rG (falcon-karamul (falcon-lift Gp) (falcon-galois-conj f))))
+              (falcon-babai-reduce f g rF rG)))))))
 
 (defun falcon-gs-norm (f g)
   (let* ((fg (map 'vector (lambda (x) (float x 0d0)) f))
@@ -1374,10 +1553,10 @@ elements, the low half followed by the high half."
     (max sqnorm-fg sqnorm-FG)))
 
 (defun falcon-gen-poly (n randbytes)
-  (let ((f0 (make-array 4096 :element-type 'fixnum :initial-element 0))
-        (f (make-array n :element-type 'fixnum :initial-element 0))
+  (let ((f0 (make-array 4096 :element-type 'integer :initial-element 0))
+        (f (make-array n :element-type 'integer :initial-element 0))
         (k (floor 4096 n)))
-    (declare (type (simple-array fixnum (*)) f0 f)
+    (declare (type (simple-array integer (*)) f0 f)
              (type fixnum k))
     (dotimes (i 4096)
       (setf (aref f0 i) (falcon-samplerz 0d0 1.43300980528773d0 1.43200980528773d0 randbytes)))
@@ -1389,16 +1568,17 @@ elements, the low half followed by the high half."
         (setf (aref f i) acc)))))
 
 (defun falcon-ntru-gen (n randbytes)
-  (loop
-    (let ((f (falcon-gen-poly n randbytes))
-          (g (falcon-gen-poly n randbytes)))
-      (when (<= (falcon-gs-norm f g) (* (expt 1.17d0 2) +falcon-q+))
-        (let ((fntt (falcon-ntt (map 'vector (lambda (x) (mod x +falcon-q+)) f))))
-          (unless (find 0 fntt)
-            (handler-case
-                (multiple-value-bind (sF sG) (falcon-ntru-solve f g)
-                  (return (values f g sF sG)))
-              (error () nil))))))))
+  (let ((rb (falcon-buffered-randbytes randbytes)))
+    (loop
+      (let ((f (falcon-gen-poly n rb))
+            (g (falcon-gen-poly n rb)))
+        (when (<= (falcon-gs-norm f g) (* (expt 1.17d0 2) +falcon-q+))
+          (let ((fntt (falcon-ntt (map 'vector (lambda (x) (mod x +falcon-q+)) f))))
+            (unless (find 0 fntt)
+              (handler-case
+                  (multiple-value-bind (sF sG) (falcon-ntru-solve f g)
+                    (return (values f g sF sG)))
+                (error () nil)))))))))
 
 
 ;;;

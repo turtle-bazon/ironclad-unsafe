@@ -333,3 +333,36 @@ Representative public-key rows (Lisp ops/s):
   secp384r1 verify    270 -> 295-330
   rsa sign            330 -> 370
   rsa verify          13.68k -> 13.89k
+
+## Update (Falcon complex FFT + keygen pipeline, this session)
+
+Keygen was ~200 ms, 580 complex FFTs + 283 iFFTs per keygen.  The
+recursive split/merge FFT did generic dispatch on every twiddle
+(plain-vector roots tables) and the inverse allocated O(n log n).
+
+- Specialized the FFT roots tables to complex-double arrays and
+  declared them at the three use sites: fft-512 0.4 ms -> 40 us.
+- Replaced the recursive complex FFT/iFFT with iterative
+  bit-reversed forms on separate real/imag double arrays, ping-ponging
+  two buffers.  The old transform packs real pairs as (x+iy, x-iy) at
+  the leaves and merges with an interleaved write; the iterative form
+  replicates the exact data flow (bit-reverse, pack, ping-pong merges
+  with the same twiddles in the same order) and validates BIT-IDENTICAL
+  to the recursive version at every size 2..1024, with ~1e-12 roundtrips.
+  fft-512 40 -> 16 us, ifft-512 ~150 -> 18 us, and ifft no longer
+  allocates per node.
+- Typed the integer Karatsuba path (karatsuba, add-vectors(-range),
+  karamul, galois-conj, lift, field-norm, ntru-solve) to
+  (simple-array integer (*)): no more generic aref/dispatch in the
+  hot loops; exact bignum arithmetic preserved.
+- Buffered randomness (falcon-buffered-randbytes) at ntru-gen and
+  sign-raw: one 4 KB refill serves hundreds of sampler draws.
+- Replaced the PRNG's hex-string construction (FORMAT + parse-integer
+  per byte!) with direct little-endian byte emission, verified
+  byte-identical over 50 random reads including refill crossings.
+  Falcon sign 19 -> 5.2 ms.
+
+Results (Zen 2, falcon-512): keygen ~230 -> ~104 ms avg (68-204 range,
+retry variance), sign ~19 -> 5.2 ms, verify unchanged 178 us.
+All 677 tests pass; fresh-key roundtrips pass for every signature
+and encryption scheme.
