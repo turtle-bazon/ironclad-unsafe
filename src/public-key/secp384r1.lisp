@@ -512,6 +512,70 @@ coordinates are Montgomery field elements; the result is integers."
           (secp384r1-fe-to-int ry)
           (secp384r1-fe-to-int rz))))
 
+(defvar *secp384r1-limb-g-table* nil
+  "Cached limb window table V*G for five-bit windows. Built on first use.")
+
+(defun secp384r1-ensure-limb-g-table ()
+  "The cached limb window table for the generator."
+  (or *secp384r1-limb-g-table*
+      (setf *secp384r1-limb-g-table*
+            (let ((gx (slot-value +secp384r1-g+ 'x))
+                  (gy (slot-value +secp384r1-g+ 'y))
+                  (gz (slot-value +secp384r1-g+ 'z)))
+              (declare (type integer gx gy gz))
+              (secp384r1-make-window-table-limbs (secp384r1-fe-from-int gx)
+                                                 (secp384r1-fe-from-int gy)
+                                                 (secp384r1-fe-from-int gz))))))
+
+(defun secp384r1-shamir-mult-limbs-cached (qx qy qz a b)
+  "A * G + B * Q in the limb field, using the cached G table."
+  (declare (type secp384r1-fe qx qy qz)
+           (type integer a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((w 5)
+         (abit (integer-length a))
+         (bbit (integer-length b))
+         (bits (max abit bbit 1))
+         (nwin (ceiling bits w))
+         (tp (secp384r1-ensure-limb-g-table))
+         (tq (secp384r1-make-window-table-limbs qx qy qz))
+         (s (secp384r1-make-scratch))
+         (rx (secp384r1-fe-zero))
+         (ry (secp384r1-fe-zero))
+         (rz (secp384r1-fe-zero))
+         (tx (secp384r1-fe-zero))
+         (ty (secp384r1-fe-zero))
+         (tz (secp384r1-fe-zero)))
+    (declare (type fixnum w abit bbit bits nwin)
+             (type simple-vector tp tq s)
+             (type secp384r1-fe rx ry rz tx ty tz))
+    (loop for wi of-type fixnum downfrom (1- nwin) to 0 do
+      (unless (= wi (1- nwin))
+        (dotimes (i w)
+          (declare (ignore i))
+          (secp384r1-point-double! tx ty tz rx ry rz s)
+          (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))
+      (let* ((shift (* wi w))
+             (va (if (< shift abit) (ldb (byte w shift) a) 0))
+             (vb (if (< shift bbit) (ldb (byte w shift) b) 0)))
+        (declare (type fixnum shift)
+                 (type (unsigned-byte 5) va vb))
+        (unless (zerop va)
+          (let ((e (aref tp va)))
+            (declare (type simple-vector e))
+            (secp384r1-point-add! tx ty tz rx ry rz
+                                  (aref e 0) (aref e 1) (aref e 2) s)
+            (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))
+        (unless (zerop vb)
+          (let ((e (aref tq vb)))
+            (declare (type simple-vector e))
+            (secp384r1-point-add! tx ty tz rx ry rz
+                                  (aref e 0) (aref e 1) (aref e 2) s)
+            (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))))
+    (list (secp384r1-fe-to-int rx)
+          (secp384r1-fe-to-int ry)
+          (secp384r1-fe-to-int rz))))
+
 
 
 (defmethod ec-scalar-inv ((kind (eql :secp384r1)) n)
@@ -867,13 +931,10 @@ additions and no doublings."
          (qx (slot-value pk 'x))
          (qy (slot-value pk 'y))
          (qz (slot-value pk 'z))
-         (rp (secp384r1-shamir-mult-limbs (secp384r1-fe-from-int (slot-value +secp384r1-g+ 'x))
-                                          (secp384r1-fe-from-int (slot-value +secp384r1-g+ 'y))
-                                          (secp384r1-fe-from-int (slot-value +secp384r1-g+ 'z))
-                                          (secp384r1-fe-from-int qx)
-                                          (secp384r1-fe-from-int qy)
-                                          (secp384r1-fe-from-int qz)
-                                          u1 u2))
+         (rp (secp384r1-shamir-mult-limbs-cached (secp384r1-fe-from-int qx)
+                                                       (secp384r1-fe-from-int qy)
+                                                       (secp384r1-fe-from-int qz)
+                                                       u1 u2))
          (rz (third rp)))
       ;; RP is the point at infinity only for invalid signatures.
       (if (zerop rz)

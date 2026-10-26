@@ -713,3 +713,11 @@ not infinity -- must be all-zero limbs for the z=0 check).
   secp521r1 sign  1920 -> 480 us (4.0x)
   (remaining ~480 us is ~66 VOP adds plus nonce HMAC, scalar invs,
   and the destructure inverse)
+
+## Update (P-384 cached G table + P-521 limb sign validation, this session)
+
+P-384 verify now uses a cached limb G window table (same pattern as
+P-521), instead of rebuilding the generator table on every verify.
+Differential coverage unchanged (tables/Shamir validated bit-exact);
+P-384 sig/DH vectors pass.
+Full SBCL suite green with P-521 limb sign active (rev 1056).
