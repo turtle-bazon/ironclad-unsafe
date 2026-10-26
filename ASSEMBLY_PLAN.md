@@ -647,3 +647,24 @@ order (caught ditto).
 Phase 2 (point layer on limbs: double!/add!, Shamir/ladder, tables,
 conversions at encode/decode) remains.  Projected verify 3400 ->
 ~1800 us.
+
+## Update (P-521 limb field, phase 2: point layer + verify, this session)
+
+Phase 2 adds destination-passing limb point ops (double!/add! mirroring
+the bignum Jacobian formulas, validated bit-exact), limb window tables,
+a limb Shamir-mult with cached G table, and wires VERIFY-SIGNATURE
+through them (limb Shamir + bignum destructure/encode).
+
+Along the way: the first Shamir had two canceling paren bugs (missing
+loop close masked by an extra table close); a `y3 = rr*(v-x)` used the
+squared register instead of r (caught by differential test); the
+infinity representation had to be unified to all-zero limbs (the
+bignum (0,1,1) placeholder is not recognized by the z=0 check);
+and several test-harness bugs (naive projective comparison without
+z^2/z^3, which falsely "failed" correct code).
+Verified: field 0 failures, double/add 0 failures (30 each),
+tables bit-exact, Shamir 0 failures (20), full sign/verify vectors pass.
+
+  secp521r1 verify  3400 -> 1600 us (2.1x), 5.7 -> 0.4 MB/op (14x)
+  (gap ~5.6x -> ~2.6x; remaining ~1200 us is ~7000 VOP mults at
+  ~160 ns plus the bignum Fermat inverse in destructure)

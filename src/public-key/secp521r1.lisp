@@ -248,13 +248,12 @@ X is reduced, so the double needs one subtraction at most."
     (secp521r1-fe-mont-mul r a b c)
     r))
 
-(defun secp521r1-fe-mul-buf (r a b c q)
-  "R := A * B in Montgomery form, using the scratch C and ignoring Q.
-C holds nineteen 64-bit words; the caller reuses it, so a multiply
-inside a point operation allocates nothing."
+(defun secp521r1-fe-mul-buf (r a b c)
+  "R := A * B in Montgomery form, using the scratch C.  C holds
+nineteen 64-bit words; the caller reuses it, so a multiply inside a
+point operation allocates nothing."
   (declare (type secp521r1-fe r a b)
            (type (simple-array (unsigned-byte 64) (*)) c)
-           (type secp521r1-fe q)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (secp521r1-fe-mont-mul r a b c)
   r)
@@ -265,13 +264,12 @@ inside a point operation allocates nothing."
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (secp521r1-fe-mul r a a))
 
-(defun secp521r1-fe-sq-buf (r a c q)
-  "R := A^2 in Montgomery form, using the scratch C and ignoring Q."
+(defun secp521r1-fe-sq-buf (r a c)
+  "R := A^2 in Montgomery form, using the scratch C."
   (declare (type secp521r1-fe r a)
            (type (simple-array (unsigned-byte 64) (*)) c)
-           (type secp521r1-fe q)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (secp521r1-fe-mul-buf r a a c q)
+  (secp521r1-fe-mul-buf r a a c)
   r)
 
 (defun secp521r1-fe-equal (a b)
@@ -312,6 +310,329 @@ inside a point operation allocates nothing."
         (secp521r1-fe-mont-mul acc acc base c)))
     (dotimes (i 9 r)
       (setf (aref r i) (aref acc i)))))
+
+(defun secp521r1-fe-copy! (dst src)
+  "Copy field element SRC into DST."
+  (declare (type secp521r1-fe dst src)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (setf (aref dst 0) (aref src 0)
+        (aref dst 1) (aref src 1)
+        (aref dst 2) (aref src 2)
+        (aref dst 3) (aref src 3)
+        (aref dst 4) (aref src 4)
+        (aref dst 5) (aref src 5)
+        (aref dst 6) (aref src 6)
+        (aref dst 7) (aref src 7)
+        (aref dst 8) (aref src 8))
+  dst)
+
+(defstruct (secp521r1-limb-point
+            (:constructor %make-secp521r1-limb-point)
+            (:copier nil))
+  "A P-521 Jacobian point with Montgomery-form limb coordinates."
+  (x (secp521r1-fe-zero) :type secp521r1-fe :read-only t)
+  (y (secp521r1-fe-zero) :type secp521r1-fe :read-only t)
+  (z (secp521r1-fe-zero) :type secp521r1-fe :read-only t))
+
+(defun secp521r1-limb-point (x y z)
+  "A limb point from Montgomery field elements (copied in)."
+  (declare (type secp521r1-fe x y z)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((p (%make-secp521r1-limb-point)))
+    (secp521r1-fe-copy! (secp521r1-limb-point-x p) x)
+    (secp521r1-fe-copy! (secp521r1-limb-point-y p) y)
+    (secp521r1-fe-copy! (secp521r1-limb-point-z p) z)
+    p))
+
+(defun secp521r1-point-copy! (dst src)
+  "Copy limb point SRC into DST."
+  (declare (type secp521r1-limb-point dst src)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (secp521r1-fe-copy! (secp521r1-limb-point-x dst) (secp521r1-limb-point-x src))
+  (secp521r1-fe-copy! (secp521r1-limb-point-y dst) (secp521r1-limb-point-y src))
+  (secp521r1-fe-copy! (secp521r1-limb-point-z dst) (secp521r1-limb-point-z src))
+  dst)
+
+(defun secp521r1-point-set-inf! (dst)
+  "Set DST to the point at infinity (1, 1, 0)."
+  (declare (type secp521r1-limb-point dst)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((x (secp521r1-limb-point-x dst))
+        (y (secp521r1-limb-point-y dst))
+        (z (secp521r1-limb-point-z dst)))
+    (declare (type secp521r1-fe x y z))
+    (dotimes (i 9)
+      (setf (aref x i) 0
+            (aref y i) 0
+            (aref z i) 0))
+    ;; One in Montgomery form is R mod P = 2^55.
+    (setf (aref x 0) +secp521r1-r-mod-p+
+          (aref y 0) +secp521r1-r-mod-p+))
+  dst)
+
+(defun secp521r1-limb-point-from-ints (x y z)
+  "A limb point from integer residues."
+  (declare (type integer x y z)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (secp521r1-limb-point (secp521r1-fe-from-int x)
+                        (secp521r1-fe-from-int y)
+                        (secp521r1-fe-from-int z)))
+
+(defun secp521r1-make-scratch ()
+  "A fresh scratch pool for the limb point operations: forty field
+elements plus the 19-word product buffer, so the point operations
+allocate nothing."
+  (let ((s (make-array 41)))
+    (dotimes (i 40 s)
+      (setf (svref s i) (secp521r1-fe-zero)))
+    (setf (svref s 40)
+          (make-array 19 :element-type '(unsigned-byte 64)
+                      :initial-element 0))
+    s))
+
+(defun secp521r1-point-double! (dx dy dz x1 y1 z1 s)
+  "DX:DY:DZ := 2*X1:Y1:Z1 reusing scratch pool S. DST must differ from SRC."
+  (declare (type secp521r1-fe dx dy dz x1 y1 z1)
+           (type simple-vector s)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((xx (svref s 0))
+        (yy (svref s 1))
+        (yyyy (svref s 2))
+        (zz (svref s 3))
+        (x1+yy (svref s 4))
+        (y1+z1 (svref s 5))
+        (s2 (svref s 6))
+        (ss (svref s 7))
+        (m1 (svref s 8))
+        (mm (svref s 9))
+        (uu (svref s 10))
+        (y2yyyy (svref s 11))
+        (y4yyyy (svref s 12))
+        (y2 (svref s 13))
+        (z2 (svref s 14))
+        (cbuf (svref s 40)))
+    (declare (type secp521r1-fe x1 y1 z1 xx yy yyyy zz x1+yy y1+z1
+                               s2 ss m1 mm uu y2yyyy y4yyyy y2 z2))
+    (if (secp521r1-fe-is-zero z1)
+        ;; Infinity is all-zero limbs (Z = 0).
+        (progn
+          (dotimes (i 9)
+            (setf (aref dx i) 0
+                  (aref dy i) 0
+                  (aref dz i) 0))
+          (values dx dy dz))
+        (progn
+          (secp521r1-fe-sq-buf xx x1 cbuf)
+          (secp521r1-fe-sq-buf yy y1 cbuf)
+          (secp521r1-fe-sq-buf yyyy yy cbuf)
+          (secp521r1-fe-sq-buf zz z1 cbuf)
+          (secp521r1-fe-add x1+yy x1 yy)
+          (secp521r1-fe-add y1+z1 y1 z1)
+          ;; s = 2*((x1+yy)^2 - xx - yyyy).
+          (secp521r1-fe-mul-buf s2 x1+yy x1+yy cbuf)
+          (secp521r1-fe-sub s2 s2 xx)
+          (secp521r1-fe-sub s2 s2 yyyy)
+          (secp521r1-fe-add ss s2 s2)
+          ;; m = 3*(xx - zz^2).
+          (secp521r1-fe-mul-buf m1 zz zz cbuf)
+          (secp521r1-fe-sub m1 xx m1)
+          (secp521r1-fe-add mm m1 m1)
+          (secp521r1-fe-add mm mm m1)
+          ;; u = m^2 - 2*s; x2 = u.
+          (secp521r1-fe-mul-buf uu mm mm cbuf)
+          (secp521r1-fe-sub uu uu ss)
+          (secp521r1-fe-sub uu uu ss)
+          (secp521r1-fe-copy! dx uu)
+            ;; y2 = m*(s-u) - 8*yyyy.
+            (secp521r1-fe-sub y2 ss uu)
+            (secp521r1-fe-mul-buf y2 mm y2 cbuf)
+            (secp521r1-fe-add y2yyyy yyyy yyyy)
+            (secp521r1-fe-add y4yyyy y2yyyy y2yyyy)
+            (secp521r1-fe-add y4yyyy y4yyyy y4yyyy)
+            (secp521r1-fe-sub y2 y2 y4yyyy)
+            (secp521r1-fe-copy! dy y2)
+            ;; z2 = (y1+z1)^2 - yy - zz.
+            (secp521r1-fe-mul-buf z2 y1+z1 y1+z1 cbuf)
+            (secp521r1-fe-sub z2 z2 yy)
+            (secp521r1-fe-sub z2 z2 zz)
+            (secp521r1-fe-copy! dz z2)
+            (values dx dy dz)))))
+
+(defun secp521r1-point-add! (dx dy dz x1 y1 z1 x2 y2 z2 s)
+  "DX:DY:DZ := X1:Y1:Z1 + X2:Y2:Z2 reusing scratch pool S.
+DST must differ from both inputs."
+  (declare (type secp521r1-fe dx dy dz x1 y1 z1 x2 y2 z2)
+           (type simple-vector s)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((z1z1 (svref s 0))
+        (z2z2 (svref s 1))
+        (u1 (svref s 2))
+        (u2 (svref s 3))
+        (s1 (svref s 4))
+        (s2 (svref s 5))
+        (h (svref s 6))
+        (hh (svref s 7))
+        (hh2 (svref s 8))
+        (ii (svref s 9))
+        (jj (svref s 10))
+        (s2-s1 (svref s 11))
+        (rr (svref s 12))
+        (r2 (svref s 24))
+        (vv (svref s 13))
+        (vv2 (svref s 14))
+        (x3 (svref s 15))
+        (rvx (svref s 16))
+        (y3 (svref s 17))
+        (s1d (svref s 18))
+        (t2 (svref s 19))
+        (z1+z2 (svref s 20))
+        (d1 (svref s 21))
+        (d2 (svref s 22))
+        (z3 (svref s 23))
+        (cbuf (svref s 40)))
+    (declare (type secp521r1-fe z1z1 z2z2 u1 u2 s1 s2 h hh hh2 ii jj
+                               s2-s1 rr r2 vv vv2 x3 rvx y3 s1d t2
+                               z1+z2 d1 d2 z3))
+    (cond ((secp521r1-fe-is-zero z1)
+           (secp521r1-fe-copy! dx x2)
+           (secp521r1-fe-copy! dy y2)
+           (secp521r1-fe-copy! dz z2)
+           (values dx dy dz))
+          ((secp521r1-fe-is-zero z2)
+           (secp521r1-fe-copy! dx x1)
+           (secp521r1-fe-copy! dy y1)
+           (secp521r1-fe-copy! dz z1)
+           (values dx dy dz))
+          (t
+           (secp521r1-fe-mul-buf z1z1 z1 z1 cbuf)
+           (secp521r1-fe-mul-buf z2z2 z2 z2 cbuf)
+           (secp521r1-fe-mul-buf u1 x1 z2z2 cbuf)
+           (secp521r1-fe-mul-buf u2 x2 z1z1 cbuf)
+           (secp521r1-fe-mul-buf s1 y1 z2 cbuf)
+           (secp521r1-fe-mul-buf s1 s1 z2z2 cbuf)
+           (secp521r1-fe-mul-buf s2 y2 z1 cbuf)
+           (secp521r1-fe-mul-buf s2 s2 z1z1 cbuf)
+           (if (secp521r1-fe-equal u1 u2)
+               (if (secp521r1-fe-equal s1 s2)
+                   (secp521r1-point-double! dx dy dz x1 y1 z1 s)
+                   (progn
+                     (dotimes (i 9)
+                       (setf (aref dx i) 0
+                             (aref dy i) 0
+                             (aref dz i) 0))
+                     (values dx dy dz)))
+               (progn
+                 (secp521r1-fe-sub h u2 u1)
+                 (secp521r1-fe-mul-buf hh h h cbuf)
+                 (secp521r1-fe-add hh2 hh hh)
+                 (secp521r1-fe-add ii hh2 hh2)
+                 (secp521r1-fe-mul-buf jj h ii cbuf)
+                 (secp521r1-fe-sub s2-s1 s2 s1)
+                 (secp521r1-fe-add rr s2-s1 s2-s1)
+                 (secp521r1-fe-mul-buf vv u1 ii cbuf)
+                 (secp521r1-fe-mul-buf r2 rr rr cbuf)
+                 (secp521r1-fe-add vv2 vv vv)
+                 (secp521r1-fe-sub x3 r2 jj)
+                 (secp521r1-fe-sub x3 x3 vv2)
+                 (secp521r1-fe-copy! dx x3)
+                 (secp521r1-fe-sub rvx vv x3)
+                 (secp521r1-fe-add s1d s1 s1)
+                 (secp521r1-fe-mul-buf t2 s1d jj cbuf)
+                 (secp521r1-fe-mul-buf y3 rr rvx cbuf)
+                 (secp521r1-fe-sub y3 y3 t2)
+                 (secp521r1-fe-copy! dy y3)
+                 (secp521r1-fe-add z1+z2 z1 z2)
+                 (secp521r1-fe-mul-buf d1 z1+z2 z1+z2 cbuf)
+                 (secp521r1-fe-sub d1 d1 z1z1)
+                 (secp521r1-fe-sub d2 d1 z2z2)
+                 (secp521r1-fe-mul-buf z3 d2 h cbuf)
+                 (secp521r1-fe-copy! dz z3)
+                 (values dx dy dz)))))))
+
+(defun secp521r1-make-window-table-limbs (bx by bz)
+  "The table V * (BX:BY:BZ) for V in [0, 32), as vectors of three
+Montgomery limb arrays.  Entry 0 is infinity (0, R, R)."
+  (declare (type secp521r1-fe bx by bz)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((tabl (make-array 32))
+        (sc (secp521r1-make-scratch)))
+    (declare (type simple-vector tabl sc))
+    (let ((zero (secp521r1-fe-zero))
+          (one (secp521r1-fe-from-int 1)))
+      (setf (aref tabl 0) (vector (secp521r1-fe-copy zero)
+                                  (secp521r1-fe-copy one)
+                                  (secp521r1-fe-copy one)))
+      (setf (aref tabl 1) (vector (secp521r1-fe-copy bx)
+                                  (secp521r1-fe-copy by)
+                                  (secp521r1-fe-copy bz))))
+    (loop for v of-type fixnum from 2 below 32 do
+      (let ((dx (secp521r1-fe-zero))
+            (dy (secp521r1-fe-zero))
+            (dz (secp521r1-fe-zero)))
+        (declare (type secp521r1-fe dx dy dz))
+        (if (evenp v)
+            (let ((e (aref tabl (ash v -1))))
+              (declare (type simple-vector e))
+              (secp521r1-point-double! dx dy dz
+                                       (aref e 0) (aref e 1) (aref e 2) sc))
+            (let ((e (aref tabl (1- v))))
+              (declare (type simple-vector e))
+              (secp521r1-point-add! dx dy dz
+                                    (aref e 0) (aref e 1) (aref e 2)
+                                    bx by bz sc)))
+        (setf (aref tabl v) (vector dx dy dz))))
+    tabl))
+
+(defun secp521r1-shamir-mult-limbs (px py pz qx qy qz a b)
+  "A * P + B * Q in the limb field, public only, five-bit windows.  All
+coordinates are Montgomery field elements; the result is integers."
+  (declare (type secp521r1-fe px py pz qx qy qz)
+           (type integer a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((w 5)
+         (abit (integer-length a))
+         (bbit (integer-length b))
+         (bits (max abit bbit 1))
+         (nwin (ceiling bits w))
+         (tp (secp521r1-make-window-table-limbs px py pz))
+         (tq (secp521r1-make-window-table-limbs qx qy qz))
+         (s (secp521r1-make-scratch))
+         (rx (secp521r1-fe-zero))
+         (ry (secp521r1-fe-zero))
+         (rz (secp521r1-fe-zero))
+         (tx (secp521r1-fe-zero))
+         (ty (secp521r1-fe-zero))
+         (tz (secp521r1-fe-zero)))
+    (declare (type fixnum w abit bbit bits nwin)
+             (type simple-vector tp tq s)
+             (type secp521r1-fe rx ry rz tx ty tz))
+    ;; Accumulator starts at infinity (all-zero limbs).
+    (loop for wi of-type fixnum downfrom (1- nwin) to 0 do
+      (unless (= wi (1- nwin))
+        (dotimes (i w)
+          (declare (ignore i))
+          (secp521r1-point-double! tx ty tz rx ry rz s)
+          (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))
+      (let* ((shift (* wi w))
+             (va (if (< shift abit) (ldb (byte w shift) a) 0))
+             (vb (if (< shift bbit) (ldb (byte w shift) b) 0)))
+        (declare (type fixnum shift)
+                 (type (unsigned-byte 5) va vb))
+        (unless (zerop va)
+          (let ((e (aref tp va)))
+            (declare (type simple-vector e))
+            (secp521r1-point-add! tx ty tz rx ry rz
+                                  (aref e 0) (aref e 1) (aref e 2) s)
+            (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))
+        (unless (zerop vb)
+          (let ((e (aref tq vb)))
+            (declare (type simple-vector e))
+            (secp521r1-point-add! tx ty tz rx ry rz
+                                  (aref e 0) (aref e 1) (aref e 2) s)
+            (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))))
+    (list (secp521r1-fe-to-int rx)
+          (secp521r1-fe-to-int ry)
+          (secp521r1-fe-to-int rz))))
 
 (defmethod ec-scalar-inv ((kind (eql :secp521r1)) n)
   "The inverse of N modulo the prime of P-521, via the reference
@@ -712,6 +1033,70 @@ additions and no doublings."
         (unless (zerop vb) (setf acc (ec-add acc (aref tq vb))))))
     acc))
 
+(defvar *secp521r1-limb-g-table* nil
+  "32-entry limb window table V*G for five-bit windows. Built on first use.")
+
+(defun secp521r1-ensure-limb-g-table ()
+  "The cached limb window table for the generator."
+  (or *secp521r1-limb-g-table*
+      (setf *secp521r1-limb-g-table*
+            (let ((gx (slot-value +secp521r1-g+ 'x))
+                  (gy (slot-value +secp521r1-g+ 'y))
+                  (gz (slot-value +secp521r1-g+ 'z)))
+              (declare (type integer gx gy gz))
+              (secp521r1-make-window-table-limbs (secp521r1-fe-from-int gx)
+                                                 (secp521r1-fe-from-int gy)
+                                                 (secp521r1-fe-from-int gz))))))
+
+(defun secp521r1-shamir-mult-limbs-cached (qx qy qz a b)
+  "A * G + B * Q in the limb field, using the cached G table."
+  (declare (type secp521r1-fe qx qy qz)
+           (type integer a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((w 5)
+         (abit (integer-length a))
+         (bbit (integer-length b))
+         (bits (max abit bbit 1))
+         (nwin (ceiling bits w))
+         (tp (secp521r1-ensure-limb-g-table))
+         (tq (secp521r1-make-window-table-limbs qx qy qz))
+         (s (secp521r1-make-scratch))
+         (rx (secp521r1-fe-zero))
+         (ry (secp521r1-fe-zero))
+         (rz (secp521r1-fe-zero))
+         (tx (secp521r1-fe-zero))
+         (ty (secp521r1-fe-zero))
+         (tz (secp521r1-fe-zero)))
+    (declare (type fixnum w abit bbit bits nwin)
+             (type simple-vector tp tq s)
+             (type secp521r1-fe rx ry rz tx ty tz))
+    (loop for wi of-type fixnum downfrom (1- nwin) to 0 do
+      (unless (= wi (1- nwin))
+        (dotimes (i w)
+          (declare (ignore i))
+          (secp521r1-point-double! tx ty tz rx ry rz s)
+          (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))
+      (let* ((shift (* wi w))
+             (va (if (< shift abit) (ldb (byte w shift) a) 0))
+             (vb (if (< shift bbit) (ldb (byte w shift) b) 0)))
+        (declare (type fixnum shift)
+                 (type (unsigned-byte 5) va vb))
+        (unless (zerop va)
+          (let ((e (aref tp va)))
+            (declare (type simple-vector e))
+            (secp521r1-point-add! tx ty tz rx ry rz
+                                  (aref e 0) (aref e 1) (aref e 2) s)
+            (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))
+        (unless (zerop vb)
+          (let ((e (aref tq vb)))
+            (declare (type simple-vector e))
+            (secp521r1-point-add! tx ty tz rx ry rz
+                                  (aref e 0) (aref e 1) (aref e 2) s)
+            (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))))
+    (list (secp521r1-fe-to-int rx)
+          (secp521r1-fe-to-int ry)
+          (secp521r1-fe-to-int rz))))
+
 (defmethod verify-signature ((key secp521r1-public-key) message signature &key (start 0) end &allow-other-keys)
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (unless (= (length signature) (* 2 (ceiling +secp521r1-bits+ 8)))
@@ -730,17 +1115,26 @@ additions and no doublings."
          (w (modular-inverse-with-blinding s +secp521r1-l+ :prime t))
          (u1 (mod (* e w) +secp521r1-l+))
          (u2 (mod (* r w) +secp521r1-l+))
-         ;; Joint multiplication: one pass instead of two.
-         (rp (secp521r1-shamir-mult +secp521r1-g+ pk u1 u2))
-         (x (subseq (ec-encode-point rp) 1 (1+ (ceiling +secp521r1-bits+ 8))))
-         (v (ec-decode-scalar :secp521r1 x))
-         (v (mod v +secp521r1-l+)))
-     (and (< 0 r +secp521r1-l+)
-          (< 0 s +secp521r1-l+)
-          ;; RP is the point at infinity only for invalid signatures;
-          ;; answer NIL instead of failing inside EC-ENCODE-POINT.
-          (not (ec-point-equal rp +secp521r1-point-at-infinity+))
-          (= v r)))))
+         ;; Joint multiplication in the limb field: one pass instead
+         ;; of two, no bignum allocation inside the loop.
+         (qx (slot-value pk 'x))
+         (qy (slot-value pk 'y))
+         (qz (slot-value pk 'z))
+         (rp (secp521r1-shamir-mult-limbs-cached (secp521r1-fe-from-int qx)
+                                                 (secp521r1-fe-from-int qy)
+                                                 (secp521r1-fe-from-int qz)
+                                                 u1 u2))
+         (rz (third rp)))
+      ;; RP is the point at infinity only for invalid signatures.
+      (if (zerop rz)
+          nil
+          (let* ((invz (ec-scalar-inv :secp521r1 rz))
+                 (x (secp521r1-mulmod (first rp)
+                                      (secp521r1-mulmod invz invz)))
+                 (v (mod x +secp521r1-l+)))
+            (and (< 0 r +secp521r1-l+)
+                 (< 0 s +secp521r1-l+)
+                 (= v r)))))))
 
 (defmethod make-public-key ((kind (eql :secp521r1)) &key y &allow-other-keys)
   (unless y
