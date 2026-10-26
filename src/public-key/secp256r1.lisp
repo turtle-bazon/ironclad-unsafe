@@ -179,7 +179,7 @@
   (progn
     (let ((v (mod (* (secp256r1-fe-to-int a)
                      (secp256r1-fe-to-int b)
-                     +secp256r1-r-inv-mod-p+)
+                     +secp256r1-r-mod-p+)
                   +secp256r1-p+)))
       (setf (aref r 0) (ldb (byte 64 0) v)
             (aref r 1) (ldb (byte 64 64) v)
