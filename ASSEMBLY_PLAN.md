@@ -436,3 +436,25 @@ entries serve the windows.  Selection still scans the full row.
   secp521r1 sign       1920 -> 440 us (gap ~8x -> ~3.6x)
   secp384r1 sign       2184 -> 568 us (gap ~2.8x -> ~1.9x)
   Signature and DH vectors pass on both curves.
+
+## Update (Keccak IO without bignums, this session)
+
+ml-dsa-65 verify was 732 us with 50% in Keccak, and the single largest
+entry was keccak-state-extract-output (32%): it shifted each 64-bit
+lane down one byte at a time, a bignum op per byte.  merge-input had
+the symmetric problem building lanes byte by byte.
+
+Both now split each lane once with (ldb (byte 32 ...) ...) and do the
+rest in fixnums: merge builds lo/hi halves from four bytes each and
+combines once; extract emits eight fixnum bytes from the halves.
+Purely a representation change of the intermediates; digests are
+bit-identical (SHA3/SHAKE/Keccak KATs pass).
+
+  ml-dsa-65 verify  732 -> 602 us
+  (extract-output 32% -> 23% of verify; the rest is still bignum
+  lanes in keccak-rounds, see below)
+
+Remaining Keccak work: the state itself is (unsigned-byte 64) lanes,
+so every round op boxes.  Splitting the state into 50 u32 halves
+keeps everything in fixnums; cshake only uses the high-level API so
+the change is contained to sha3.lisp.  KAT vectors will validate it.

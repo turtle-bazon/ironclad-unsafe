@@ -100,13 +100,20 @@
                (index (the fixnum (+ start offset))))
           (when (>= offset rate-bytes)
             (return-from keccak-state-merge-input))
-          (setf (aref state element)
-                (logxor
-                 (aref state element)
-                 .
-                 #.(loop for byte-index from 0 below +keccak-lane-byte-width+
-                         collect `(the keccak-lane (ash (aref input (+ index ,byte-index))
-                                                        ,(* byte-index 8)))))))))))
+          ;; Build the lane as two fixnum halves; the old code shifted
+          ;; each byte into place separately, boxing intermediately.
+          (let ((lo (+ (aref input index)
+                       (ash (aref input (+ index 1)) 8)
+                       (ash (aref input (+ index 2)) 16)
+                       (ash (aref input (+ index 3)) 24)))
+                (hi (+ (aref input (+ index 4))
+                       (ash (aref input (+ index 5)) 8)
+                       (ash (aref input (+ index 6)) 16)
+                       (ash (aref input (+ index 7)) 24))))
+            (declare (type (unsigned-byte 32) lo hi))
+            (setf (aref state element)
+                  (logxor (aref state element)
+                          (+ lo (ash hi 32))))))))))
 
 (defun keccak-state-extract-output (state output-bytes &optional (digest nil) (start 0))
   (let ((digest (or digest
@@ -117,10 +124,18 @@
         (let* ((element (+ (* y +keccak-state-columns+) x))
                (offset (* element +keccak-lane-byte-width+)))
           (unless (>= offset output-bytes)
-            (loop with value = (aref state element)
-                  for index from offset below (min (+ offset +keccak-lane-byte-width+) output-bytes)
-                  do (setf (aref digest (+ start index)) (ldb (byte 8 0) value)
-                           value (ash value -8)))))))
+            ;; Split the lane once; the old code shifted the bignum
+            ;; down one byte at a time.
+            (let ((lo (ldb (byte 32 0) (aref state element)))
+                  (hi (ldb (byte 32 32) (aref state element))))
+              (declare (type (unsigned-byte 32) lo hi))
+              (loop for i of-type fixnum from 0 below 8
+                    for index of-type fixnum from offset
+                    while (< index output-bytes)
+                    do (setf (aref digest (+ start index))
+                             (if (< i 4)
+                                 (ldb (byte 8 (* 8 i)) lo)
+                                 (ldb (byte 8 (* 8 (- i 4))) hi)))))))))
     digest))
 
 
