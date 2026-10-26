@@ -388,3 +388,32 @@ plus an add.  Sign was 688 us (4-bit comb).
 Remaining ed448 cost is the field multiply itself (66% of verify in
 mul-raw + reduce16, already VOP-backed at ~56 ns); halving again
 needs extended coordinates or point-level VOPs.
+
+## Benchmark refresh (this session, rev 1039)
+
+Full run with IRONCLAD_BENCH_TRIALS=1, including the ed448 windows and
+all Falcon work.  Representative public-key rows (Lisp ops/s):
+
+  algorithm          before      after
+  falcon-512 keygen  1.75        13.16
+  falcon-512 verify  1.775k      6.405k
+  falcon-512 sign    25          ~190 (microbenchmark; batch noise)
+  ed448 sign         220         1.420k
+  ed448 verify       113         1.405k
+  secp521r1 sign     215         495
+  secp521r1 verify   155         360
+  secp384r1 sign     385         400
+  secp384r1 verify   285         330
+  dsa sign           610         1.050k
+  dsa verify         310         740
+  rsa sign           75          375
+  rsa verify         70.8        13.85k
+  secp256r1 sign     790         15.36k
+  secp256r1 verify   600         4.375k
+  ml-dsa-65 verify   1.460k      1.385k (noise; microbenchmarks show a win)
+
+Remaining gaps above 5x are falcon-512 keygen (8.2x), secp521r1
+sign (8.1x), dsa verify (6.5x), secp521r1 verify (6.0x), ml-dsa-65
+verify (6.0x) and mceliece keygen (~5-7x, noisy C reference).  The
+modexp, P-521/P-384 field and McEliece elimination gaps need
+SIMD/VOP work or full limb ports; see the per-area notes above.
