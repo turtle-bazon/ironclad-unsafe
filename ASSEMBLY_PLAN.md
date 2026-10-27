@@ -1520,3 +1520,12 @@ under SBCL and CCL (which takes the portable POLYVAL path), and the full
 SBCL suite is green.  Unlike HQC and BIKE, this vector file was already
 wired into the suite -- the auto-generated per-mode AEAD tests cover it --
 which is why the fill-pointer and counter bugs surfaced instead of shipping.
+
+## Update (benchmark refresh after GCM-SIV)
+
+Table refreshed.  gcm-siv encrypt 8192 now reads 155 MB/s (from 1.0 MB/s).
+HQC holds at 0.49-0.59 against its C reference on all rows, and the BIKE
+rows are unchanged.  The host load is still around five, so the absolute
+Lisp numbers remain a lower bound; the 123 measured rows put 34 ahead of
+the C reference and 67 within 2x this run, against 37/66 last run, which is
+C-reference noise rather than movement in our numbers.
