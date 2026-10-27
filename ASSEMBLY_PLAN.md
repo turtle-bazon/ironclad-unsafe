@@ -1570,3 +1570,32 @@ Validation: differential against the SOS VOPs over 120k+ random and
 adversarial inputs (all-ones, top-limb-only modulus, m-1, 0, 1, small
 values, and bulk random) at every size, with zero mismatches; the full
 SBCL suite, which covers the RSA/DSA/DH vectors, is green.
+
+## Update (benchmark refresh after CIOS; host finally quiet)
+
+The host load dropped to about three for this run, so the table is more
+representative than the last few.  The RSA/DSA rows moved as the CIOS
+change predicts, and with the load out of the way the rest of the table
+also reads higher than the previous snapshot:
+
+  rsa verify  21.1k -> 31.7k /s   (gap 2.12)
+  rsa sign     890  -> 1.215k /s  (gap 1.62)
+  rsa decrypt  630  -> 1.195k /s
+  rsa encrypt 11.1k -> 17.3k /s
+  dsa verify  1.01k -> 1.935k /s  (gap 2.65)
+  dsa sign    1.33k -> 2.52k /s   (gap 1.82)
+
+123 measured rows, 41 ahead of the C reference and 82 within 2x.  Part of
+the movement against the previous table is the load difference, so these
+should be read as the current absolute numbers rather than as the CIOS
+gain alone; the interleaved A/B above (20/16/13%) is the clean measurement
+of that change.
+
+What is left is now uniformly the assembly-extension work: Falcon keygen
+(7.9, exact-integer NTRU solve), ChaCha (5.0/3.5, AVX2), Whirlpool (4.3,
+SSSE3 S-box), the NIST curves (3.9/3.8/3.3, ADX field arithmetic), ed448
+(3.3, Goldilocks field), ML-DSA (3.3, AVX2 NTT) and ripemd-160 (2.6,
+scalar digest).  For the two Montgomery/EC cases the blocker is concrete:
+SBCL's assembler has no MULX, ADCX, ADOX or any VEX-encoded instruction,
+so taking the next factor means either hand-encoding VEX/ADX bytes inside
+the VOP or a different toolchain, not another scalar rearrangement.
