@@ -13,6 +13,9 @@
 (rtest:deftest :hqc-128-encapsulation (run-test-vector-file :hqc-128 *public-key-encryption-tests*) t)
 (rtest:deftest :hqc-192-encapsulation (run-test-vector-file :hqc-192 *public-key-encryption-tests*) t)
 (rtest:deftest :hqc-256-encapsulation (run-test-vector-file :hqc-256 *public-key-encryption-tests*) t)
+(rtest:deftest :bike-l1-encapsulation (run-test-vector-file :bike-l1 *public-key-encryption-tests*) t)
+(rtest:deftest :bike-l3-encapsulation (run-test-vector-file :bike-l3 *public-key-encryption-tests*) t)
+(rtest:deftest :bike-l5-encapsulation (run-test-vector-file :bike-l5 *public-key-encryption-tests*) t)
 (rtest:deftest :x-wing-encapsulation (run-test-vector-file :x-wing *public-key-encryption-tests*) t)
 (rtest:deftest :xmss (run-test-vector-file :xmss-h10 *public-key-encryption-tests*) t)
 
@@ -61,6 +64,18 @@ covering the rate at which the defect actually occurs."
 
 (rtest:deftest :hqc-256-encapsulation-roundtrip
   (kem-roundtrip-test :hqc-256 2 50)
+  t)
+
+(rtest:deftest :bike-l1-encapsulation-roundtrip
+  (kem-roundtrip-test :bike-l1 2 20)
+  t)
+
+(rtest:deftest :bike-l3-encapsulation-roundtrip
+  (kem-roundtrip-test :bike-l3 2 20)
+  t)
+
+(rtest:deftest :bike-l5-encapsulation-roundtrip
+  (kem-roundtrip-test :bike-l5 2 20)
   t)
 
 (defun lms-hss-state-exhaustion-test ()

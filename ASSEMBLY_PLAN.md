@@ -1387,3 +1387,62 @@ One gap found while validating: the three hqc-NNN.testvec files existed
 but were never wired into the test suite, so none of this was covered by
 CI.  Added the three vector tests and a 2-key/50-trial roundtrip test per
 parameter set to testing/test-vectors/public-key.lisp.
+
+## Update (BIKE: the same three diseases, twice as bad)
+
+BIKE has no C reference in the benchmark, so its rows never appeared in the
+gap table -- but its absolute numbers were one to three orders of magnitude
+worse than any reasonable implementation: keygen 1.9/s (0.52s), encapsulate
+57/s (18ms), decapsulate 2.6/s (388ms) for bike-l1, and 4s keygen at
+bike-l5.  Chasing those found exactly the same three problems as HQC, only
+worse, plus a fourth in the decoder.
+
+1. bike-mul-base was a bit-serial carryless multiply in generic arithmetic
+   with an 8-element scratch vector allocated per call.  The 64x64 base
+   multiply is now the shared PCLMULQDQ VOP (renamed from hqc-clmul64 to
+   clmul64 since BIKE and HQC both use it); the portable path keeps the
+   existing windowed constant-time routine, only returning values instead
+   of writing a scratch array.
+
+2. bike-karatsuba used displaced arrays for every split, so the whole
+   recursion ran on the general `(array (unsigned-byte 64) (*))` type and
+   every limb went through generic AREF.  Rewritten to address operands by
+   offset into the original simple arrays, with the middle-term buffers
+   kept in one shared scratch pool by offset rather than by displacement.
+
+3. bike-gf2x-sqr allocated two vectors per 64-bit word (193 words at l1),
+   and bike-gf2x-ksqr computed `(mod (* l idx) r)` -- a division -- for
+   every one of the r output bits.  The square now uses one clmul per word,
+   and the permutation position advances incrementally with a conditional
+   subtraction.
+
+4. The BGF decoder was the remaining 150ms of decapsulation.  Its hot
+   loops (bike-rotr-big, bike-bit-sliced-adder, bike-slice-subtract and the
+   byte accessors) took generic AREF on boxed 64-bit words, with bounds
+   checks, and built its masks with (LOGNOT x) followed by a 64-bit AND,
+   which materializes a bignum.  Declared the real array types, replaced
+   the select with (LOGXOR a (LOGAND (LOGXOR a b) mask)), replaced the
+   lognot-mask pairs with LOGXOR against all-ones, hoisted the slice lookup
+   out of the per-byte loops, and made the threshold LSB mask arithmetic
+   ((LOGAND (- (LOGAND val 1)) all-ones)) rather than a branch -- so the
+   rewrite is also more uniformly constant-time than what it replaced.
+
+Measured in one process:
+
+  bike-l1  decaps  2.6 -> 98 /s    encaps   57 -> 926 /s   keygen 1.9 -> 227 /s
+  bike-l3  decaps  0.79 -> 34 /s   encaps   18 -> 342 /s   keygen 0.63 -> 76 /s
+  bike-l5  decaps  0.33 -> 15 /s   encaps  7.4 -> 138 /s   keygen 0.25 -> 33 /s
+
+and the core operations:
+
+  gf2x-mul (l1/l3/l5)  34.7 / 90.7 / 227 ms -> 0.20 / 0.56 / 1.38 ms
+  gf2x-inv (l1/l3/l5)  560 / 1732 / 4400 ms -> 4.8 / 11.6 / 28.8 ms
+
+Validation: all three bike-NNN.testvec KAT files pass (reference
+ciphertext decapsulation, fresh roundtrip, tampered-ciphertext rejection),
+the same files pass under CCL (portable bit-serial multiply), a differential
+against a bit-level bignum reference for both the multiply and the square
+over random reduced inputs is clean for all three parameter sets, and the
+full SBCL suite is green.  Like HQC, the BIKE vectors existed but had never
+been wired into the suite; the three KAT tests and a 2-key/20-trial
+roundtrip per parameter set are now registered.

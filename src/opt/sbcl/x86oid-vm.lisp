@@ -82,11 +82,11 @@
 #+(and sbcl (or x86 x86-64) ironclad-unsafe-assembly)
 (progn
 
-;;; Carryless 64x64 -> 128 multiplication.  Used by the GF(2) polynomial
-;;; multipliers in HQC (and available to other bit-oriented code).
+;;; Carryless 64x64 -> 128 multiplication.  Shared by the GF(2)
+;;; polynomial multipliers in HQC and BIKE.
 #+x86-64
-(define-vop (hqc-clmul64)
-  (:translate ironclad-unsafe::hqc-clmul64)
+(define-vop (clmul64)
+  (:translate ironclad-unsafe::clmul64)
   (:policy :fast-safe)
   (:args (a :scs (unsigned-reg))
          (b :scs (unsigned-reg)))

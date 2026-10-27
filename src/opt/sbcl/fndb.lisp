@@ -239,7 +239,7 @@
   :overwrite-fndb-silently t)
 
 #+x86-64
-(defknown ironclad-unsafe::hqc-clmul64
+(defknown ironclad-unsafe::clmul64
   ((unsigned-byte 64) (unsigned-byte 64))
   (values (unsigned-byte 64) (unsigned-byte 64))
   (any)

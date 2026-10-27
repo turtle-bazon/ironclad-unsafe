@@ -427,7 +427,7 @@ Returns the low and high halves as two values."
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (if *hqc-use-pclmul*
-      (hqc-clmul64 a b)
+      (clmul64 a b)
       (hqc-base-mul-serial a b))
   #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (hqc-base-mul-serial a b))
