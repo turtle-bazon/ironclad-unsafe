@@ -475,6 +475,7 @@
   (values))
 
 (defun ml-dsa-poly-frombytes-320 (r data start)
+  (declare (type ml-dsa-poly r) (type (simple-array (unsigned-byte 8) (*)) data) (type fixnum start) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i 64)
     (let ((b0 (aref data (+ start (* 5 i))))
           (b1 (aref data (+ start (* 5 i) 1)))
@@ -488,6 +489,7 @@
   (values))
 
 (defun ml-dsa-polyeta-pack (r out out-start eta)
+  (declare (type ml-dsa-poly r) (type (simple-array (unsigned-byte 8) (*)) out) (type fixnum out-start) (type fixnum eta) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (if (= eta 2)
       (dotimes (i 32)
         (let ((t0 (- 2 (aref r (* 8 i))))
@@ -512,6 +514,7 @@
   (values))
 
 (defun ml-dsa-polyeta-unpack (r data start eta)
+  (declare (type ml-dsa-poly r) (type (simple-array (unsigned-byte 8) (*)) data) (type fixnum start) (type fixnum eta) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (if (= eta 2)
       (dotimes (i 32)
         (let ((b0 (aref data (+ start (* 3 i))))
@@ -535,6 +538,7 @@
 
 (defun ml-dsa-polyt0-pack (r out out-start)
   "13-bit packing (t0, offset by 2^12) into 416 octets."
+  (declare (type ml-dsa-poly r) (type (simple-array (unsigned-byte 8) (*)) out) (type fixnum out-start) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i 32)
     (let ((t0 (- 4096 (aref r (* 8 i))))
           (t1 (- 4096 (aref r (+ (* 8 i) 1))))
@@ -567,6 +571,7 @@
   (values))
 
 (defun ml-dsa-polyt0-unpack (r data start)
+  (declare (type ml-dsa-poly r) (type (simple-array (unsigned-byte 8) (*)) data) (type fixnum start) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i 32)
     (let* ((o (+ start (* 13 i)))
            (b0 (aref data o)) (b1 (aref data (+ o 1)))
@@ -594,6 +599,7 @@
   (values))
 
 (defun ml-dsa-polyz-pack (r out out-start gamma1 zpacked)
+  (declare (type ml-dsa-poly r) (type (simple-array (unsigned-byte 8) (*)) out) (type fixnum out-start) (type fixnum gamma1) (type fixnum zpacked) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (if (= zpacked 576)
       (dotimes (i 64)
         (let ((t0 (- gamma1 (aref r (* 4 i))))
@@ -624,6 +630,7 @@
   (values))
 
 (defun ml-dsa-polyz-unpack (r data start gamma1 zpacked)
+  (declare (type ml-dsa-poly r) (type (simple-array (unsigned-byte 8) (*)) data) (type fixnum start) (type fixnum gamma1) (type fixnum zpacked) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (if (= zpacked 576)
       (dotimes (i 64)
         (let* ((o (+ start (* 9 i)))
@@ -656,6 +663,7 @@
   (values))
 
 (defun ml-dsa-polyw1-pack (r out out-start gamma2)
+  (declare (type ml-dsa-poly r) (type (simple-array (unsigned-byte 8) (*)) out) (type fixnum out-start) (type fixnum gamma2) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (if (= gamma2 (truncate (1- +ml-dsa-q+) 88))
       (dotimes (i 64)
         (let ((t0 (aref r (* 4 i)))
@@ -741,6 +749,7 @@
   (values))
 
 (defun ml-dsa-polyz-pack-into (sig off z l zpacked)
+  (declare (type (simple-array (unsigned-byte 8) (*)) sig) (type fixnum off) (type simple-vector z) (type fixnum l) (type fixnum zpacked) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((gamma1 (if (= zpacked 576) (ash 1 17) (ash 1 19))))
     (dotimes (i l)
       (ml-dsa-polyz-pack (aref z i) sig off gamma1 zpacked)
@@ -749,6 +758,7 @@
 
 (defun ml-dsa-unpack-sig (sig-c z h sig k l zpacked omega ctilde)
   "Returns T when the signature encoding is malformed."
+  (declare (type (simple-array (unsigned-byte 8) (*)) sig-c) (type simple-vector z) (type simple-vector h) (type (simple-array (unsigned-byte 8) (*)) sig) (type fixnum k) (type fixnum l) (type fixnum zpacked) (type fixnum omega) (type fixnum ctilde) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (replace sig-c sig :end2 ctilde)
   (ml-dsa-polyz-unpack-into sig ctilde z l zpacked)
   (let ((hoff (+ ctilde (* l zpacked)))
@@ -772,6 +782,7 @@
   nil)
 
 (defun ml-dsa-polyz-unpack-into (sig off z l zpacked)
+  (declare (type (simple-array (unsigned-byte 8) (*)) sig) (type fixnum off) (type simple-vector z) (type fixnum l) (type fixnum zpacked) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((gamma1 (if (= zpacked 576) (ash 1 17) (ash 1 19))))
     (dotimes (i l)
       (ml-dsa-polyz-unpack (aref z i) sig off gamma1 zpacked)
@@ -785,6 +796,7 @@
 
 (defun ml-dsa-gen-matrix (rho k l)
   "KxL matrix; entry [i][j] sampled with nonce (i<<8)+j."
+  (declare (type (simple-array (unsigned-byte 8) (*)) rho) (type fixnum k l) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((a (make-array (list k l))))
     (dotimes (i k)
       (dotimes (j l)
@@ -792,6 +804,7 @@
     a))
 
 (defun ml-dsa-matrix-row (a i l)
+  (declare (type (simple-array t (* *)) a) (type fixnum i) (type fixnum l) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((row (make-array l)))
     (dotimes (j l row)
       (setf (aref row j) (aref a i j)))))
@@ -810,46 +823,55 @@
   (values))
 
 (defun ml-dsa-vec-ntt (v n)
+  (declare (type simple-vector v) (type fixnum n) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i n)
     (ml-dsa-ntt (aref v i)))
   (values))
 
 (defun ml-dsa-vec-invntt-tomont (v n)
+  (declare (type simple-vector v) (type fixnum n) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i n)
     (ml-dsa-invntt-tomont (aref v i)))
   (values))
 
 (defun ml-dsa-vec-reduce (v n)
+  (declare (type simple-vector v) (type fixnum n) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i n)
     (ml-dsa-poly-reduce (aref v i)))
   (values))
 
 (defun ml-dsa-vec-caddq (v n)
+  (declare (type simple-vector v) (type fixnum n) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i n)
     (ml-dsa-poly-caddq (aref v i)))
   (values))
 
 (defun ml-dsa-vec-add (r a b n)
+  (declare (type simple-vector r) (type simple-vector a) (type simple-vector b) (type fixnum n) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i n)
     (ml-dsa-poly-add (aref r i) (aref a i) (aref b i)))
   (values))
 
 (defun ml-dsa-vec-sub (r a b n)
+  (declare (type simple-vector r) (type simple-vector a) (type simple-vector b) (type fixnum n) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i n)
     (ml-dsa-poly-sub (aref r i) (aref a i) (aref b i)))
   (values))
 
 (defun ml-dsa-vec-shiftl (v n)
+  (declare (type simple-vector v) (type fixnum n) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i n)
     (ml-dsa-poly-shiftl (aref v i)))
   (values))
 
 (defun ml-dsa-vec-pointwise (r a v n)
+  (declare (type simple-vector r) (type ml-dsa-poly a) (type simple-vector v) (type fixnum n) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i n)
     (ml-dsa-pointwise-montgomery (aref r i) a (aref v i)))
   (values))
 
 (defun ml-dsa-vec-decompose (v1 v0 v n gamma2)
+  (declare (type simple-vector v1) (type simple-vector v0) (type simple-vector v) (type fixnum n) (type fixnum gamma2) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i n)
     (let ((p1 (aref v1 i))
           (p0 (aref v0 i))
@@ -861,6 +883,7 @@
   (values))
 
 (defun ml-dsa-vec-power2round (v1 v0 v n)
+  (declare (type simple-vector v1) (type simple-vector v0) (type simple-vector v) (type fixnum n) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i n)
     (let ((p1 (aref v1 i))
           (p0 (aref v0 i))
@@ -872,6 +895,7 @@
   (values))
 
 (defun ml-dsa-vec-make-hint (h v0 v1 n gamma2)
+  (declare (type simple-vector h) (type simple-vector v0) (type simple-vector v1) (type fixnum n) (type fixnum gamma2) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((s 0))
     (dotimes (i n)
       (let ((ph (aref h i))
@@ -884,6 +908,7 @@
     s))
 
 (defun ml-dsa-vec-use-hint (w u h n gamma2)
+  (declare (type simple-vector w) (type simple-vector u) (type simple-vector h) (type fixnum n) (type fixnum gamma2) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i n)
     (let ((pw (aref w i))
           (pu (aref u i))
@@ -893,6 +918,7 @@
   (values))
 
 (defun ml-dsa-pack-w1 (out w1 k w1packed gamma2)
+  (declare (type (simple-array (unsigned-byte 8) (*)) out) (type simple-vector w1) (type fixnum k) (type fixnum w1packed) (type fixnum gamma2) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i k)
     (ml-dsa-polyw1-pack (aref w1 i) out (+ (* i w1packed)) gamma2))
   (values))

@@ -939,3 +939,38 @@ Notes: the VOP needs positive-fixnum args, so the callers' W and
 WORDLEN had to be declared index rather than fixnum for translation;
 and ea takes base/index/scale plus a constant displacement, so the row
 pointers are formed with lea and then advanced by 16.
+
+## Update (ML-DSA helper type declarations, this session)
+
+After the Keccak squeeze fix, profiling ML-DSA-44 verify showed about a
+tenth of the time in *generic* array access
+(VECTOR-HAIRY-DATA-VECTOR-REF/SET).  The cause was simple: the whole
+ml-dsa-vec-* family and the pack/unpack helpers had no type
+declarations, so every `(aref v i)` on a polyvec and every byte access
+in the 13-bit t0 and 18-bit z (un)packers went through the generic
+vector path.  Added declarations to 26 functions: polyvec arguments as
+simple-vector with fixnum counts, polynomials as ml-dsa-poly, and octet
+buffers as (simple-array (unsigned-byte 8) (*)).
+
+Fixed-seed A/B on verify: min 320 -> 293 us, typical 333 -> 307 us
+(~10%).  Because the same helpers serve key generation and signing, the
+table moved everywhere:
+
+  ml-dsa-44 verify gap 3.72 -> 2.00      ml-dsa-44 keygen 4.17 -> 1.80
+  ml-dsa-65 verify gap 3.74 -> 3.06      ml-dsa-65 keygen 3.35 -> 2.34
+  ml-dsa-87 verify gap 3.50 -> 1.87      ml-dsa-87 keygen 3.86 -> 1.74
+  ml-dsa-44 sign   3.14 -> 0.76 (ahead of C)
+  ml-dsa-65 sign   3.14 -> 1.64          ml-dsa-87 sign 3.14 -> 1.73
+
+Two declaration mistakes were caught by the vectors before landing, and
+both are the same trap: a blanket "declare every parameter" pass guessed
+(a) gen-matrix has no parameter named A at all (it binds A locally), and
+(b) the single poly scalars passed to vec-pointwise (and the 2-D matrix
+in matrix-row) are not simple-vectors.  Declarations are promises, and
+at safety 0 a wrong one is undefined behaviour rather than an error --
+check each parameter against the body, do not infer from the name.
+
+Validation: ml-dsa vectors pass (44/65/87), full SBCL suite green, CCL
+ml-dsa vectors pass.  Remaining ML-DSA time is NTT/INVNTT (44% of a
+verify) and Keccak (24%), both of which now need SIMD or Montgomery-NTT
+restructuring rather than declaration work.
