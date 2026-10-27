@@ -1088,3 +1088,34 @@ Full SBCL suite green.
 Remaining McEliece keygen cost is the elimination itself (now SSE) and
 the per-row GF multiply; the retry factor of ~4.8 is inherent to the
 algorithm and is paid by the C reference too.
+
+## Update (Falcon NTT/decompress declarations, this session)
+
+Falcon-512 verify was 140 us with 52% in falcon-ntt/falcon-intt, but a
+further ~11% sat in generic array access *with* bounds checks
+(VECTOR-HAIRY-DATA-VECTOR-REF/CHECK-BOUNDS) and GENERIC-*.  Same story
+as the ML-DSA sweep: several hot functions used arrays they never
+declared.
+
+Declared the working/typed arrays that are local to each function and
+therefore certainly simple and fixnum-typed:
+
+  falcon-ntt / falcon-intt      the scratch A (and kept B for the plan
+                               arrays); NOT the caller-supplied input,
+                               because some callers pass a differently
+                               typed vector and a wrong promise here is
+                               UB at safety 0 -- the first attempt did
+                               exactly that and raised a type error.
+  falcon-decompress             ENC (octet vector) and V (fixnum), which
+                               removed most of the generic access
+  falcon-mul-ntt / falcon-sub-zq  operands and result
+
+  falcon-512 verify  140 -> 124-128 us  (7.07k -> 8.18k ops/s,
+  gap 3.61 -> 3.16)
+
+Validation: falcon-512 and falcon-1024 roundtrips pass (0 rejections of
+valid signatures, 0 acceptances of a tampered payload); the falcon
+testvecs and the full SBCL suite are green.  Note that flipping the last
+byte of a Falcon signature is *not* a valid negative test -- the
+compressed encoding has trailing padding bits, so such a signature still
+verifies by design; tamper in the payload instead.
