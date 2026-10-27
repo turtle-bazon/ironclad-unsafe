@@ -1446,3 +1446,20 @@ over random reduced inputs is clean for all three parameter sets, and the
 full SBCL suite is green.  Like HQC, the BIKE vectors existed but had never
 been wired into the suite; the three KAT tests and a 2-key/20-trial
 roundtrip per parameter set are now registered.
+
+## Update (benchmark refresh; a note on host load)
+
+Refreshed the table after the HQC and BIKE work.  HQC is now ahead of the C
+reference on all nine of its rows (gaps 0.26 to 0.76) and the BIKE rows,
+which have no C reference, now read 91/s decapsulate and 240/s keygen at
+bike-l1 instead of 2.6/s and 1.9/s.
+
+Caveat on this snapshot: the host was carrying a load average of about six
+while the Lisp half of the benchmark ran, and every Lisp row came out 20-35%
+below a repeat measurement.  For example the table's dsa-verify row reads
+1.010k ops/s, while a fixed-input loop run straight afterwards measured
+1543 ops/s (648us), which matches the previous table.  RSA verify moved down
+by the same fraction although its code was untouched.  So read this
+refresh's absolute Lisp numbers as a lower bound; the C reference column is
+stable, and the gap ratios are correspondingly pessimistic.  The HQC and
+BIKE improvements are large enough that they are unaffected.
