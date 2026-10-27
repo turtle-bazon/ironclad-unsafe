@@ -1210,3 +1210,30 @@ because CL's REPLACE truncates silently rather than erroring when the
 destination runs out.  Reverted to the three-update form, which is proven.
 Anyone retrying this should assert the total length against the scratch
 size instead of trusting REPLACE.
+
+## Update (Falcon modular arithmetic declarations, this session)
+
+Falcon's integer NTT was 52% of verification and cost 50 cycles per
+butterfly.  Bisecting the loop showed why: swapping falcon-mulmod for a
+cheap mask multiply took the same loop from 47 us to 11 us, so the
+modular multiply was ~36 us of it.  The cause was not the algorithm but
+type inference: mulmod declared its operands plain FIXNUM, so SBCL
+emitted overflow-checked multiplies (the products here reach 2^57, which
+it cannot prove fits) and the whole cost of the function collapsed to
+the check-and-box sequence.  Declaring the operands as
+(integer 0 12288) -- reduced residues -- lets it prove every product
+stays a fixnum, and the same for falcon-addmod/falcon-submod.
+
+  falcon-ntt          33.6 us -> 11.2 us (3x)
+  falcon-512 verify    143 us -> 76 us  (1.9x, gap 3.48 -> ~1.8)
+
+Tried and dropped: unrolling the butterfly by two so the multiply chains
+overlap.  It was worth 2% before the typing fix and nothing after, so it
+was reverted rather than kept for complexity's sake.  Also tried the same
+operand-bounding on ml-dsa-fqmul: no change (that code already masks its
+intermediates with LDB and notes the 62-bit fixnum limit explicitly).
+
+Validation: falcon-512 and falcon-1024 sign/verify roundtrips with 0
+rejections and 0 tampered acceptances, the falcon keymat and signature
+vector files pass (keymat is the strong one: it compares the derived f,
+g, F, G bytes), full SBCL suite green.

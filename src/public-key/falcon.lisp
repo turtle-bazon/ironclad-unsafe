@@ -70,14 +70,14 @@
 (defun falcon-addmod (a b)
   "The sum of A and B modulo the falcon prime.
 A and B are reduced residues, so the sum needs one subtraction."
-  (declare (type fixnum a b))
+  (declare (type (integer 0 12288) a b))
   (let ((s (+ a b)))
     (if (>= s +falcon-q+) (- s +falcon-q+) s)))
 
 (defun falcon-submod (a b)
   "The difference of A and B modulo the falcon prime.
 A and B are reduced residues, so the difference needs one addition."
-  (declare (type fixnum a b))
+  (declare (type (integer 0 12288) a b))
   (let ((d (- a b)))
     (if (< d 0) (+ d +falcon-q+) d)))
 
@@ -88,7 +88,10 @@ by a multiplication by the reciprocal of the prime and a shift, and
 one subtraction at most: the quotient that the reciprocal gives is
 never more than one below the true quotient, so the remainder is
 below twice the prime."
-  (declare (type fixnum a b))
+  ;; The bounds let the compiler prove both products stay fixnums; with
+  ;; plain FIXNUM declarations it emits overflow-checked (boxing) code,
+  ;; and the three multiplies here are the whole cost of the NTT.
+  (declare (type (integer 0 12288) a b))
   (let* ((p (* a b))
          (qh (ash (* p +falcon-mu+) -44))
          (r (- p (* qh +falcon-q+))))
