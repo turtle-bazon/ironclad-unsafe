@@ -872,3 +872,36 @@ roundtrip passes.  *gmac-4x-enabled* forces the one-block path for
 validation.  VOP notes: ea takes a register index only, so constant
 slot offsets must be folded into the displacement (indexed-mem vs
 const-mem helpers); defconst takes no docstring in this codebase.
+
+## Update (Keccak output squeeze, this session)
+
+Profiling ML-DSA-44 verification showed 43% in Keccak, with
+KECCAK-STATE-EXTRACT-OUTPUT alone at 25.7% -- far too much for a
+squeeze path, since verification only squeezes a few kilobytes.  Cause:
+the byte-packing loop used a variable shift position, `(ldb (byte 8 (* 8
+i)) ...)` with I a loop variable, and the STATE argument had no type
+declaration, so SBCL fell back to generic arithmetic and generic aref.
+Rewrote it to declare the state as a keccak lane vector and store the
+eight lane bytes with constant shift counts (put 0 0 lo) .. (put 7 24
+hi), keeping the existing absolute-offset scatter and the per-byte limit
+check.  Same lesson as the earlier limb-split work: hand-unroll variable
+shift positions at safety 0.
+
+  ml-dsa-44 verify   2835 -> 3605 ops/s (gap 4.73 -> 3.66)
+  ml-dsa-87 verify   1035 -> 1305 ops/s (gap 4.86 -> 3.83)
+  slh-dsa-shake-256f sign  gap 2.86 -> 2.50
+  slh-dsa-shake-256s verify gap 2.83 -> 2.41
+  (extract-output share of a verify fell 25.7% -> 6.3%)
+
+The fix is in the shared Keccak squeeze, so it lifts every SHAKE
+consumer: all thirteen SLH-DSA-SHAKE rows, KMAC, cSHAKE and the ML-DSA
+keygen/sign paths.
+
+Validation: SHA-3/SHAKE KATs against hashlib including a 200-byte
+multi-chunk squeeze (exercises the partial-chunk path that was changed),
+full SBCL suite green, CCL sha3/256 and shake128 KATs pass.  Note the
+digest names are :sha3/224, :sha3/256, :sha3/384 and plain :sha3 for
+512 (a dash name raises unsupported-digest), and SHAKE output length is
+a make-digest :output-length initarg, not a digest-sequence keyword.
+Remaining ML-DSA verify cost is now NTT/INVNTT/pointwise (~49%), which
+needs a limb or SIMD NTT rather than a Lisp-level fix.

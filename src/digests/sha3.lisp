@@ -118,24 +118,29 @@
 (defun keccak-state-extract-output (state output-bytes &optional (digest nil) (start 0))
   (let ((digest (or digest
                     (make-array (list output-bytes) :element-type '(unsigned-byte 8)))))
-    (declare (type (simple-array (unsigned-byte 8) (*)) digest))
+    (declare (type keccak-state state)
+             (type (simple-array (unsigned-byte 8) (*)) digest))
     (dotimes (x +keccak-state-columns+)
       (dotimes (y +keccak-state-rows+)
         (let* ((element (+ (* y +keccak-state-columns+) x))
                (offset (* element +keccak-lane-byte-width+)))
-          (unless (>= offset output-bytes)
-            ;; Split the lane once; the old code shifted the bignum
-            ;; down one byte at a time.
-            (let ((lo (ldb (byte 32 0) (aref state element)))
-                  (hi (ldb (byte 32 32) (aref state element))))
-              (declare (type (unsigned-byte 32) lo hi))
-              (loop for i of-type fixnum from 0 below 8
-                    for index of-type fixnum from offset
-                    while (< index output-bytes)
-                    do (setf (aref digest (+ start index))
-                             (if (< i 4)
-                                 (ldb (byte 8 (* 8 i)) lo)
-                                 (ldb (byte 8 (* 8 (- i 4))) hi)))))))))
+          (when (< offset output-bytes)
+            ;; Split the lane once and store the eight bytes with constant
+            ;; shift counts.  A variable (byte 8 (* 8 i)) put SBCL on the
+            ;; generic path, which cost a quarter of ML-DSA verification.
+            (let* ((lane (aref state element))
+                   (lo (ldb (byte 32 0) lane))
+                   (hi (ldb (byte 32 32) lane))
+                   (base (+ start offset))
+                   (limit (+ start output-bytes)))
+              (declare (type (unsigned-byte 32) lo hi)
+                       (type fixnum base limit))
+              (macrolet ((put (at shift value)
+                           `(when (< (+ base ,at) limit)
+                              (setf (aref digest (+ base ,at))
+                                    (ldb (byte 8 ,shift) ,value)))))
+                (put 0 0 lo) (put 1 8 lo) (put 2 16 lo) (put 3 24 lo)
+                (put 4 0 hi) (put 5 8 hi) (put 6 16 hi) (put 7 24 hi)))))))
     digest))
 
 
