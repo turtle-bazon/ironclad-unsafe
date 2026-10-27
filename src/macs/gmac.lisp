@@ -29,7 +29,19 @@
            :type (simple-array (unsigned-byte 8) (16)))
    (buffer-length :accessor gmac-buffer-length
                   :initform 0
-                  :type (integer 0 16))))
+                  :type (integer 0 16))
+   (powers :accessor gmac-powers
+           :initform nil
+           :type (or null (simple-array (unsigned-byte 8) (64))))))
+
+(defconst +gmac-reverse-mask+
+  (make-array 16 :element-type '(unsigned-byte 8)
+              :initial-contents '(15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0)))
+;; Sixteen-byte reversal: a data block byte-swapped into the reflected
+;; form the GHASH accumulator is kept in.
+
+(defvar *gmac-4x-enabled* t
+  "Set to NIL to force one-block GHASH steps (validation only).")
 
 (defun make-gmac (key cipher-name initialization-vector)
   (unless (member (length key) (key-lengths cipher-name))
@@ -130,6 +142,20 @@
           (setf (gmac-j0 mac) j0)
           (replace iv j0))
         (encrypt-in-place cipher iv)
+        ;; H^1 through H^4, for the four-way aggregated GHASH steps.
+        (let ((powers (make-array 64 :element-type '(unsigned-byte 8)))
+              (p (make-array 16 :element-type '(unsigned-byte 8))))
+          (declare (type (simple-array (unsigned-byte 8) (64)) powers)
+                   (type (simple-array (unsigned-byte 8) (16)) p))
+          (replace p hkey)
+          (replace powers p :start1 0 :end1 16)
+          (gmac-mul p hkey)
+          (replace powers p :start1 16 :end1 32)
+          (gmac-mul p hkey)
+          (replace powers p :start1 32 :end1 48)
+          (gmac-mul p hkey)
+          (replace powers p :start1 48 :end1 64)
+          (setf (gmac-powers mac) powers))
         mac)
       (let ((table (make-array '(128 2 2) :element-type '(unsigned-byte 64)
                                           :initial-element 0))
@@ -229,14 +255,23 @@
     ;; Process the data
     (if #+(and sbcl x86-64 ironclad-unsafe-assembly) (pclmulqdq-supported-p)
         #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
-        (loop while (> remaining 16) do
-          (setf (ub64ref/le buffer 8) (ub64ref/be data start)
-                (ub64ref/le buffer 0) (ub64ref/be data (+ start 8)))
-          (xor-block 16 accumulator 0 buffer 0 accumulator 0)
-          (gmac-mul accumulator key)
-          (incf total-length 16)
-          (incf start 16)
-          (decf remaining 16))
+        (progn
+          #+(and sbcl x86-64 ironclad-unsafe-assembly)
+          (when (and *gmac-4x-enabled* (gmac-powers mac))
+            (loop while (>= remaining 64) do
+              (gmac-mul-4-fast accumulator data start (gmac-powers mac)
+                               +gmac-reverse-mask+)
+              (incf total-length 64)
+              (incf start 64)
+              (decf remaining 64)))
+          (loop while (> remaining 16) do
+            (setf (ub64ref/le buffer 8) (ub64ref/be data start)
+                  (ub64ref/le buffer 0) (ub64ref/be data (+ start 8)))
+            (xor-block 16 accumulator 0 buffer 0 accumulator 0)
+            (gmac-mul accumulator key)
+            (incf total-length 16)
+            (incf start 16)
+            (decf remaining 16)))
         (loop while (> remaining 16) do
           (xor-block 16 accumulator 0 data start accumulator 0)
           (gmac-mul accumulator key)

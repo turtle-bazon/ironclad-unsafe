@@ -843,3 +843,32 @@ conclusions until load subsides; trust only the official table.
 Next tractable directions when clean: GHASH aggregation (carryless
 4-way, precedent: AES-CTR 8x), P-256 GLV endomorphism (high risk), or
 ML-DSA scatter work.
+
+## Update (GHASH four-way aggregation, this session)
+
+GCM's remaining cost after the AES-CTR pipelining was GHASH (781 MB/s
+solo vs CTR at 1.26 GB/s), one multiply-and-reduce per 16-byte block.
+New gmac-mul-4-fast VOP processes four blocks per call: the accumulator
+and three data blocks are multiplied by H^4, H^3, H^2 and H^1, the four
+256-bit carryless products are xored (field addition) and the sum is
+reduced once.  Valid because the field multiply is bilinear and
+reduction is linear, so sum-then-reduce equals the four
+multiply/reduce steps while saving three reductions.  H^1..H^4 are
+precomputed at key setup by four calls to the already-validated
+single-block multiply; the data blocks are byte-reversed into the
+reflected domain with one pshufb against a 16-byte reversal mask.
+
+  GHASH (solo)  781 -> ~1130-3900 MB/s (2.5-4x in alternating A/B)
+  gcm encrypt   380 -> 641 MB/s (gap 3.96 -> 2.08)
+
+GCM is now CTR-bound: the new serial figure (1/641 = 1/1475 + 1/1130)
+matches the measured CTR, so further GCM gains need more CTR width or
+cheaper GHASH reduction, not more aggregation depth.
+
+Validation: 4-way vs 1-way differential over 27 lengths plus AAD
+variants (0 failures, tags byte-identical), repo gcm/gcm-siv/eax/ccm
+vectors pass, full SBCL suite green, CCL gcm+gcm-siv pass, ABCL GCM
+roundtrip passes.  *gmac-4x-enabled* forces the one-block path for
+validation.  VOP notes: ea takes a register index only, so constant
+slot offsets must be folded into the displacement (indexed-mem vs
+const-mem helpers); defconst takes no docstring in this codebase.
