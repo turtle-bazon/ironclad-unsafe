@@ -149,24 +149,38 @@ for the whole message, instead of once per block."
 
 (defun ccm-cbc-feed (mode data start end)
   "Absorb DATA[START,END) into the CBC-MAC chain, buffering partials.
-When PENDING is empty and at least 16 bytes remain, XOR a full block
-directly into the chain and encrypt, avoiding per-byte PENDING pushes."
+Whole blocks go straight into the chain, with the chain and cipher
+lookups hoisted out of the loop; only a partial block is buffered."
   (declare (type (vector (unsigned-byte 8)) data))
   (let ((pending (ccm-pending mode))
-        (simple (ccm-simple-octet-vector-p data)))
-    (loop with pos = start
-          do (cond
-               ((and (zerop (fill-pointer pending))
-                     (<= 16 (- end pos)))
-                 (ccm-cbc-absorb-block mode data pos simple)
+        (simple (ccm-simple-octet-vector-p data))
+        (chain (ccm-chain mode))
+        (ecb (ccm-ecb mode)))
+    (declare (type (simple-array (unsigned-byte 8) (16)) chain)
+             (ignorable simple))
+    (let ((pos start))
+      (declare (type fixnum pos))
+      ;; Finish a partially filled block first.
+      (unless (zerop (fill-pointer pending))
+        (loop while (and (< (fill-pointer pending) 16) (< pos end))
+              do (vector-push-extend (aref data pos) pending)
+                 (incf pos))
+        (when (= (fill-pointer pending) 16)
+          (ccm-process-pending-block mode)))
+      (when (zerop (fill-pointer pending))
+        (loop while (<= 16 (- end pos))
+              do (if simple
+                     (xor128 chain 0 data pos chain 0)
+                     (dotimes (i 16)
+                       (setf (aref chain i)
+                             (logxor (aref chain i) (aref data (+ pos i))))))
+                 (aes-encrypt-block ecb chain 0 chain 0)
                  (incf pos 16))
-               (t
-                (loop while (and (< (fill-pointer pending) 16) (< pos end))
-                      do (vector-push-extend (aref data pos) pending)
-                         (incf pos))
-                (when (= (fill-pointer pending) 16)
-                  (ccm-process-pending-block mode))))
-          while (< pos end))
+        (loop while (< pos end)
+              do (vector-push-extend (aref data pos) pending)
+                 (incf pos)
+                 (when (= (fill-pointer pending) 16)
+                   (ccm-process-pending-block mode)))))
     (values)))
 
 (defun ccm-process-pending-block (mode)

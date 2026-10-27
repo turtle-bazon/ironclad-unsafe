@@ -1119,3 +1119,33 @@ testvecs and the full SBCL suite are green.  Note that flipping the last
 byte of a Falcon signature is *not* a valid negative test -- the
 compressed encoding has trailing padding bits, so such a signature still
 verifies by design; tamper in the payload instead.
+
+## Update (CCM CBC-MAC loop, this session)
+
+CCM was 229 MB/s with the pieces not adding up: a single AES-NI block
+costs 20 ns, so the serial CBC-MAC for 512 blocks should be ~10 us and
+the payload CTR (which already uses the eight-wide path) ~4 us, against
+42 us measured.  The gap was the MAC loop: it called
+ccm-cbc-absorb-block once per block, and each call re-fetched the chain
+and the ECB cipher through accessors and re-tested the "is DATA a simple
+array" flag.
+
+Restructured ccm-cbc-feed to hold the chain, the ECB cipher and the
+simple-array flag in locals, absorb whole blocks in a tight loop (xor128
+plus aes-encrypt-block, no per-block call or accessor), and keep the
+byte-at-a-time pending buffer only for a trailing partial block.  The
+streaming semantics are unchanged: a partial block left by an earlier
+call is still completed first, and the pending buffer still only grows
+when fewer than sixteen bytes remain.
+
+  ccm encrypt  229 -> 390 MB/s (2x), gap 3.46 -> ~1.7
+
+Validation: CCM roundtrips at twelve lengths including partial blocks
+and AAD (0 failures), repo ccm vectors pass, full SBCL suite green, CCL
+ccm vectors pass.  (Note gcm/gcm-siv re-checked on CCL too, unaffected.)
+
+Measurement note: my first pass at this looked for the missing time with
+the profiler and with small-n timings and got 20 us for both phases,
+which was an artefact -- 200 iterations of a 4 us operation is only eight
+hundred ticks, and the first call is cold.  Use n in the thousands for
+anything in the microseconds range.
