@@ -820,3 +820,26 @@ separate non-inlined driver loop.  Findings:
   typos -- always verify KAT vectors against hashlib/repo testvecs,
   never memory; and ABCL defun-wrapper load quirk (validate via flat
   forms instead).
+
+## Update (hygiene + reassessment, this session)
+
+Removed a duplicated `chacha-core-2x` defknown entry (and tripled
+`#+x86-64` prefix) in fndb.lisp left over from VOP splice work, plus a
+trailing-newline fix in x86oid-vm.lisp.  No functional change; build
+ok, cipher/mac/mode/digest vectors pass (poly1305, chacha, aes, ctr,
+sha1, all T).
+
+Reassessment after the Poly1305 revert: the remaining public-key gaps
+(P-256 verify 4.07, ed448 verify 4.19, RSA verify 3.78, DSA verify
+5.28) sit at their VOP floors -- field/mult code is already assembly
+with unboxed inner loops (verified by disassembly/sprof: time is in
+MONT-MUL/DOUBLE, formulas already use a=-3/optimal chains).  Whirlpool
+(5.92) benchmarks against OpenSSL's hand-tuned asm -- out of reach for
+a declaration-level fix (u8 index declares measured neutral).  The
+chacha-poly composite gap (5.86) exceeds its components' serial sum,
+but the box is currently under heavy external load (3 foreign CCL jobs,
+load ~7.6), so all new microbenchmarks are contaminated -- no perf
+conclusions until load subsides; trust only the official table.
+Next tractable directions when clean: GHASH aggregation (carryless
+4-way, precedent: AES-CTR 8x), P-256 GLV endomorphism (high risk), or
+ML-DSA scatter work.
