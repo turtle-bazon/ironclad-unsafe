@@ -39,14 +39,30 @@
           (if n-bits
               (values n-bits (min (ceiling n-bits 8) size))
               (values (* 8 size) size)))
-      (let ((sum (if big-endian
-                     (loop with sum = 0
-                           for i from (- end n-bytes) below end
-                           do (setf sum (+ (ash sum 8) (aref octet-vec i)))
-                           finally (return sum))
-                     (loop for i from start below (+ start n-bytes)
-                           for j from 0 by 8
-                           sum (ash (aref octet-vec i) j)))))
+      ;; Accumulate eight bytes (64 bits) at a time.  A per-byte
+      ;; (ash sum 8) reallocates the whole bignum every byte, which is
+      ;; quadratic and cost about 20% of an RSA-2048 verify.
+      (let ((sum
+              (if big-endian
+                  (let ((base (- end n-bytes))
+                        (acc 0))
+                    (declare (type fixnum base end)
+                             (type integer acc))
+                    (loop for hi of-type fixnum = end then (- hi 8)
+                          for shift of-type fixnum = 0 then (+ shift 64)
+                          while (> hi base)
+                          do (let ((lo (max base (- hi 8)))
+                                   (chunk 0))
+                               (declare (type fixnum lo)
+                                        (type (unsigned-byte 64) chunk))
+                               (loop for i of-type fixnum from lo below hi
+                                     do (setf chunk (logior (ash chunk 8)
+                                                            (aref octet-vec i))))
+                               (setf acc (logior acc (ash chunk shift)))))
+                    acc)
+                  (loop for i from start below (+ start n-bytes)
+                        for j from 0 by 8
+                        sum (ash (aref octet-vec i) j)))))
         (ldb (byte n-bits 0) sum)))))
 
 (defun integer-to-octets (bignum &key n-bits (big-endian t))

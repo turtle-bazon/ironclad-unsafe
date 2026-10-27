@@ -1007,3 +1007,25 @@ Validation: rsa-sig, dsa and all five ECDSA signature vector sets pass;
 full SBCL suite green.  Note the benchmark's C-reference figures move
 10-40% between runs on this (loaded) machine, so compare absolute
 Lisp ops/s rather than the gap column.
+
+## Update (octets-to-integer chunking, this session)
+
+Profiling RSA-2048 verify showed 24% in SB-BIGNUM::BIGNUM-ASHIFT-LEFT-ADD
+plus 10% in BIGNUM-TRUNCATE, i.e. outside the exponentiation.  Direct
+measurement pinned it: OCTETS-TO-INTEGER took 11.8 us for a 256-byte
+input, because it accumulated one byte at a time with (ash sum 8), which
+reallocates the whole bignum per byte -- quadratic in the input length.
+Rewrote the big-endian branch to consume eight bytes (64 bits) per step
+and or the chunk in at its bit position; the little-endian branch is
+unchanged (it already shifts by a byte position and is not hot).
+
+  octets->integer 256 bytes   11.8 us -> 3.8 us (3x)
+  octets->integer 32 bytes     0.8 us -> 0.6 us
+  rsa verify                  60-70 us -> 50 us
+  rsa verify table            17.94k -> 21.08k ops/s (gap 3.62 -> 3.20)
+
+This helper is on every signature and key parse, so EC and DSA paths get
+a small share of it too.
+
+Validation: full SBCL suite green (which covers all the signature, key
+and padding vectors that depend on this conversion).
