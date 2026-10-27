@@ -1050,3 +1050,41 @@ private key operations use, MONTGOMERY-EXPT-FIXED via EXPT-MOD, is
 untouched and its cost still does not depend on the exponent's weight.
 
 Validation: dsa and rsa-sig vectors pass, full SBCL suite green.
+
+## Update (McEliece matrix bit-plane packing, this session)
+
+Instrumenting keypair generation showed it is dominated by retries, not
+by one slow pass: the systematic-form transform only succeeds when the
+top-left block is invertible (about 29% of the time for a random binary
+matrix), so mce-pk-gen runs ~4.8 times per keygen at ~38 ms each, and
+mce-genpoly runs as often at ~3.4 ms.  A direct micro-benchmark then
+isolated the matrix build inside mce-pk-gen: 20 ms of that 38 ms, because
+it packed each bit plane byte with a chain of (ash b 1) plus a
+variable-position (ldb (byte 1 k) ...) over eight elements.
+
+Rewrote it to load the eight elements once and build the byte with a
+single or-tree of (logand 1 (ash v shift)) terms -- 2.4 ms instead of
+20 ms in the micro-benchmark (8.3x).  Bit order matters: the original
+chain shifts the *last* element in first, so inv[j] ends up in the LSB,
+not the MSB; my first attempt had it reversed and produced valid-looking
+but different keys.  The cross-implementation check caught it
+immediately (see below).
+
+  mceliece348864 keygen 3.73 -> 9.09 ops/s (gap 7.71 -> 2.76)
+  mceliece6688128 keygen                     (gap 0.40, ahead of C)
+  mceliece8192128/6960119 keygen             (gap 1.74 / 1.03)
+  rsa verify            21.08k -> 27.78k ops/s (gap 3.20 -> 2.21,
+                        the sparse-exponent change from the same session)
+
+Validation, and why it is trustworthy: keygen is deterministic from a
+seed, so the same seed was run on SBCL (VOP path) and CCL (portable
+path) and had to produce byte-identical public and private keys -- it
+does, for mceliece348864 and mceliece8192128, with an encapsulate/
+decapsulate roundtrip on each.  The repo McEliece vectors only exercise
+encapsulation, so they would not have caught this class of change; the
+differential against the other Lisp's code path is the real gate.
+Full SBCL suite green.
+
+Remaining McEliece keygen cost is the elimination itself (now SSE) and
+the per-row GF multiply; the retry factor of ~4.8 is inherent to the
+algorithm and is paid by the C reference too.

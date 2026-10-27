@@ -1099,15 +1099,31 @@ PIV is permutation-sized scratch/output. Returns T on success, NIL on failure."
       (setf (aref inv i) (mce-gf-inv (aref inv i))))
     (dotimes (i (mce-sys-t))
       (loop for j from 0 below (mce-sys-n) by 8
-            do (let ((base (truncate j 8)))
+            do (let* ((base (truncate j 8))
+                      (v0 (aref inv j)) (v1 (aref inv (+ j 1)))
+                      (v2 (aref inv (+ j 2))) (v3 (aref inv (+ j 3)))
+                      (v4 (aref inv (+ j 4))) (v5 (aref inv (+ j 5)))
+                      (v6 (aref inv (+ j 6))) (v7 (aref inv (+ j 7))))
+                 (declare (type fixnum base v0 v1 v2 v3 v4 v5 v6 v7))
+                 ;; One byte per bit plane, eight elements at a time.
+                 ;; Building the byte with a chain of (ash b 1) and a
+                 ;; variable-position ldb cost eight times as much as
+                 ;; this single or-tree; it was most of the keypair
+                 ;; generation time.
                  (dotimes (k (mce-gfbits))
-                   (let ((b 0)
-                         (rk (aref rows (+ (* i (mce-gfbits)) k))))
-                     (declare (type (simple-array (unsigned-byte 8) (*)) rk))
-                     (loop for q from 7 downto 0
-                           do (setf b (logior (ash b 1)
-                                              (ldb (byte 1 k)
-                                                   (aref inv (+ j q))))))
+                   (let* ((shift (- k))
+                          (b (logior
+                              (ash (logand 1 (ash v7 shift)) 7)
+                              (ash (logand 1 (ash v6 shift)) 6)
+                              (ash (logand 1 (ash v5 shift)) 5)
+                              (ash (logand 1 (ash v4 shift)) 4)
+                              (ash (logand 1 (ash v3 shift)) 3)
+                              (ash (logand 1 (ash v2 shift)) 2)
+                              (ash (logand 1 (ash v1 shift)) 1)
+                              (logand 1 (ash v0 shift))))
+                          (rk (aref rows (+ (* i (mce-gfbits)) k))))
+                     (declare (type (simple-array (unsigned-byte 8) (*)) rk)
+                              (type (unsigned-byte 8) b))
                      (setf (aref rk base) b)))))
       (dotimes (j (mce-sys-n))
         (setf (aref inv j) (mce-gf-mul (aref inv j) (aref l j)))))
