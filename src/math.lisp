@@ -154,6 +154,22 @@ window from POWER-MOD is mirrored here to save ~20% of the multiplies."
              (tab (make-array (ash 1 (1- k)))))
         (declare (type fixnum bits n l k)
                  (type integer r))
+        ;; A sparse exponent does better with plain left-to-right
+        ;; square-and-multiply: the sliding-window table costs 2^(k-1)
+        ;; multiplies to build, which for RSA's 65537 (a two-bit
+        ;; seventeen-bit exponent) is more than it saves.  This path is
+        ;; only reached from the public drivers (POWER-MOD and
+        ;; MONTGOMERY-EXPT-SHAMIR); the side-channel-sensitive EXPT-MOD
+        ;; uses MONTGOMERY-EXPT-FIXED, whose cost does not depend on the
+        ;; exponent's weight.
+        (when (<= (logcount exp) (ash 1 (1- k)))
+          (replace res ar)
+          (loop for i of-type fixnum downfrom (- l 2) to 0
+                do (mont-mul-limbs res res res m n0 tmp n)
+                   (when (logbitp i exp)
+                     (mont-mul-limbs res res ar m n0 tmp n)))
+          (mont-mul-limbs res res one m n0 tmp n)
+          (return-from montgomery-expt (limbs64-to-integer res)))
         ;; Table of odd powers: TAB[i] = AR^(2i+1), Montgomery form.
         (setf (aref tab 0) (copy-seq ar))
         (let ((acc (make-array n :element-type '(unsigned-byte 64)

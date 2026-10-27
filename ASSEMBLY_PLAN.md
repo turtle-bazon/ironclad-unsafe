@@ -1029,3 +1029,24 @@ a small share of it too.
 
 Validation: full SBCL suite green (which covers all the signature, key
 and padding vectors that depend on this conversion).
+
+## Update (sparse-exponent modexp, this session)
+
+MONTGOMERY-EXPT always built a sliding-window table, sized from the
+*length* of the exponent.  For RSA verification, where e = 65537 is a
+seventeen-bit exponent with two bits set, that table costs 2^(k-1) = 4
+multiplies to build plus a squaring, so the whole function did about 22
+Montgomery multiplies where plain left-to-right square-and-multiply
+needs 17.  Added a sparse-exponent path, taken when
+(logcount exp) <= 2^(k-1): res := ar, then square once per remaining
+bit and multiply by ar for each set bit.
+
+  rsa verify  50 us -> 40 us (21.08k -> ~26k ops/s expected)
+
+Not a side-channel regression: MONTGOMERY-EXPT is reached only from the
+public drivers (POWER-MOD and MONTGOMERY-EXPT-SHAMIR, i.e. verify and
+public-key operations).  The fixed-window, full-table-scan variant that
+private key operations use, MONTGOMERY-EXPT-FIXED via EXPT-MOD, is
+untouched and its cost still does not depend on the exponent's weight.
+
+Validation: dsa and rsa-sig vectors pass, full SBCL suite green.
