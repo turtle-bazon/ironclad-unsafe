@@ -1641,3 +1641,42 @@ point if the three-register form is ever attempted.
 
 Cost of finding out: about an hour, and the differential harness, which
 would also have caught a wrong ADX implementation.
+
+## Update (AVX2 ChaCha core; ChaCha-Poly setup)
+
+SBCL's assembler does have AVX2 (see the corrected note in the previous
+entry), so the two-block ChaCha core now has an AVX2 sibling.  The two
+blocks live one per 128-bit lane of four YMM registers; VPADDD/VPXOR work
+per 32-bit lane and VPSHUFDU per 128-bit lane, which is exactly what the
+quarter rounds and the diagonalisation need, so every instruction advances
+both blocks instead of one.  The VEX three-operand form also removes the
+copy that the SSE shifts need for each rotation.  Selection is at run time
+through AVX2-SUPPORTED-P; the SSE core stays as the fallback.
+
+  chacha (20 rounds)   1024 -> 1365 MB/s      (+33%)
+  xchacha                       same
+  chacha-poly          410 -> 410 MB/s        (unchanged; see below)
+
+The gain is smaller than the two-thirds the instruction count would
+suggest, and the reason is the host: Zen 2's integer ALUs are 128 bits
+wide, so every 256-bit AVX2 op is split into two uops and the ALU
+throughput does not improve -- only the front end sees fewer instructions.
+On an Intel Xeon (the deployment host) the 256-bit ops are full width, so
+this VOP should be much closer to 2x there.
+
+Whether to keep it was decided on that basis plus the fact that it is
+bit-exact: 360 randomized comparisons against the SSE core across all six
+variants (chacha/chacha-12/chacha-8, xchacha and their 12/8-round forms,
+16- and 32-byte keys, 8/12/24-byte nonces, lengths from 1 byte to 8KB) with
+zero mismatches, plus the cipher and AEAD vector files and the full suite.
+
+ChaCha-Poly did not move because it is not ChaCha-bound: an 8KB message
+costs 6us of ChaCha, 6us of Poly1305, ~2us of mode construction and ~6us of
+message allocation and AEAD dispatch.  One part of that was easy to fix
+and is included: the mode was building *two* ChaCha ciphers per message
+(one for the one-time Poly1305 key, one for the payload).  A single cipher
+serves both -- its counter-0 block is the Polykey and encrypting exactly
+that block advances the stream to counter 1 -- which halves mode
+construction (4us -> 2us) and removes a key schedule.  The row itself is
+still dominated by the alloc/copy/dispatch part, which would need the
+message-buffer API to change rather than the cipher.

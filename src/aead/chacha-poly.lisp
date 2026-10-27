@@ -69,30 +69,26 @@ REINITIALIZE-INSTANCE, and the Poly1305 key is single-use anyway."
       (error 'invalid-key-length :cipher cipher-name :accepted-lengths '(32)))
     (unless (= (length initialization-vector) iv-length)
       (error 'invalid-initialization-vector :cipher cipher-name :block-length iv-length))
-    ;; One-time Poly1305 key: first 32 bytes of the counter-0 block.
-    (let* ((poly-cipher (make-cipher cipher-name
-                                     :key key
-                                     :mode :stream
-                                     :initialization-vector initialization-vector))
-           (zeros (make-array 32 :element-type '(unsigned-byte 8) :initial-element 0))
+    ;; One cipher serves both: its counter-0 block is the one-time
+    ;; Poly1305 key, and encrypting that single block advances the
+    ;; stream to counter 1 where the payload starts.  (Building a second
+    ;; cipher for the payload meant two key schedules per message.)
+    (let* ((cipher (make-cipher cipher-name
+                                :key key
+                                :mode :stream
+                                :initialization-vector initialization-vector))
+           (burn (make-array 64 :element-type '(unsigned-byte 8) :initial-element 0))
+           (block0 (make-array 64 :element-type '(unsigned-byte 8)))
            (poly-key (make-array 32 :element-type '(unsigned-byte 8))))
-      (declare (dynamic-extent zeros))
-      (encrypt poly-cipher zeros poly-key)
-      ;; Payload encryption starts at block counter 1: burn block 0.
-      (let ((data-cipher (make-cipher cipher-name
-                                      :key key
-                                      :mode :stream
-                                      :initialization-vector initialization-vector))
-            (burn (make-array 64 :element-type '(unsigned-byte 8) :initial-element 0))
-            (scratch (make-array 64 :element-type '(unsigned-byte 8))))
-        (declare (dynamic-extent burn scratch))
-        (encrypt data-cipher burn scratch)
-        (setf (chacha-poly-cipher mode) data-cipher
-              (chacha-poly-mac mode) (make-mac :poly1305 poly-key)
-              (chacha-poly-ad-length mode) 0
-              (chacha-poly-data-length mode) 0
-              (chacha-poly-ad-finalized-p mode) nil
-              (chacha-poly-tag-finalized-p mode) nil)))
+      (declare (dynamic-extent burn))
+      (encrypt cipher burn block0)
+      (replace poly-key block0 :end2 32)
+      (setf (chacha-poly-cipher mode) cipher
+            (chacha-poly-mac mode) (make-mac :poly1305 poly-key)
+            (chacha-poly-ad-length mode) 0
+            (chacha-poly-data-length mode) 0
+            (chacha-poly-ad-finalized-p mode) nil
+            (chacha-poly-tag-finalized-p mode) nil))
     mode))
 
 (defmethod shared-initialize :after ((mode chacha-poly-base) slot-names &rest initargs &key key initialization-vector &allow-other-keys)

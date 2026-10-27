@@ -81,6 +81,10 @@ the generic loop does (word 12 plus carry into word 13)."
     (setf (aref state 13) (mod32+ (aref state 13) 1)))
   (values))
 
+#+x86-64
+(defvar *chacha-avx2-enabled* t
+  "Set to NIL to force the SSE two-block ChaCha core (validation only).")
+
 (defclass chacha (stream-cipher)
   ((state :reader chacha-state
           :initform (make-array 16 :element-type '(unsigned-byte 32)
@@ -203,20 +207,27 @@ the generic loop does (word 12 plus carry into word 13)."
                      (type chacha-state state-b))
             (replace state-b state)
             (chacha-inc-counter state-b)
-            (multiple-value-bind (q r)
-                (truncate length 128)
-              (declare (type index q r))
-              (dotimes (i q)
-                (declare (ignore i))
-                (chacha-core-2x state state-b plaintext plaintext-start
-                                ciphertext ciphertext-start 2x-rounds)
-                (chacha-inc-counter state)
-                (chacha-inc-counter state)
-                (chacha-inc-counter state-b)
-                (chacha-inc-counter state-b)
-                (incf plaintext-start 128)
-                (incf ciphertext-start 128))
-              (decf length (* q 128)))))
+            (let ((avx2 (and *chacha-avx2-enabled*
+                             (avx2-supported-p))))
+              (declare (type boolean avx2))
+              (multiple-value-bind (q r)
+                  (truncate length 128)
+                (declare (type index q r))
+                (dotimes (i q)
+                  (declare (ignore i))
+                  (if avx2
+                      (chacha-core-2x-avx2 state state-b plaintext
+                                           plaintext-start ciphertext
+                                           ciphertext-start 2x-rounds)
+                      (chacha-core-2x state state-b plaintext plaintext-start
+                                      ciphertext ciphertext-start 2x-rounds))
+                  (chacha-inc-counter state)
+                  (chacha-inc-counter state)
+                  (chacha-inc-counter state-b)
+                  (chacha-inc-counter state-b)
+                  (incf plaintext-start 128)
+                  (incf ciphertext-start 128))
+                (decf length (* q 128))))))
         (loop
           (funcall core-function keystream-buffer state)
           (when (zerop (setf (aref state 12)

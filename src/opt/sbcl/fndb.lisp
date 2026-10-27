@@ -146,6 +146,19 @@
   :overwrite-fndb-silently t)
 
 #+x86-64
+(defknown ironclad-unsafe::chacha-core-2x-avx2
+  ((simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 32) (*))
+   (simple-array (unsigned-byte 8) (*))
+   (unsigned-byte 64)
+   (simple-array (unsigned-byte 8) (*))
+   (unsigned-byte 64)
+   (unsigned-byte 8))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
 (defknown ironclad-unsafe::aes-ni-encrypt-8x
   ((simple-array (unsigned-byte 8) (*))
    (unsigned-byte 64)

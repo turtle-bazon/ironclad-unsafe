@@ -21,6 +21,7 @@
   (:import-from #:sb-vm
                 #:positive-fixnum #:unsigned-num
                 #:descriptor-reg #:unsigned-reg #:double-reg #:immediate
+                #+x86-64 #:int-sse-reg #+x86-64 #:int-avx2-reg
                 #:simple-array-unsigned-byte-8
                 #:simple-array-unsigned-byte-32
                 #+x86-64 #:simple-array-unsigned-byte-64
@@ -5709,6 +5710,113 @@
         (inst pxor t7 t8)
         (inst movdqu (ea (+ disp (* 16 7)) out out-start) t7)
       (values))))
+
+;;; Two-block ChaCha core with AVX2.
+;;;
+;;; The same two consecutive blocks as CHACHA-CORE-2X, but packed one per
+;;; 128-bit lane of four YMM registers, so every instruction advances both
+;;; blocks instead of one.  VPADDD/VPXOR work on each 32-bit lane
+;;; independently and VPSHUFDU on each 128-bit lane independently, which is
+;;; exactly the shape the quarter rounds and the diagonalisation need.  The
+;;; rotations stay shift-and-or (like the SSE version) except that the VEX
+;;; three-operand form removes the copy of the rotate source.
+;;;
+;;; Only selected when AVX2 is present; the SSE two-block VOP stays as the
+;;; fallback, and the two produce identical output.
+
+#+x86-64
+(define-vop (chacha-core-2x-avx2)
+  (:translate ironclad-unsafe::chacha-core-2x-avx2)
+  (:policy :fast-safe)
+  (:args (state-a :scs (descriptor-reg))
+         (state-b :scs (descriptor-reg))
+         (plaintext :scs (descriptor-reg))
+         (plaintext-start :scs (unsigned-reg))
+         (out :scs (descriptor-reg))
+         (out-start :scs (unsigned-reg))
+         (n-rounds :scs (unsigned-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-8
+              unsigned-num
+              simple-array-unsigned-byte-8
+              unsigned-num
+              unsigned-num)
+  (:temporary (:sc int-avx2-reg) t0 t1 t2 t3 t4)
+  (:temporary (:sc int-sse-reg) x0)
+  (:temporary (:sc unsigned-reg) count)
+  (:generator 1000
+    (let ((disp (- (* n-word-bytes vector-data-offset) other-pointer-lowtag))
+          (repeat (gen-label)))
+      (macrolet
+          ((load-row (tn r)
+             ;; TN := [row R of block A | row R of block B].
+             `(progn
+                (inst vpxor ,tn ,tn ,tn)
+                (inst vmovdqu x0 (ea (+ disp (* 16 ,r)) state-a))
+                (inst vinserti128 ,tn ,tn x0 0)
+                (inst vmovdqu x0 (ea (+ disp (* 16 ,r)) state-b))
+                (inst vinserti128 ,tn ,tn x0 1)))
+           (qr (a b c d tmp-reg)
+             ;; One quarter round on all four lanes: the four column
+             ;; quarter rounds (or the four diagonal ones) at once.
+             `(progn
+                (inst vpaddd ,a ,a ,b)
+                (inst vpxor ,d ,d ,a)
+                (inst vpslld ,tmp-reg ,d 16)
+                (inst vpsrld ,d ,d 16)
+                (inst vpor ,d ,d ,tmp-reg)
+                (inst vpaddd ,c ,c ,d)
+                (inst vpxor ,b ,b ,c)
+                (inst vpslld ,tmp-reg ,b 12)
+                (inst vpsrld ,b ,b 20)
+                (inst vpor ,b ,b ,tmp-reg)
+                (inst vpaddd ,a ,a ,b)
+                (inst vpxor ,d ,d ,a)
+                (inst vpslld ,tmp-reg ,d 8)
+                (inst vpsrld ,d ,d 24)
+                (inst vpor ,d ,d ,tmp-reg)
+                (inst vpaddd ,c ,c ,d)
+                (inst vpxor ,b ,b ,c)
+                (inst vpslld ,tmp-reg ,b 7)
+                (inst vpsrld ,b ,b 25)
+                (inst vpor ,b ,b ,tmp-reg)))
+           (out-row (tn r)
+             ;; Feed-forward the initial state into TN, then xor both
+             ;; blocks' keystream with the plaintext and store.
+             `(progn
+                (load-row t4 ,r)
+                (inst vpaddd ,tn ,tn t4)
+                (inst vextracti128 x0 ,tn 0)
+                (inst vpxor x0 x0 (ea (+ disp (* 16 ,r))
+                                     plaintext plaintext-start))
+                (inst vmovdqu (ea (+ disp (* 16 ,r)) out out-start) x0)
+                (inst vextracti128 x0 ,tn 1)
+                (inst vpxor x0 x0 (ea (+ disp (* 16 (+ 4 ,r)))
+                                     plaintext plaintext-start))
+                (inst vmovdqu (ea (+ disp (* 16 (+ 4 ,r))) out out-start) x0))))
+        (load-row t0 0)
+        (load-row t1 1)
+        (load-row t2 2)
+        (load-row t3 3)
+        (inst mov count n-rounds)
+        (emit-label repeat)
+        (qr t0 t1 t2 t3 t4)
+        (inst vpshufd t1 t1 #b00111001)
+        (inst vpshufd t2 t2 #b01001110)
+        (inst vpshufd t3 t3 #b10010011)
+        (qr t0 t1 t2 t3 t4)
+        (inst vpshufd t1 t1 #b10010011)
+        (inst vpshufd t2 t2 #b01001110)
+        (inst vpshufd t3 t3 #b00111001)
+        (inst sub count 1)
+        (inst jmp :nz repeat)
+        (out-row t0 0)
+        (out-row t1 1)
+        (out-row t2 2)
+        (out-row t3 3)
+        (inst vzeroupper)))
+    (values)))
 
 #+x86-64
 (define-vop (mce-xor-words)
