@@ -905,3 +905,37 @@ digest names are :sha3/224, :sha3/256, :sha3/384 and plain :sha3 for
 a make-digest :output-length initarg, not a digest-sequence keyword.
 Remaining ML-DSA verify cost is now NTT/INVNTT/pointwise (~49%), which
 needs a limb or SIMD NTT rather than a Lisp-level fix.
+
+## Update (McEliece keygen row xor, this session)
+
+Profiling mceliece348864 keygen put 72% in MCE-PK-GEN (the Gaussian
+elimination that brings the parity-check matrix to systematic form).
+The row xor inner loop was already 64-bit-word based but scalar; new
+mce-xor-words VOP does sixteen bytes per step (movdqu/pxor/movdqu) with
+a scalar tail, wrapped in an inline mce-row-xor! that keeps the portable
+loop for other Lisps and non-assembly builds.  Both elimination passes
+(forward reduce, then reduce every other row) use it.
+
+Honest result -- the loop is memory bound, so the win only appears when
+rows are long enough to matter:
+  mceliece8192128 keygen (1 KiB rows) 2.67 s -> 2.27 s  (~15%,
+    fixed-seed A/B, three VOP samples vs two portable samples)
+  mceliece348864 keygen (440 B rows) neutral (~95 ms both ways)
+The official table rows for McEliece keygen swing 30%+ between runs
+because keygen has a rejection loop over random seeds, so treat those
+numbers as indicative only; the fixed-seed A/B above is the real
+measurement.
+
+Correctness: keygen is deterministic from a seed, so the strongest test
+is cross-implementation -- the same seed was run on SBCL (VOP path) and
+CCL (portable path) and produced byte-identical public and private keys
+for mceliece348864 and mceliece8192128, with a full encapsulate/
+decapsulate roundtrip on each.  The repo McEliece vectors only cover
+encapsulation/decapsulation, so they would not have caught a keygen
+regression -- worth remembering for future keygen work.  Full SBCL
+suite green.
+
+Notes: the VOP needs positive-fixnum args, so the callers' W and
+WORDLEN had to be declared index rather than fixnum for translation;
+and ea takes base/index/scale plus a constant displacement, so the row
+pointers are formed with lea and then advanced by 16.

@@ -1036,6 +1036,21 @@ Returns T on success, NIL when the matrix is not systematic."
                  (byte 8 (* 8 (logand i 7)))
                  (aref row (ash i -3)))))))
 
+(declaim (inline mce-row-xor!))
+(defun mce-row-xor! (dst src start end)
+  "DST[START..END) := DST[START..END) XOR SRC[START..END), word by word.
+The McEliece elimination calls this once per eliminated row, so the
+inner loop is worth vectorizing."
+  (declare (type (simple-array (unsigned-byte 64) (*)) dst src)
+           (type index start end)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (mce-xor-words dst src start (- end start))
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
+  (loop for c of-type index from start below end
+        do (setf (aref dst c) (logxor (aref dst c) (aref src c))))
+  (values))
+
 (declaim (inline mce-word-row-byte mce-word-row-bit))
 (defun mce-word-row-byte (row byte-index)
   (declare (type (simple-array (unsigned-byte 64) (*)) row)
@@ -1069,7 +1084,7 @@ PIV is permutation-sized scratch/output. Returns T on success, NIL on failure."
         (wordlen (ceiling (ash (mce-sys-n) -3) 8)))
     (declare (type (simple-array fixnum (*)) g l inv)
              (type simple-vector rows wordrows)
-             (type fixnum nbytes wordlen))
+             (type index nbytes wordlen))
     (setf (aref g (mce-sys-t)) 1)
     (dotimes (i (mce-sys-t))
       (setf (aref g i) (mce-load-gf sk (* i 2))))
@@ -1114,7 +1129,7 @@ PIV is permutation-sized scratch/output. Returns T on success, NIL on failure."
                    (let* ((w (ash i -3))
                           (mask (aref *mce-bit-masks* (+ (* 8 (logand i 7)) j)))
                           (rr (aref wordrows row)))
-                     (declare (type fixnum w)
+                     (declare (type index w)
                               (type (unsigned-byte 64) mask)
                               (type (simple-array (unsigned-byte 64) (*)) rr))
                      (let ((rbit (if (zerop (logand (aref rr w) mask)) 0 1)))
@@ -1124,9 +1139,7 @@ PIV is permutation-sized scratch/output. Returns T on success, NIL on failure."
                                   (declare (type (simple-array (unsigned-byte 64) (*)) rk))
                                   (when (/= rbit (if (zerop (logand (aref rk w) mask))
                                                       0 1))
-                                    (loop for c from w below wordlen
-                                          do (setf (aref rr c)
-                                                   (logxor (aref rr c) (aref rk c))))
+                                    (mce-row-xor! rr rk w wordlen)
                                     (setf rbit 1))))
                        (when (zerop rbit)
                          (return-from mce-pk-gen nil)))
@@ -1135,9 +1148,7 @@ PIV is permutation-sized scratch/output. Returns T on success, NIL on failure."
                          (let ((rk (aref wordrows k)))
                            (declare (type (simple-array (unsigned-byte 64) (*)) rk))
                            (when (not (zerop (logand (aref rk w) mask)))
-                             (loop for c from w below wordlen
-                                   do (setf (aref rk c)
-                                            (logxor (aref rk c) (aref rr c))))))))))))
+                             (mce-row-xor! rk rr w wordlen)))))))))
     (let ((tail (mod (mce-pk-nrows) 8)))
       (if (zerop tail)
           (dotimes (i (mce-pk-nrows))

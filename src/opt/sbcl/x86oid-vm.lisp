@@ -5577,3 +5577,49 @@
         (inst pxor t7 t8)
         (inst movdqu (ea (+ disp (* 16 7)) out out-start) t7)
       (values))))
+
+#+x86-64
+(define-vop (mce-xor-words)
+  ;; DST[START .. START+COUNT) ^= SRC[START .. START+COUNT), word by word.
+  ;; The McEliece keypair generator spends most of its time in these row
+  ;; xors during the Gaussian elimination; doing sixteen bytes per step
+  ;; halves the instruction count of the inner loop.
+  (:translate ironclad-unsafe::mce-xor-words)
+  (:policy :fast-safe)
+  (:args (dst :scs (descriptor-reg))
+         (src :scs (descriptor-reg))
+         (start :scs (unsigned-reg))
+         (count :scs (unsigned-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64
+              positive-fixnum
+              positive-fixnum)
+  (:temporary (:sc unsigned-reg) dp sp cnt w)
+  (:temporary (:sc double-reg) x0 x1)
+  (:generator 1000
+    (let ((disp (- (* n-word-bytes vector-data-offset) other-pointer-lowtag))
+          (top (gen-label))
+          (tail (gen-label))
+          (done (gen-label)))
+      (inst lea dp (ea disp dst start 8))
+      (inst lea sp (ea disp src start 8))
+      (inst mov cnt count)
+      (inst shr cnt 1)
+      (inst jmp :z tail)
+      (emit-label top)
+      (inst movdqu x0 (ea 0 dp))
+      (inst movdqu x1 (ea 0 sp))
+      (inst pxor x0 x1)
+      (inst movdqu (ea 0 dp) x0)
+      (inst add dp 16)
+      (inst add sp 16)
+      (inst sub cnt 1)
+      (inst jmp :nz top)
+      (emit-label tail)
+      (inst mov cnt count)
+      (inst and cnt 1)
+      (inst jmp :z done)
+      (inst mov w (ea 0 dp))
+      (inst xor w (ea 0 sp))
+      (inst mov (ea 0 dp) w)
+      (emit-label done))))
