@@ -112,6 +112,11 @@ denominator."
 #+(and sbcl x86-64 ironclad-unsafe-assembly)
 (progn
 
+(defvar *mont-cios-enabled* t
+  "Select the interleaved (CIOS) Montgomery VOPs over the separated
+(SOS) ones.  Both compute the same function; this exists for A/B
+measurement and as an escape hatch.")
+
 (declaim (inline mont-mul-limbs))
 (defun mont-mul-limbs (r a b m n0 tmp n)
   "Montgomery multiply of the N-limb residues A and B into R, reusing
@@ -120,11 +125,17 @@ the 2N+1-limb scratch TMP.  All arrays stay in Montgomery form."
            (type (unsigned-byte 64) n0)
            (type (member 16 32 48 64) n)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (ecase n
-    (16 (mont-mul-16-asm r a b m n0 tmp))
-    (32 (mont-mul-32-asm r a b m n0 tmp))
-    (48 (mont-mul-48-asm r a b m n0 tmp))
-    (64 (mont-mul-64-asm r a b m n0 tmp)))
+  (if *mont-cios-enabled*
+      (ecase n
+        (16 (mont-mul-16-cios-asm r a b m n0 tmp))
+        (32 (mont-mul-32-cios-asm r a b m n0 tmp))
+        (48 (mont-mul-48-cios-asm r a b m n0 tmp))
+        (64 (mont-mul-64-cios-asm r a b m n0 tmp)))
+      (ecase n
+        (16 (mont-mul-16-asm r a b m n0 tmp))
+        (32 (mont-mul-32-asm r a b m n0 tmp))
+        (48 (mont-mul-48-asm r a b m n0 tmp))
+        (64 (mont-mul-64-asm r a b m n0 tmp))))
   r)
 
 (defun montgomery-expt (base exp mod)

@@ -1529,3 +1529,44 @@ rows are unchanged.  The host load is still around five, so the absolute
 Lisp numbers remain a lower bound; the 123 measured rows put 34 ahead of
 the C reference and 67 within 2x this run, against 37/66 last run, which is
 C-reference noise rather than movement in our numbers.
+
+## Update (CIOS Montgomery multiply VOPs; RSA/DSA 13-20% faster)
+
+RSA and DSA are almost entirely Montgomery multiplication, and the
+existing mont-mul-N-asm VOPs used separated operand scanning: build the
+full 2N-limb product into the scratch buffer, then make N reduction
+passes over it, each with a carry propagation across the top half.  The
+limb data crosses the memory interface several times per multiply.
+
+Added a coarsely integrated operand scanning (CIOS) form for the same
+four sizes (16/32/48/64 limbs).  It interleaves the multiplication and
+reduction, keeps only an N+2-word rolling window, and shifts the window
+down as each word is consumed, so each limb is loaded and stored about
+once per outer step and the separate carry-propagation loop disappears.
+The final conditional subtraction now tests the single overflow word
+rather than the top of a 2N buffer.
+
+  mont-mul-16   440ns -> 400ns   (n=1024-bit)
+  mont-mul-32  1760ns -> 1440ns  (n=2048-bit)
+
+  rsa verify  40.0us -> 32.0us  (min-of-4, interleaved A/B)
+  dsa verify 616us   -> 520us
+  rsa sign   952us   -> 832us
+
+Both VOP families are kept and selected by *mont-cios-enabled* (default
+on); the SOS code is the differential reference and the escape hatch.
+
+Honest note on the size of the win: the target was the 2x that ADX gives,
+and that did not materialise.  With plain MUL the carry chain through
+`add rax,t[j]; adc rdx,0; add rax,carry; adc rdx,0' is serial and costs
+about 2.4 cycles per limb-pair, which is where CIOS levels out; the memory
+traffic SOS wasted was not the bottleneck.  Getting the other factor needs
+MULX and the ADCX/ADOX dual carry chains (BMI2/ADX), and therefore a
+second VOP plus a runtime CPU gate, since neither extension is part of the
+x86-64 baseline.  That is the natural next step here, not another
+rearrangement of the same scalar loop.
+
+Validation: differential against the SOS VOPs over 120k+ random and
+adversarial inputs (all-ones, top-limb-only modulus, m-1, 0, 1, small
+values, and bulk random) at every size, with zero mismatches; the full
+SBCL suite, which covers the RSA/DSA/DH vectors, is green.
