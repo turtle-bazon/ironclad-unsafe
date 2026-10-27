@@ -1742,3 +1742,46 @@ the keypair generator for all five sets, HQC (3), BIKE (3), gcm-siv (vector
 and incremental), chacha-poly, and a filtered run of 679 tests (everything
 except XMSS and the KEM roundtrips, which were checked separately) with no
 failures reported through the public-key vector tests.
+
+## Update (two more ABCL bugs: 62-bit-fixnum assumptions)
+
+With the McEliece compile failure fixed, the ABCL suite surfaced two more
+failures, both caused by the same assumption: that a FIXNUM is wide enough
+to hold a value that is only wide on the 62-bit-fixnum implementations
+(SBCL, CCL, ECL) but not on ABCL, whose fixnums are 32 bits signed
+(MOST-POSITIVE-FIXNUM = 2147483647).
+
+1. SLH-DSA.  The reference uses 0xFFFFFFFF as the "do not emit a WOTS
+   signature" sentinel for the leaf index, and SLH-TREEHASH declares that
+   index FIXNUM.  On ABCL every SLH-DSA keygen/sign died with
+   "The value 4294967295 is not of type FIXNUM".  The sentinel is now -1,
+   which cannot collide with a real leaf index (those are < 2^12) and is a
+   fixnum everywhere.  The 0xFFFFFFFF *mask* used to compute the WOTS chain
+   length is untouched; it is a mask, not the sentinel.
+
+2. ML-DSA.  ML-DSA-MONTGOMERY-REDUCE declared its argument FIXNUM with a
+   comment explaining that the product of two coefficients is "well inside
+   the fixnum range".  That is true at 62 bits and false at 32: q is
+   8380417, so q*q is 7.0e13, and after the un-reduced NTT stages a
+   coefficient can reach ~9q, making the product ~3e14.  ABCL does not
+   signal a type error here (the function is compiled with SAFETY 0); it
+   silently truncated, and every ML-DSA signature check failed while
+   signing still produced self-consistent results -- which is why the
+   roundtrip test would not have caught it and the KAT files did.  The
+   declaration is now (SIGNED-BYTE 62), which is exactly the fixnum type on
+   the 62-bit implementations (so SBCL still keeps the value unboxed and
+   its numbers are unchanged) and a bignum on ABCL, where the arithmetic is
+   then correct.
+
+Checked the rest of the tree for the same shape -- a FIXNUM declaration on
+a product of two values -- and ML-DSA is the only scheme where the modulus
+squared exceeds 2^31 (Falcon q*q is 1.5e8, ML-KEM 1.1e7; the elliptic-curve,
+HQC, BIKE, RSA/DSA and hash-based code either uses explicit U64 limb
+declarations or plain integers).
+
+Verification under ABCL 1.9.0: the ML-DSA signature vector file passes, the
+SLH-DSA 128f sets (SHA-2 and SHAKE) keygen/sign/verify, and the checksums
+of ML-DSA-MONTGOMERY-REDUCE, FQMUL, the forward and inverse NTT and a
+SHAKE-128 squeeze are now identical to SBCL's.  The SBCL suite is green,
+and the ML-DSA numbers are unchanged there (the declaration is still the
+fixnum type).

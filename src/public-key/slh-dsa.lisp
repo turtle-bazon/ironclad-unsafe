@@ -757,7 +757,11 @@ during verification); it is NOT recomputed here."
   (wots-steps nil)
   (wots-sig nil)
   (wots-sig-start 0)
-  (wots-sign-leaf #xFFFFFFFF))
+  ;; -1 means "emit no WOTS signature".  It has to be a fixnum on every
+  ;; implementation: slh-treehash declares its leaf index FIXNUM, and
+  ;; ABCL's fixnums are 31 bits, so the reference's 0xFFFFFFFF sentinel
+  ;; is a type error there.
+  (wots-sign-leaf -1))
 
 (defun slh-wots-gen-leaf (dest dest-start ctx idx info)
   "Reference wots_gen_leafx1: build one XMSS leaf (WOTS+ pk)."
@@ -860,8 +864,8 @@ Returns the WOTS leaf (thash of the WOTS pk buffer)."
                                    :initial-element 0)))
       (slh-set-layer top-tree-addr (1- (slh-d)))
       (slh-set-layer wots-addr (1- (slh-d)))
-      ;; sign-leaf #xFFFFFFFF: no WOTS signature is emitted
-      (slh-merkle-sign sig-dummy 0 root ctx wots-addr top-tree-addr #xFFFFFFFF))
+      ;; sign-leaf -1: no WOTS signature is emitted
+      (slh-merkle-sign sig-dummy 0 root ctx wots-addr top-tree-addr -1))
     (setf sk (concatenate '(simple-array (unsigned-byte 8) (*))
                           sk-seed sk-prf pub-seed root))
     (let ((pk (concatenate '(simple-array (unsigned-byte 8) (*))

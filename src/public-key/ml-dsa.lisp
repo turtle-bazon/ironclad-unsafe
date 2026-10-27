@@ -117,10 +117,14 @@
 
 (defun ml-dsa-montgomery-reduce (a)
   "Montgomery reduction; returns integer congruent to A * 2^-32 mod q."
-  ;; A is the product of two coefficients below q, so it is well inside
-  ;; the fixnum range; declaring (signed-byte 64) would box every value
-  ;; because SBCL fixnums are 62 bits wide.
-  (declare (type fixnum a)
+  ;; A is a product of two coefficients and after the un-reduced NTT
+  ;; stages can reach ~9q*q, well inside 50 bits.  (SIGNED-BYTE 62) is
+  ;; exactly the fixnum type on the 62-bit-fixnum implementations, so
+  ;; SBCL still keeps it unboxed, but it is also correct where fixnums are
+  ;; only 32 bits (ABCL), where such a product is a bignum.  Declaring
+  ;; plain FIXNUM silently truncated there and broke every ML-DSA
+  ;; signature check.
+  (declare (type (signed-byte 62) a)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((w (ldb (byte 32 0) (* (ldb (byte 32 0) a) 58728449)))
          (t32 (if (>= w (ash 1 31)) (- w (ash 1 32)) w)))
