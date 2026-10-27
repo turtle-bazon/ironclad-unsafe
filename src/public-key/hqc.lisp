@@ -171,89 +171,40 @@
 
 
 ;;;
-;;; GF(256) = GF(2)[x]/(x^8 + x^4 + x^3 + x + 1).
+;;; GF(256) = GF(2)[x]/(x^8 + x^4 + x^3 + x^2 + 1).
 ;;;
 
 (declaim (inline hqc-gf-add))
 (defun hqc-gf-add (a b)
   (logxor a b))
 
-(defun hqc-gf-reduce (x deg-x)
-  "Reduce X (degree < 64) modulo the primitive polynomial."
-  (let ((steps (ceiling (- deg-x 7) 4)))
-    (dotimes (i steps)
-      (let ((mod (ash x -8)))
-        (setf x (logand x #xFF))
-        (setf x (logxor x mod))
-        (let ((z1 0)
-              (rmdr (logxor #x11D 1)))
-          (loop for j from 3 downto 1
-                do (let* ((z2 (hqc-tzcount rmdr))
-                          (dist (- z2 z1)))
-                     (setf mod (ash mod dist))
-                     (setf x (logxor x mod))
-                     (setf rmdr (logxor rmdr (ash 1 z2)))
-                     (setf z1 z2)))))))
-  (logand x #xFFFF))
-
-(defun hqc-tzcount (a)
-  (let ((tmp 0)
-        (mask #xFFFF))
-    (dotimes (i 14)
-      (let ((bit (logand (ash a (- i)) 1)))
-        (setf tmp (+ tmp (logand (- 1 bit) mask)))
-        (setf mask (logand mask (- (- 1 bit))))))
-    tmp))
-
-(declaim (inline hqc-u32-eq-mask hqc-u64-eq-mask))
-(defun hqc-u32-eq-mask (a b)
-  "All-ones (32-bit) iff A equals B; mirrors (0 - (1 - (((a-b)|(-(a-b)))>>31)))."
-  (let* ((d (logand (- a b) #xFFFFFFFF))
-         (s (ldb (byte 1 31) (logior d (logand (- d) #xFFFFFFFF)))))
-    (if (zerop s) #xFFFFFFFF 0)))
-
-(defun hqc-u64-eq-mask (a b)
-  "All-ones (64-bit) iff A equals B; mirrors the 64-bit mask idiom."
-  (let* ((d (logand (- a b) #xFFFFFFFFFFFFFFFF))
-         (s (ldb (byte 1 63) (logior d (logand (- d) #xFFFFFFFFFFFFFFFF)))))
-    (if (zerop s) #xFFFFFFFFFFFFFFFF 0)))
-
-(defun hqc-gf-cmul (a b)
-  "Carryless multiply of bytes A B; returns (low high)."
-  (let ((h 0) (l 0) (g 0)
-        (u (make-array 4 :initial-element 0))
-        (tmp1 0) (mask 0))
-    (setf (aref u 0) 0
-          (aref u 1) (logand b #x7F)
-          (aref u 2) (ash (aref u 1) 1)
-          (aref u 3) (logxor (aref u 2) (aref u 1)))
-    (setf tmp1 (logand a 3))
-    (dotimes (i 4)
-      (setf g (logxor g (logand (aref u i) (hqc-u32-eq-mask tmp1 i)))))
-    (setf l g h 0)
-    (loop for i from 2 below 8 by 2
-          do (setf g 0
-                   tmp1 (logand (ash a (- i)) 3))
-             (dotimes (j 4)
-               (setf g (logxor g (logand (aref u j) (hqc-u32-eq-mask tmp1 j)))))
-             (setf l (logxor l (ash g i)))
-             (setf h (logxor h (ash g (- i 8)))))
-    (setf mask (if (zerop (logand (ash b -7) 1)) 0 #xFFFFFFFF))
-    (setf l (logxor l (logand (ash a 7) mask)))
-    (setf h (logxor h (logand (ash a -1) mask)))
-    (values (logand l #xFF) (logand h #xFF))))
-
 (defun hqc-gf-mul (a b)
-  (multiple-value-bind (lo hi) (hqc-gf-cmul a b)
-    (hqc-gf-reduce (logior lo (ash hi 8)) 14)))
+  "The product of two GF(256) elements.
+Branch-free and table-free: the operand is shifted and conditionally
+reduced with masks derived from its own top bit, so the timing does not
+depend on the values and there is no lookup table to leak through the
+cache.  The earlier carryless-multiply form was correct but ran in
+generic arithmetic with a 4-element scratch vector allocated per call
+and a loop-based reduction, which cost about 800ns per multiply; this is
+a fixed eight-step shift-and-add and costs a few tens of cycles."
+  (declare (type (unsigned-byte 8) a b))
+  (let ((p 0)
+        (x a)
+        (y b))
+    (declare (type (unsigned-byte 8) p x y))
+    (dotimes (i 8)
+      ;; p ^= x when the low bit of Y is set, else p is unchanged.
+      (setf p (logxor p (logand x (- (logand y 1)))))
+      ;; x := 2x mod x^8+x^4+x^3+x^2+1
+      (setf x (logxor (logand (ash x 1) #xFF)
+                      (logand (- (ash x -7)) #x1D)))
+      (setf y (ash y -1)))
+    p))
 
 (defun hqc-gf-square (a)
-  (let ((b a)
-        (s (logand a 1)))
-    (dotimes (i 7)
-      (setf b (ash b 1))
-      (setf s (logxor s (logand b (ash 1 (* 2 (1+ i)))))))
-    (hqc-gf-reduce s 14)))
+  "The square of a GF(256) element."
+  (declare (type (unsigned-byte 8) a))
+  (hqc-gf-mul a a))
 
 (defun hqc-gf-inv (a)
   (let* ((inv (hqc-gf-square a))
@@ -452,10 +403,10 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
   #+(and sbcl x86-64 ironclad-unsafe-assembly) (pclmulqdq-supported-p)
   #-(and sbcl x86-64 ironclad-unsafe-assembly) nil)
 
-(defun hqc-base-mul-serial (c a b)
-  "Constant-time bit-serial carryless 64x64 -> 128-bit product into C[0..1]."
-  (declare (type (simple-array (unsigned-byte 64) (*)) c)
-           (type (unsigned-byte 64) a b)
+(defun hqc-base-mul-serial (a b)
+  "Constant-time bit-serial carryless 64x64 multiplication.
+Returns the low and high halves as two values."
+  (declare (type (unsigned-byte 64) a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((l 0) (h 0))
     (declare (type (unsigned-byte 64) l h))
@@ -467,82 +418,83 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
             (let ((low-bits (logand a (1- (ash 1 (- 64 j))))))
               (setf l (logxor l (logand (ash low-bits j) bmask)))
               (setf h (logxor h (logand (ash a (- (- 64 j))) bmask)))))))
-    (setf (aref c 0) l
-          (aref c 1) h)
-    (values)))
+    (values l h)))
 
 (declaim (inline hqc-base-mul))
-(defun hqc-base-mul (c a b)
-  "Carryless 64x64 -> 128-bit product into C[0..1]."
-  (declare (type (simple-array (unsigned-byte 64) (*)) c)
-           (type (unsigned-byte 64) a b)
+(defun hqc-base-mul (a b)
+  "Carryless 64x64 -> 128-bit product, as two values."
+  (declare (type (unsigned-byte 64) a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (if *hqc-use-pclmul*
-      (multiple-value-bind (l h) (hqc-clmul64 a b)
-        (setf (aref c 0) l
-              (aref c 1) h)
-        (values))
-      (hqc-base-mul-serial c a b))
+      (hqc-clmul64 a b)
+      (hqc-base-mul-serial a b))
   #-(and sbcl x86-64 ironclad-unsafe-assembly)
-  (hqc-base-mul-serial c a b))
+  (hqc-base-mul-serial a b))
+
+;;; The Karatsuba recursion addresses its operands by offset into the
+;;; original simple arrays rather than through displaced arrays.  A
+;;; displaced array is an `(array (unsigned-byte 64) (*))' -- the general
+;;; array type -- so every AREF on it goes through the full generic path;
+;;; with offsets the whole recursion operates on SIMPLE-ARRAYs and the
+;;; limb accesses inline to a single load.
 
 (declaim (inline hqc-karatsuba-add1 hqc-karatsuba-add2 hqc-vec-reduce))
-(defun hqc-karatsuba-add1 (alh blh a b size-l size-h)
-  (declare (type (array (unsigned-byte 64) (*)) alh blh a b)
-           (type fixnum size-l size-h)
+(defun hqc-karatsuba-add1 (alh blh a ao b bo size-l size-h)
+  (declare (type (simple-array (unsigned-byte 64) (*)) alh blh a b)
+           (type fixnum ao bo size-l size-h)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i size-h)
-    (setf (aref alh i) (logxor (aref a i) (aref a (+ i size-l))))
-    (setf (aref blh i) (logxor (aref b i) (aref b (+ i size-l)))))
+    (setf (aref alh i) (logxor (aref a (+ ao i)) (aref a (+ ao i size-l))))
+    (setf (aref blh i) (logxor (aref b (+ bo i)) (aref b (+ bo i size-l)))))
   (when (< size-h size-l)
-    (setf (aref alh size-h) (aref a size-h))
-    (setf (aref blh size-h) (aref b size-h)))
+    (setf (aref alh size-h) (aref a (+ ao size-h))
+          (aref blh size-h) (aref b (+ bo size-h))))
   (values))
 
-(defun hqc-karatsuba-add2 (o tmp1 tmp2 size-l size-h)
-  (declare (type (array (unsigned-byte 64) (*)) o tmp1 tmp2)
-           (type fixnum size-l size-h)
+(defun hqc-karatsuba-add2 (o oo tmp1 size-l size-h)
+  (declare (type (simple-array (unsigned-byte 64) (*)) o tmp1)
+           (type fixnum oo size-l size-h)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (dotimes (i (* 2 size-l))
-    (setf (aref tmp1 i) (logxor (aref tmp1 i) (aref o i))))
+    (setf (aref tmp1 i) (logxor (aref tmp1 i) (aref o (+ oo i)))))
   (dotimes (i (* 2 size-h))
-    (setf (aref tmp1 i) (logxor (aref tmp1 i) (aref tmp2 i))))
+    (setf (aref tmp1 i)
+          (logxor (aref tmp1 i) (aref o (+ oo (* 2 size-l) i)))))
   (dotimes (i (* 2 size-l))
-    (setf (aref o (+ i size-l)) (logxor (aref o (+ i size-l)) (aref tmp1 i))))
+    (setf (aref o (+ oo size-l i))
+          (logxor (aref o (+ oo size-l i)) (aref tmp1 i))))
   (values))
 
-(defun hqc-karatsuba (o a b size)
-  (declare (type (array (unsigned-byte 64) (*)) o a b)
-           (type fixnum size)
+(defun hqc-karatsuba (o oo a ao b bo size)
+  (declare (type (simple-array (unsigned-byte 64) (*)) o a b)
+           (type fixnum oo ao bo size)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (if (= size 1)
-      (let ((c (hqc-u64vec 2)))
-        (hqc-base-mul c (aref a 0) (aref b 0))
-        (setf (aref o 0) (aref c 0)
-              (aref o 1) (aref c 1))
-        (values))
+      (multiple-value-bind (l h) (hqc-base-mul (aref a ao) (aref b bo))
+        (setf (aref o oo) l
+              (aref o (1+ oo)) h))
+      ;; O[OO ..] := A[AO ..] * B[BO ..] as sum of three products.
       (let* ((size-h (truncate size 2))
-         (size-l (truncate (1+ size) 2))
-         (alh (hqc-u64vec (1+ size-l)))
-         (blh (hqc-u64vec (1+ size-l)))
-         (tmp1 (hqc-u64vec (* 2 size-l)))
-         (ah (make-array size-h :element-type '(unsigned-byte 64)
-                             :displaced-to a :displaced-index-offset size-l))
-         (bh (make-array size-h :element-type '(unsigned-byte 64)
-                             :displaced-to b :displaced-index-offset size-l))
-         (tmp2 (make-array (* 2 size-h) :element-type '(unsigned-byte 64)
-                               :displaced-to o :displaced-index-offset (* 2 size-l))))
-    (declare (type fixnum size-h size-l))
-    (hqc-karatsuba o a b size-l)
-    (hqc-karatsuba tmp2 ah bh size-h)
-    (hqc-karatsuba-add1 alh blh a b size-l size-h)
-    (hqc-karatsuba tmp1 alh blh size-l)
-    (hqc-karatsuba-add2 o tmp1 tmp2 size-l size-h)
-    (values))))
+             (size-l (truncate (1+ size) 2))
+             (alh (make-array (1+ size-l) :element-type '(unsigned-byte 64)
+                                              :initial-element 0))
+             (blh (make-array (1+ size-l) :element-type '(unsigned-byte 64)
+                                              :initial-element 0))
+             (tmp1 (make-array (* 2 size-l) :element-type '(unsigned-byte 64)
+                                               :initial-element 0)))
+        (declare (type (simple-array (unsigned-byte 64) (*)) alh blh tmp1)
+                 (type fixnum size-h size-l))
+        (hqc-karatsuba o oo a ao b bo size-l)
+        (hqc-karatsuba o (+ oo (* 2 size-l)) a (+ ao size-l) b (+ bo size-l)
+                       size-h)
+        (hqc-karatsuba-add1 alh blh a ao b bo size-l size-h)
+        (hqc-karatsuba tmp1 0 alh 0 blh 0 size-l)
+        (hqc-karatsuba-add2 o oo tmp1 size-l size-h)
+        (values))))
 
 (defun hqc-vec-reduce (o a)
-  (declare (type (array (unsigned-byte 64) (*)) o a)
+  (declare (type (simple-array (unsigned-byte 64) (*)) o a)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((n64 (hqc-vec-n-64))
         (rem (mod (hqc-n) 64)))
@@ -555,13 +507,13 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
     (values)))
 
 (defun hqc-vec-mul (o v1 v2)
-  (declare (type (array (unsigned-byte 64) (*)) o v1 v2)
+  (declare (type (simple-array (unsigned-byte 64) (*)) o v1 v2)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((n64 (hqc-vec-n-64))
          (karat (hqc-u64vec (* 2 n64))))
     (declare (type fixnum n64)
              (type (simple-array (unsigned-byte 64) (*)) karat))
-    (hqc-karatsuba karat v1 v2 n64)
+    (hqc-karatsuba karat 0 v1 0 v2 0 n64)
     (hqc-vec-reduce o karat)
     (values)))
 
@@ -589,7 +541,10 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
     (values)))
 
 (defun hqc-rm-hadamard (src dst)
+  (declare (type (simple-array fixnum (128)) src dst)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((p1 src) (p2 dst))
+    (declare (type (simple-array fixnum (128)) p1 p2))
     (dotimes (pass 7)
       (dotimes (i 64)
         (setf (aref p2 i) (+ (aref p1 (* 2 i)) (aref p1 (+ (* 2 i) 1))))
@@ -599,26 +554,18 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
               p2 p3))))
   (values))
 
-(defun hqc-rm-expand-and-sum (dest src mult)
-  (dotimes (part 2)
-    (dotimes (bit 64)
-      (setf (aref dest (+ (* part 64) bit))
-            (ldb (byte 1 bit) (aref src part)))))
-  (loop for copy from 1 below mult
-        do (dotimes (part 2)
-             (dotimes (bit 64)
-               (incf (aref dest (+ (* part 64) bit))
-                     (ldb (byte 1 bit) (aref src (+ (* 2 copy) part)))))))
-  (values))
-
 (defun hqc-rm-find-peaks (transform)
+  (declare (type (simple-array fixnum (128)) transform)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((best-abs -1)
         (best-pos 0)
         (best-peak 0))
+    (declare (type fixnum best-abs best-pos best-peak))
     (dotimes (i 128)
       (let* ((raw (aref transform i))
              (tv (if (>= raw #x8000) (- raw #x10000) raw))
              (av (abs tv)))
+        (declare (type fixnum raw tv av))
         (when (> av best-abs)
           (setf best-abs av
                 best-pos i
@@ -626,32 +573,61 @@ Mirrors the reference: partial 8-byte blocks are fully consumed."
     (logior best-pos (if (minusp best-peak) 0 128))))
 
 (defun hqc-rm-encode (cdw msg)
+  (declare (type (simple-array (unsigned-byte 64) (*)) cdw)
+           (type (simple-array (unsigned-byte 8) (*)) msg)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((mult (hqc-multiplicity))
-        (n1 (hqc-vec-n1-bytes)))
+        (n1 (hqc-vec-n1-bytes))
+        (w (make-array 2 :element-type '(unsigned-byte 64) :initial-element 0)))
+    (declare (type fixnum mult n1)
+             (type (simple-array (unsigned-byte 64) (2)) w))
     (dotimes (i n1)
-      (let ((w (hqc-u64vec 2)))
-        (hqc-rm-encode-word w (aref msg i))
-        (setf (aref cdw (* 2 i mult)) (aref w 0)
-              (aref cdw (+ (* 2 i mult) 1)) (aref w 1))
-        (loop for copy from 1 below mult
-              do (setf (aref cdw (+ (* 2 i mult) (* 2 copy))) (aref w 0)
-                       (aref cdw (+ (* 2 i mult) (* 2 copy) 1)) (aref w 1)))))
+      (hqc-rm-encode-word w (aref msg i))
+      (setf (aref cdw (* 2 i mult)) (aref w 0)
+            (aref cdw (+ (* 2 i mult) 1)) (aref w 1))
+      (loop for copy of-type fixnum from 1 below mult
+            do (setf (aref cdw (+ (* 2 i mult) (* 2 copy))) (aref w 0)
+                     (aref cdw (+ (* 2 i mult) (* 2 copy) 1)) (aref w 1))))
     (values)))
 
 (defun hqc-rm-decode (msg cdw)
+  (declare (type (simple-array (unsigned-byte 8) (*)) msg)
+           (type (simple-array (unsigned-byte 64) (*)) cdw)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((mult (hqc-multiplicity))
         (n1 (hqc-vec-n1-bytes))
         (expanded (make-array 128 :element-type 'fixnum :initial-element 0))
         (transform (make-array 128 :element-type 'fixnum :initial-element 0)))
+    (declare (type fixnum mult n1)
+             (type (simple-array fixnum (128)) expanded transform))
     (dotimes (i n1)
-      (let ((src (make-array (* 2 mult) :element-type '(unsigned-byte 64))))
-        (dotimes (k (* 2 mult))
-          (setf (aref src k) (aref cdw (+ (* 2 i mult) k))))
-        (hqc-rm-expand-and-sum expanded src mult)
+      (let ((base (* 2 i mult)))
+        (declare (type fixnum base))
+        ;; The first copy assigns the bit plane; the rest add into it.
+        ;; Shifting the words is much cheaper than a variable-position
+        ;; LDB per bit, and there is no scratch vector per byte.
+        (let ((w0 (aref cdw base))
+              (w1 (aref cdw (1+ base))))
+          (declare (type (unsigned-byte 64) w0 w1))
+          (dotimes (bit 64)
+            (setf (aref expanded bit) (logand w0 1)
+                  (aref expanded (+ 64 bit)) (logand w1 1))
+            (setf w0 (ash w0 -1)
+                  w1 (ash w1 -1))))
+        (loop for copy of-type fixnum from 1 below mult
+              do (let ((w0 (aref cdw (+ base (* 2 copy))))
+                       (w1 (aref cdw (+ base (* 2 copy) 1))))
+                   (declare (type (unsigned-byte 64) w0 w1))
+                   (dotimes (bit 64)
+                     (incf (aref expanded bit) (logand w0 1))
+                     (incf (aref expanded (+ 64 bit)) (logand w1 1))
+                     (setf w0 (ash w0 -1)
+                           w1 (ash w1 -1)))))
         (hqc-rm-hadamard expanded transform)
         (setf (aref transform 0) (- (aref transform 0) (* 64 mult)))
         (setf (aref msg i) (hqc-rm-find-peaks transform))))
     (values)))
+
 (defparameter +hqc-gf-exp+
   #(
     1 2 4 8 16 32 64 128 29 58 116 232 205 135 19 38

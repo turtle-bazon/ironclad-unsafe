@@ -1319,3 +1319,71 @@ of a long session.  The differential harness to do it safely is
 straightforward, though: the new VOP can be compared against the
 existing one over millions of random four-limb inputs, which is far
 stronger than any KAT.
+
+## Update (HQC: three generic-arithmetic bottlenecks, this session)
+
+HQC was the worst-remaining gap that was not blocked on SIMD: decapsulate
+120 ops/s against 400 for the C reference (3.34x) while encapsulate and
+keygen were only 1.5-1.8x off.  Profiling by hand showed the extra cost
+was not the KEM structure but three separate generic-arithmetic problems
+in the decoder and multiplier, each of the same family as the Falcon and
+Whirlpool wins.
+
+1. hqc-gf-mul cost 800ns per multiply.  It was a constant-time carryless
+   multiply written with generic arithmetic: a four-element scratch
+   vector allocated per call, eight all-ones-mask helper calls, and a
+   reduction loop built on a 14-iteration trailing-zero counter.  A
+   multiply of two bytes should be a handful of instructions.  Replaced
+   with a branch-free, table-free shift-and-add: eight iterations of
+   square-and-reduce using a mask taken from the operand's own top bit.
+   Still constant time and still no lookup table, but
+
+     hqc-gf-mul   800ns -> 16ns   (50x)
+
+   Verified exhaustively against the existing exp/log tables over all
+   65536 operand pairs, not by sampling.  That check earned its keep: my
+   first version reduced with 0x11B, the polynomial named in the file's
+   own header comment, and 63232 of the 65536 pairs were wrong.  The
+   exponent table is for x^8+x^4+x^3+x^2+1 (0x11D); the header comment
+   was simply stale, and the original code's `(logxor #x11D 1)' had the
+   right constant.  Fixed the comment too.
+
+2. Karatsuba polynomial multiplication cost 1.2ms per 2216-byte
+   multiply even with the PCLMULQDQ VOP enabled.  The recursion split
+   its operands with displaced arrays, and a displaced array has the
+   general type `(array (unsigned-byte 64) (*))', so every limb access in
+   the whole recursion went through the generic AREF path instead of a
+   single load.  Rewrote it to address operands by offset into the
+   original simple arrays (and to return both halves of the 64x64
+   product as values rather than through a scratch vector):
+
+     hqc-vec-mul  1.20ms -> 0.37ms  (3.3x)
+
+3. The Reed-Muller decoder cost 0.8ms of the ~1ms code decode.  It
+   rebuilt a scratch vector for every one of the n1 bytes and unpacked
+   each bit with a variable-position LDB (the same pattern that cost 8x
+   in the Keccak squeeze).  Hoisted the scratch, replaced the LDB with a
+   shift loop over the two words, hoisted the per-byte encoder scratch,
+   and gave the Hadamard transform and peak search their real array
+   types:
+
+     hqc-rm-decode  800us -> 38us  (21x)
+     hqc-rs-decode 3.48ms -> 0.12ms
+
+End to end, measured in one process on this host:
+
+  kind     decaps          encaps          keygen
+  hqc-128  120 -> 714      345 -> 1042     825 -> 2500   ops/s
+  hqc-192  57.7 -> 281     125 -> 417      265 -> 625
+  hqc-256  28.3 -> 152     62.5 -> 234     142 -> 385
+
+Every HQC row now beats its C reference.  Validation: all three
+hqc-NNN.testvec key-encapsulation KAT files pass (reference-ciphertext
+decapsulation, fresh roundtrip, tampered-ciphertext rejection), the same
+files pass under CCL, which takes the portable bit-serial path instead
+of PCLMUL, and the full SBCL suite is green.
+
+One gap found while validating: the three hqc-NNN.testvec files existed
+but were never wired into the test suite, so none of this was covered by
+CI.  Added the three vector tests and a 2-key/50-trial roundtrip test per
+parameter set to testing/test-vectors/public-key.lisp.

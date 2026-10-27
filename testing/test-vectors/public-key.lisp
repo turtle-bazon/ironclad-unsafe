@@ -10,6 +10,9 @@
 (rtest:deftest :mceliece6688128-encapsulation (run-test-vector-file :mceliece6688128 *public-key-encryption-tests*) t)
 (rtest:deftest :mceliece6960119-encapsulation (run-test-vector-file :mceliece6960119 *public-key-encryption-tests*) t)
 (rtest:deftest :mceliece8192128-encapsulation (run-test-vector-file :mceliece8192128 *public-key-encryption-tests*) t)
+(rtest:deftest :hqc-128-encapsulation (run-test-vector-file :hqc-128 *public-key-encryption-tests*) t)
+(rtest:deftest :hqc-192-encapsulation (run-test-vector-file :hqc-192 *public-key-encryption-tests*) t)
+(rtest:deftest :hqc-256-encapsulation (run-test-vector-file :hqc-256 *public-key-encryption-tests*) t)
 (rtest:deftest :x-wing-encapsulation (run-test-vector-file :x-wing *public-key-encryption-tests*) t)
 (rtest:deftest :xmss (run-test-vector-file :xmss-h10 *public-key-encryption-tests*) t)
 
@@ -46,6 +49,18 @@ covering the rate at which the defect actually occurs."
 
 (rtest:deftest :mceliece460896-encapsulation-roundtrip
   (kem-roundtrip-test :mceliece460896 2 250)
+  t)
+
+(rtest:deftest :hqc-128-encapsulation-roundtrip
+  (kem-roundtrip-test :hqc-128 2 50)
+  t)
+
+(rtest:deftest :hqc-192-encapsulation-roundtrip
+  (kem-roundtrip-test :hqc-192 2 50)
+  t)
+
+(rtest:deftest :hqc-256-encapsulation-roundtrip
+  (kem-roundtrip-test :hqc-256 2 50)
   t)
 
 (defun lms-hss-state-exhaustion-test ()
