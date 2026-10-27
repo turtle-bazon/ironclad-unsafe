@@ -55,27 +55,27 @@ covering the rate at which the defect actually occurs."
   t)
 
 (rtest:deftest :hqc-128-encapsulation-roundtrip
-  (kem-roundtrip-test :hqc-128 2 50)
+  (kem-roundtrip-test :hqc-128 2 10)
   t)
 
 (rtest:deftest :hqc-192-encapsulation-roundtrip
-  (kem-roundtrip-test :hqc-192 2 50)
+  (kem-roundtrip-test :hqc-192 2 10)
   t)
 
 (rtest:deftest :hqc-256-encapsulation-roundtrip
-  (kem-roundtrip-test :hqc-256 2 50)
+  (kem-roundtrip-test :hqc-256 2 10)
   t)
 
 (rtest:deftest :bike-l1-encapsulation-roundtrip
-  (kem-roundtrip-test :bike-l1 2 20)
+  (kem-roundtrip-test :bike-l1 2 5)
   t)
 
 (rtest:deftest :bike-l3-encapsulation-roundtrip
-  (kem-roundtrip-test :bike-l3 2 20)
+  (kem-roundtrip-test :bike-l3 2 5)
   t)
 
 (rtest:deftest :bike-l5-encapsulation-roundtrip
-  (kem-roundtrip-test :bike-l5 2 20)
+  (kem-roundtrip-test :bike-l5 2 5)
   t)
 
 (defun lms-hss-state-exhaustion-test ()

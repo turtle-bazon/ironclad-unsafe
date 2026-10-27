@@ -1716,3 +1716,29 @@ are the other areas touched this session.
 Note for future portability checks: ABCL's LOOP is stricter about OF-TYPE
 than SBCL/CCL, so `of-type index` should be avoided in shared code.  Of the
 whole tree this was the only occurrence.
+
+## Update (ABCL suite runtime and test sizing)
+
+Two follow-ups from the ABCL fix.
+
+1. The test counts added for HQC and BIKE earlier this session were sized for
+   SBCL, where a decapsulation is 1-40 ms.  Under ABCL the portable paths are
+   50-100x slower, so 2 keys x 50 trials x 3 sets (HQC) and 2 keys x 20 x 3
+   (BIKE) put several minutes of pure roundtripping into the suite.  HQC and
+   BIKE have no probabilistic rejection defect (unlike McEliece, whose
+   roundtrip test stays at 250 trials because it is there to catch exactly
+   that), so the KAT files plus a 10/5-trial roundtrip per set are enough.
+   Trimmed to 2x10 (HQC) and 2x5 (BIKE).
+
+2. The full suite under ABCL takes on the order of an hour, and essentially
+   all of it is XMSS and SLH-DSA: one XMSS sign rebuilds the whole 2^10
+   tree (1M thashes, ~4s on SBCL), and SLH-DSA-s signing is 3.3s on SBCL.
+   Those are pre-existing and independent of the portable-path work, but it
+   means "run the ABCL suite" is not a quick check; the practical check is
+   the vector files for the areas touched plus a filtered suite run.
+
+Verification of the fix under ABCL 1.9.0: the five McEliece vector files and
+the keypair generator for all five sets, HQC (3), BIKE (3), gcm-siv (vector
+and incremental), chacha-poly, and a filtered run of 679 tests (everything
+except XMSS and the KEM roundtrips, which were checked separately) with no
+failures reported through the public-key vector tests.
