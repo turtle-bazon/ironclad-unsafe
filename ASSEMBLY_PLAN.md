@@ -1463,3 +1463,60 @@ by the same fraction although its code was untouched.  So read this
 refresh's absolute Lisp numbers as a lower bound; the C reference column is
 stable, and the gap ratios are correspondingly pessimistic.  The HQC and
 BIKE improvements are large enough that they are unaffected.
+
+## Update (AES-GCM-SIV: POLYVAL on top of GHASH, and two loop bugs)
+
+The gap table has no C reference for GCM-SIV, so this was another row that
+never showed up: AES-GCM-SIV encrypted an 8KB message at 1.0 MB/s, about a
+thousand times slower than it should be.  There were four separate causes.
+
+1. POLYVAL was implemented as a bignum bit-serial carryless multiply plus
+   a term-by-term reduction, both in generic integer arithmetic: about
+   8us per 16-byte block.  The fix is the one real implementations use:
+   POLYVAL's field is GHASH's field with the coefficients reflected, so a
+   byte swap maps one to the other, and POLYVAL's x^-128 factor folds into
+   the key.  With the accumulator and key in byte-reversed order the
+   recurrence is exactly
+
+       S <- (S xor block) * (H * x^-1)
+
+   so the tuned GMAC multiply VOP does the work and a block costs one XOR
+   plus one PCLMUL sequence, with no bignum arithmetic at all.
+
+   Getting there took a detour worth recording: the GMAC multiply is not a
+   symmetric block multiply.  Its portable path and its PCLMUL path use
+   *different* bit conventions, with the caller compensating by swapping
+   blocks only in the PCLMUL path, so no choice of byte/bit order on the
+   two operands made it look like a field multiply.  Swapping both operands
+   *and* the result does: that is the map that turns it into the
+   reflected-polynomial multiply, and with the key pre-scaled by x^-1 the
+   loop falls out.  Verified against the old bignum implementation on 300
+   random keys and message lengths before wiring it in.
+
+2. gcm-siv-ctr built a fresh AES cipher object for *every 16-byte block*,
+   so the key schedule was the cost of the loop.  It now sets up one cipher
+   and encrypts eight counter blocks per call so the AES-ECB eight-wide
+   fast path can pipeline them.
+
+3. process-associated-data and encrypt/decrypt buffered input one byte at a
+   time with VECTOR-PUSH-EXTEND.  They now grow the buffer once and use
+   REPLACE.
+
+4. Two bugs the vectors caught, both introduced by (3) and (2):
+   - REPLACE on a fill-pointer vector only writes up to the fill pointer.
+     Setting the pointer *after* the copy silently copied nothing, so every
+     message authenticated as zeros.  The RFC C.2 vector (8-byte plaintext)
+     caught it.
+   - The eight-block counter path rebuilt the counters for each 128-byte
+     chunk but never advanced the base, so the keystream repeated every 128
+     bytes.  The 1000-byte generated vector caught it.  (The 8-byte vector
+     passes either way, which is a good argument for keeping long vectors.)
+
+  gcm-siv encrypt 8192   1.004 MB/s -> 136 MB/s
+  polyval (8KB)          0.22 ms -> 0.016 ms
+
+Validation: the gcm-siv vector file and its incremental variant both pass
+under SBCL and CCL (which takes the portable POLYVAL path), and the full
+SBCL suite is green.  Unlike HQC and BIKE, this vector file was already
+wired into the suite -- the auto-generated per-mode AEAD tests cover it --
+which is why the fill-pointer and counter bugs surfaced instead of shipping.

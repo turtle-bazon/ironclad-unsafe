@@ -54,12 +54,76 @@
   (polyval-reduce (polyval-clmul a b)))
 
 (defun polyval-dot (a b)
-  "GF(2^128) product scaled by x^-128, the POLYVAL step."
+  "GF(2^128) product scaled by x^-128, the POLYVAL step.
+Portable form: a bignum carryless multiply and a term-by-term reduction."
   (declare (type (unsigned-byte 128) a b))
   (let ((tprod (polyval-clmul a b)))
     (logxor (ash tprod -128)
             (polyval-mul (logand tprod #xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
                          +polyval-xinv+))))
+
+(defvar *polyval-ghash-p*
+  #+(and sbcl x86-64 ironclad-unsafe-assembly) (pclmulqdq-supported-p)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
+  "True when POLYVAL can ride on the GHASH block multiply.
+
+POLYVAL's field is GHASH's field with the coefficients reflected, so a
+byte swap turns one into the other, and the x^-128 factor of POLYVAL's
+dot product folds into the key.  Concretely, with the accumulator and
+key in byte-reversed order, POLYVAL is exactly the GHASH recurrence
+
+    S <- (S xor block) * (H * x^-1)
+
+so the tuned GMAC multiply does the work and the per-block cost is one
+XOR plus one carryless multiply, with no bignum arithmetic at all.  This
+is the same reduction BoringSSL uses (mulX of the key).")
+
+(defun polyval-key-block (key)
+  "The GHASH-domain key block for POLYVAL key KEY: H*x^-1 mod p,
+little-endian.  DOT(H, x^127) is H*x^127*x^-128 = H*x^-1."
+  (declare (type (simple-array (unsigned-byte 8) (16)) key)
+           (optimize (speed 3) (space 0) (safety 0) (debug 0)))
+  (let ((h (octets-to-integer key :big-endian nil)))
+    (integer-to-octets (polyval-dot h (ash 1 127))
+                       :n-bits 128 :big-endian nil)))
+
+(defun polyval-octets-ghash (key data start end)
+  (declare (type (simple-array (unsigned-byte 8) (*)) key data)
+           (type fixnum start end)
+           (optimize (speed 3) (space 0) (safety 0) (debug 0)))
+  (let ((acc (make-array 16 :element-type '(unsigned-byte 8) :initial-element 0))
+        (k1 (polyval-key-block key))
+        (pos start))
+    (declare (type (simple-array (unsigned-byte 8) (16)) acc k1)
+             (type fixnum pos))
+    (loop while (< pos end)
+          do (xor-block 16 acc 0 data pos acc 0)
+             (gmac-mul acc k1)
+             (incf pos 16))
+    acc))
+
+(defun polyval-octets (key data start end)
+  "POLYVAL over DATA[START..END), which must be a multiple of 16 octets.
+Operates on the buffer in place: the list of per-block copies that the
+block interface builds is what made the old code allocate 512 arrays for
+an 8KB message."
+  (declare (type (simple-array (unsigned-byte 8) (*)) key data)
+           (type fixnum start end)
+           (optimize (speed 3) (space 0) (safety 0) (debug 0)))
+  (if *polyval-ghash-p*
+      (polyval-octets-ghash key data start end)
+      (let ((h (octets-to-integer key :big-endian nil))
+            (s 0)
+            (pos start))
+        (declare (type (unsigned-byte 128) h s)
+                 (type fixnum pos))
+        (loop while (< pos end)
+              do (setf s (polyval-dot
+                          (logxor s (logior (ub64ref/le data pos)
+                                            (ash (ub64ref/le data (+ pos 8)) 64)))
+                          h))
+                 (incf pos 16))
+        (integer-to-octets s :n-bits 128 :big-endian nil))))
 
 (defun polyval (key blocks)
   "POLYVAL over the 16-octet BLOCKS with 16-octet KEY; 16-octet digest.
@@ -157,18 +221,26 @@ the plain integer value of the little-endian octets."
 
 (defun gcm-siv-authenticate (auth-key nonce ad data)
   "POLYVAL tag input processing through the masked encryption."
+  ;; AD and DATA arrive as adjustable fill-pointer buffers, not simple
+  ;; arrays.
+  (declare (type (simple-array (unsigned-byte 8) (*)) auth-key nonce)
+           (type (array (unsigned-byte 8) (*)) ad data)
+           (optimize (speed 3) (space 0) (safety 0) (debug 0)))
   (let* ((ad-length (length ad))
          (data-length (length data))
-         (padded-ad (gcm-siv-pad16 (copy-seq ad)))
-         (padded-data (gcm-siv-pad16 (copy-seq data)))
-         (s (polyval auth-key
-                     (append (gcm-siv-blocks padded-ad)
-                             (gcm-siv-blocks padded-data)
-                             (list (gcm-siv-length-block ad-length data-length))))))
-    (dotimes (i 12 s)
-      (setf (aref s i) (logxor (aref s i) (aref nonce i))))
-    (setf (aref s 15) (logand (aref s 15) #x7f))
-    s))
+         (pad-ad (* 16 (ceiling ad-length 16)))
+         (pad-data (* 16 (ceiling data-length 16)))
+         (buf (make-array (+ pad-ad pad-data 16)
+                          :element-type '(unsigned-byte 8) :initial-element 0))
+         (lb (gcm-siv-length-block ad-length data-length)))
+    (replace buf ad)
+    (replace buf data :start1 pad-ad)
+    (replace buf lb :start1 (+ pad-ad pad-data))
+    (let ((s (polyval-octets auth-key buf 0 (length buf))))
+      (dotimes (i 12 s)
+        (setf (aref s i) (logxor (aref s i) (aref nonce i))))
+      (setf (aref s 15) (logand (aref s 15) #x7f))
+      s)))
 
 (defun gcm-siv-ecb (key block)
   (let ((cipher (make-cipher :aes :key key :mode :ecb))
@@ -177,18 +249,34 @@ the plain integer value of the little-endian octets."
     out))
 
 (defun gcm-siv-ctr (enc-key iv data)
-  "AES-CTR with little-endian 32-bit counter in the first word."
+  "AES-CTR with a little-endian 32-bit counter in the first word.
+Eight counter blocks are encrypted per call so the AES-ECB fast path can
+pipeline eight independent blocks; one call per block left every AESENC
+latency exposed, and rebuilding the cipher per block (the original form)
+made the key schedule the cost of the whole loop."
+  (declare (type (simple-array (unsigned-byte 8) (*)) enc-key iv)
+           (type (array (unsigned-byte 8) (*)) data)
+           (optimize (speed 3) (space 0) (safety 0) (debug 0)))
   (let* ((length (length data))
          (out (make-array length :element-type '(unsigned-byte 8)))
-         (counter (copy-seq iv)))
-    (loop for pos from 0 below length by 16
-          for n = (min 16 (- length pos))
-          for stream = (gcm-siv-ecb enc-key counter)
-          do (dotimes (i n)
-               (setf (aref out (+ pos i))
-                     (logxor (aref data (+ pos i)) (aref stream i))))
-             (setf (ub32ref/le counter 0)
-                   (mod (1+ (ub32ref/le counter 0)) #x100000000)))
+         (aes (make-cipher :aes :key enc-key :mode :ecb))
+         (inbuf (make-array 128 :element-type '(unsigned-byte 8)))
+         (ks (make-array 128 :element-type '(unsigned-byte 8)))
+         (base (ub32ref/le iv 0)))
+    (declare (type fixnum length)
+             (type (unsigned-byte 32) base))
+    (loop for pos from 0 below length by 128
+          do (let ((n (min 128 (- length pos))))
+               (declare (type fixnum n))
+               (dotimes (j 8)
+                 (replace inbuf iv :start1 (* 16 j) :start2 0 :end2 16)
+                 (setf (ub32ref/le inbuf (* 16 j))
+                       (logand (+ base j) #xFFFFFFFF)))
+               (encrypt aes inbuf ks)
+               (dotimes (i n)
+                 (setf (aref out (+ pos i))
+                       (logxor (aref data (+ pos i)) (aref ks i))))
+               (setf base (logand (+ base 8) #xFFFFFFFF))))
     out))
 
 (defun gcm-siv-run-encrypt (mode)
@@ -254,14 +342,33 @@ Returns (VALUES ciphertext tag); pure computation, no state change."
     (setf (gcm-siv-output-base mode) start))
   (gcm-siv-output-base mode))
 
+(defun gcm-siv-append (buffer data start end)
+  "Append DATA[START..END) to BUFFER, an adjustable fill-pointer vector.
+Returns the buffer, which ADJUST-ARRAY may have replaced.  Copying one
+byte at a time through VECTOR-PUSH-EXTEND made the mode's own buffering
+the largest single cost of an 8KB message."
+  (declare (type (array (unsigned-byte 8) (*)) buffer data)
+           (type fixnum start end)
+           (optimize (speed 3) (space 0) (safety 0) (debug 0)))
+  (let* ((old (fill-pointer buffer))
+         (new (+ old (- end start))))
+    (declare (type fixnum old new))
+    (when (> new (array-dimension buffer 0))
+      (setf buffer (adjust-array buffer (max new (* 2 (array-dimension buffer 0))))))
+    ;; The fill pointer must move first: sequence functions only see the
+    ;; active, fill-pointer-length part of the vector, so REPLACE with the
+    ;; old fill pointer copies nothing.
+    (setf (fill-pointer buffer) new)
+    (replace buffer data :start1 old :start2 start :end2 end)
+    buffer))
+
 (defmethod process-associated-data ((mode gcm-siv) data &key (start 0) end)
   (if (encryption-started-p mode)
       (error 'ironclad-unsafe-error :format-control "All associated data must be processed before the encryption begins.")
       (let* ((end (or end (length data)))
              (buffer (gcm-siv-ad mode)))
         (incf (gcm-siv-ad-length mode) (- end start))
-        (loop for i from start below end
-              do (vector-push-extend (aref data i) buffer))))
+        (setf (gcm-siv-ad mode) (gcm-siv-append buffer data start end))))
   (values))
 
 (defmethod produce-tag ((mode gcm-siv) &key tag (tag-start 0))
@@ -295,8 +402,8 @@ Returns (VALUES ciphertext tag); pure computation, no state change."
     (let ((buffer (gcm-siv-pt mode))
           (base (gcm-siv-note-output-base mode ciphertext-start))
           (length (- plaintext-end plaintext-start)))
-      (loop for i from plaintext-start below plaintext-end
-            do (vector-push-extend (aref plaintext i) buffer))
+      (setf (gcm-siv-pt mode)
+            (gcm-siv-append buffer plaintext plaintext-start plaintext-end))
       (if handle-final-block
           (gcm-siv-finalize-encrypt mode ciphertext base)
           (values length 0)))))
@@ -311,8 +418,8 @@ Returns (VALUES ciphertext tag); pure computation, no state change."
     (let ((buffer (gcm-siv-ct mode))
           (length (- ciphertext-end ciphertext-start)))
       (gcm-siv-note-output-base mode plaintext-start)
-      (loop for i from ciphertext-start below ciphertext-end
-            do (vector-push-extend (aref ciphertext i) buffer))
+      (setf (gcm-siv-ct mode)
+            (gcm-siv-append buffer ciphertext ciphertext-start ciphertext-end))
       (if handle-final-block
           (gcm-siv-finalize-decrypt mode plaintext (gcm-siv-output-base mode))
           (values length 0)))))
