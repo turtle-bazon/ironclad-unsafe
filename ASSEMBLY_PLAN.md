@@ -1785,3 +1785,23 @@ of ML-DSA-MONTGOMERY-REDUCE, FQMUL, the forward and inverse NTT and a
 SHAKE-128 squeeze are now identical to SBCL's.  The SBCL suite is green,
 and the ML-DSA numbers are unchanged there (the declaration is still the
 fixnum type).
+
+## Update (ABCL status after the fixes)
+
+Complete picture under ABCL 1.9.0 at this revision:
+
+- McEliece: all five vector files, keypair generation for all five sets, and
+  the roundtrip test pass (the compile failure was the whole problem).
+- ML-DSA: the signature vector file passes; ML-DSA-MONTGOMERY-REDUCE,
+  FQMUL, forward/inverse NTT and SHAKE-128 checksums now match SBCL exactly.
+- SLH-DSA: 128f sets (SHA-2 and SHAKE) keygen/sign/verify pass.
+- HQC (3), BIKE (3), gcm-siv (vector and incremental), chacha-poly: pass.
+- XMSS: a reference signature verifies, so the code is functionally correct
+  there; keygen/sign were not run to completion because one XMSS sign builds
+  the whole 2^10 tree and the ABCL run spent 17+ minutes in that single test
+  before being stopped.  That is pre-existing cost (per-call allocation in
+  the hash chain), not a correctness problem.
+
+Practical way to check ABCL quickly, given the cost of the full suite: run
+the per-area vector files (mceliece/hqc/bike/gcm-siv/chacha-poly/ml-dsa/
+slh-dsa-128f) rather than `asdf:test-system`.
