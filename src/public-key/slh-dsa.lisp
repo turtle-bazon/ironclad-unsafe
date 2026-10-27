@@ -160,6 +160,15 @@
   "True when the bound parameter set uses 32-byte SHAKE addresses."
   (and *slh-params* (eq (slh-params-family *slh-params*) :shake)))
 
+(declaim (inline slh-shake-squeeze))
+(defun slh-shake-squeeze (state digest)
+  "Squeeze STATE into DIGEST in place and return DIGEST.  STATE must not
+be used again.  PRODUCE-DIGEST copies the whole Keccak state and buffer
+before squeezing, which made that copy dominate every small hash here
+(SLH-DSA makes hundreds of thousands of them per key generation)."
+  (sha3-finalize state digest 0)
+  digest)
+
 (defun slh-make-addr ()
   (make-array (if (slh-shake-addr-p) 32 22)
               :element-type '(unsigned-byte 8) :initial-element 0))
@@ -178,7 +187,7 @@ cached seeded prefix (no per-call prefix absorb or consing)."
              (update-digest d (slh-ctx-pub-seed ctx))
              (update-digest d addr)
              (update-digest d data)
-             (produce-digest d :digest scratch)
+             (slh-shake-squeeze d scratch)
              (replace out scratch :end2 n)))
           ((and (eq family :sha2-512) (> (length data) n))
            (let ((d (slh-ctx-work-512 ctx)))
@@ -206,7 +215,7 @@ sk_seed. SHA2 families: SHA-256 continuing from the cached prefix."
           (update-digest d (slh-ctx-pub-seed ctx))
           (update-digest d addr)
           (update-digest d (slh-ctx-sk-seed ctx))
-          (produce-digest d :digest out))
+          (slh-shake-squeeze d out))
         (let ((d (slh-ctx-work-256 ctx))
               (scratch (slh-ctx-out64 ctx)))
           (copy-digest (slh-ctx-template-256 ctx) d)
@@ -394,7 +403,7 @@ for the SHA2-512 (N=24/32) family."
           (update-digest d sk-prf)
           (update-digest d optrand)
           (update-digest d m)
-          (produce-digest d :digest out))
+          (slh-shake-squeeze d out))
         (let* ((use-512 (eq family :sha2-512))
                (block-bytes (if use-512 128 64))
                (key1 (make-array block-bytes :element-type '(unsigned-byte 8)
@@ -436,7 +445,7 @@ family squeezes the digest directly with SHAKE256 (no MGF1)."
           (update-digest d pk-seed)
           (update-digest d pk-root)
           (update-digest d m)
-          (produce-digest d :digest buf))
+          (slh-shake-squeeze d buf))
         (let ((digest (make-array hash-out :element-type '(unsigned-byte 8)
                                              :initial-element 0))
               (d (if use-512 (make-digest :sha512) (make-digest :sha256))))

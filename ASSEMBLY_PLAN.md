@@ -1179,3 +1179,34 @@ the next encrypt faulted at address 0.  Never dynamic-extent a closure
 that escapes.  Second, an early version referenced a MODE-CIPHER-CHAIN
 accessor that does not exist -- I had invented a guard instead of
 reading the class.
+
+## Update (SLH-DSA SHAKE hashing, this session)
+
+SLH-DSA's SHAKE path called PRODUCE-DIGEST on a freshly built digest for
+every hash, and PRODUCE-DIGEST copies the entire Keccak state (25 lanes
+plus the 200-byte input buffer) before squeezing so that the caller can
+keep squeezing afterwards.  For a throwaway state that copy was pure
+overhead and dominated the cost: a 64-byte-into-16-byte SHAKE256 call
+measured 2.0 us, of which the single permutation is 0.4 us.  SLH-DSA
+makes ~287,000 such calls for one 128s keypair.
+
+Switched the four SHAKE branches (thash, prf_addr, gen_message_random,
+h_msg) to SHA3-FINALIZE directly, which squeezes in place; the same thing
+ML-DSA already did.  The SHA-2 branches keep PRODUCE-DIGEST: they reuse a
+cached template digest that must survive the call.
+
+  slh-dsa-shake-128s keygen  704 -> 432 ms
+  slh-dsa-shake-128s sign   4310 -> 3294 ms
+  slh-dsa-shake-128s verify  4.35 -> 3.20 ms
+  slh-dsa-shake-128f keygen  10.2 -> 8.0 ms, sign 204 -> 162 ms
+
+Negative result worth recording: I then tried to merge the three
+UPDATE-DIGEST calls (pub_seed, addr, data) into one absorb from a
+concatenation scratch buffer.  It failed the SLH-DSA KAT, yet an isolated
+A/B of "three updates" versus "one update of the concatenation" produces
+identical SHAKE output, so the equivalence is broken somewhere I did not
+find -- most likely a caller passing more bytes than the 160-byte scratch,
+because CL's REPLACE truncates silently rather than erroring when the
+destination runs out.  Reverted to the three-update form, which is proven.
+Anyone retrying this should assert the total length against the scratch
+size instead of trusting REPLACE.
