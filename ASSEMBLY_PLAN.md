@@ -1680,3 +1680,15 @@ that block advances the stream to counter 1 -- which halves mode
 construction (4us -> 2us) and removes a key schedule.  The row itself is
 still dominated by the alloc/copy/dispatch part, which would need the
 message-buffer API to change rather than the cipher.
+
+## Update (benchmark refresh after the AVX2 ChaCha core)
+
+  chacha        1.024 -> 1.097 GB/s   (gap 3.47 -> 3.09)
+  chacha-poly   422   -> 462 MB/s     (gap 5.01 -> 4.63)
+  chacha/8      964   -> 2.288 GB/s
+  chacha/12     964   -> 1.692 GB/s
+
+The host was at load ~8 for this run (the previous refresh was ~3), so the
+absolute Lisp numbers here are depressed by roughly the usual 20-30%; the
+direct measurement of the same code was chacha 1365 MB/s and chacha-poly
+410->462.  123 measured rows, 46 ahead of the C reference and 92 within 2x.
