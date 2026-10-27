@@ -1237,3 +1237,27 @@ Validation: falcon-512 and falcon-1024 sign/verify roundtrips with 0
 rejections and 0 tampered acceptances, the falcon keymat and signature
 vector files pass (keymat is the strong one: it compares the derived f,
 g, F, G bytes), full SBCL suite green.
+
+## Update (SLH-DSA single-absorb: root cause found, still a loss)
+
+Follow-up on the failed single-absorb experiment from the previous entry.
+I had suspected silent truncation by REPLACE; adding an explicit length
+assertion confirmed it exactly -- the assertion (<= POS 160) fires, so
+some thash call passes more than the 160 bytes I sized the scratch for,
+and REPLACE had quietly copied only the first 160.  With a 4096-byte
+scratch the KAT passes, so the equivalence of "three updates" and "one
+update of the concatenation" is fine after all.
+
+But it is still not worth doing: a 4096-byte allocation per hash call is
+worse than the dispatch it saves.  Measured with the bigger buffer,
+128s keygen went 432 -> 542 ms (and sign 3294 -> 4184 ms), because
+SLH-DSA makes ~287,000 calls and that is over a gigabyte of garbage.
+The useful version of this idea needs a *persistent* scratch buffer in
+the context (and a real bound on the concatenation length -- data can
+clearly exceed 2n, which is what fooled me).  Reverted to the three-update
+form.
+
+Two lessons: REPLACE truncates silently, so assert the length when
+pasting into a fixed buffer; and any per-call allocation in code that
+runs hundreds of thousands of times per operation must be measured, not
+assumed cheap.
