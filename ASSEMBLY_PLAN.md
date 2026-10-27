@@ -1261,3 +1261,29 @@ Two lessons: REPLACE truncates silently, so assert the length when
 pasting into a fixed buffer; and any per-call allocation in code that
 runs hundreds of thousands of times per operation must be measured, not
 assumed cheap.
+
+## Update (Whirlpool table binding, this session)
+
+Whirlpool ran the same 8-table lookup round as the C reference but at
+roughly a fifth of its throughput, which did not add up: the work per
+block is about 1400 table reads plus xors, so ~1 op per cycle would
+already give more than we saw.  The tables +c-even+ and +c-odd+ are
+DEFCONSTANT arrays, and a direct reference to a DEFCONSTANT object
+reloads the array pointer from the symbol value cell on every access --
+sixteen extra loads per slice, about 1400 per block on top of the loads
+that do work.
+
+Bound them to locals in update-whirlpool-block and passed the local names
+through one-slice/lookup-in-c (they are macroexpanded, so the array
+reference is now a plain load off a register-held pointer).
+
+  whirlpool 21.7 -> 32.6 MB/s in a fixed harness (about 1.5x)
+
+Validation: whirlpool digest and incremental vector files pass, full
+SBCL suite green.
+
+Still short of the C reference, and the rest is not symbol-cell loads:
+the block is ~9500 Lisp operations of which the byte extractions are
+already minimal (each of the 16 words' four bytes is extracted exactly
+once per lookup-in-c call), so closing the remaining factor needs either
+a tighter emit of the xor trees or the SSSE3 pshufb S-box rewrite.

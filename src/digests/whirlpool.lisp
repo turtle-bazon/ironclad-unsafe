@@ -168,7 +168,11 @@
         (multiple-value-bind (terms1 terms2) (split terms)
           `(logxor ,(generate-xor terms1) ,(generate-xor terms2)))))
   
-  (defun one-slice (to from i)
+  (defun one-slice (to from i ce co)
+    ;; CE and CO are the caller's local names for the two tables.  Naming
+    ;; them locally is worth a large factor: they are DEFCONSTANT arrays,
+    ;; so a direct reference reloads the array pointer from the symbol
+    ;; value cell on each of the sixteen lookups per slice.
     (let ((indices (loop for n below 8 collect (gensym))))
       `(let (,@(loop for index in indices
                      for j below 8
@@ -176,16 +180,16 @@
         (setf (,to ,(* 2 i))
          ,(generate-xor `,(loop for index in indices
                                 for j below 8
-                                collect `(aref +c-even+ ,j ,index))))
+                                collect `(aref ,ce ,j ,index))))
         (setf (,to ,(1+ (* 2 i)))
          ,(generate-xor `,(loop for index in indices
                                 for j below 8
-                                collect `(aref +c-odd+ ,j ,index)))))))
+                                collect `(aref ,co ,j ,index)))))))
 ) ; EVAL-WHEN
 
-(defmacro lookup-in-c (to from)
+(defmacro lookup-in-c (to from ce co)
   `(progn
-    ,@(loop for i below 8 collect (one-slice to from i))))
+    ,@(loop for i below 8 collect (one-slice to from i ce co))))
 
 (defun update-whirlpool-block (regs block)
   "this is the core part of the whirlpool algorithm. it takes a complete 16
@@ -201,6 +205,9 @@ word block of input, and updates the working state in the regs."
                `(aref regs (+ ,i +whirlpool-regs-state-offset+)))
              (l (i)
                `(aref regs (+ ,i +whirlpool-regs-l-offset+))))
+    (let ((ce +c-even+)
+          (co +c-odd+))
+    (declare (type (simple-array (unsigned-byte 32) (8 256)) ce co))
     ;; Compute and apply K^0 to the cipher state
     (loop for i below 16
        do (setf (state i) (logxor (aref block i) (setf (k i) (hash i)))))
@@ -208,13 +215,13 @@ word block of input, and updates the working state in the regs."
     (loop for r of-type (integer 1 11) from 1 to +whirlpool-rounds+
        do (progn
             ;; Compute K^r from K^{r-1}
-            (lookup-in-c l k)
+            (lookup-in-c l k ce co)
             (setf (l 0) (logxor (l 0) (aref +rc+ (* 2 r))))
             (setf (l 1) (logxor (l 1) (aref +rc+ (+ (* 2 r) 1))))
             (loop for i below 16
                do (setf (k i) (l i)))
             ;; Apply the r-th round transformation
-            (lookup-in-c l state)
+            (lookup-in-c l state ce co)
             (loop for i below 16
                do (setf (l i) (logxor (l i) (k i))))
             (loop for i below 16
@@ -225,7 +232,7 @@ word block of input, and updates the working state in the regs."
                 (logxor (hash i)
                         (logxor (state i)
                                 (aref block i)))))
-    regs))
+    regs)))
 
 ;;; Mid-Level Drivers
 
