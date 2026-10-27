@@ -1149,3 +1149,33 @@ the profiler and with small-n timings and got 20 us for both phases,
 which was an artefact -- 200 iterations of a 4 us operation is only eight
 hundred ticks, and the first call is cold.  Use n in the thousands for
 anything in the microseconds range.
+
+## Update (AES ECB eight-wide, this session)
+
+The generic ECB loop encrypts one block per VOP call, so each block pays
+the full AESENC latency chain (~20 ns a block, 558 MB/s) even though the
+blocks are independent -- the same problem the CTR mode had before the
+eight-wide pipelining.  Added aes-ni-encrypt-8x, a copy of the CTR VOP
+without the counter bookkeeping and without the final plaintext xor, and
+an AES-specialized ECB method that uses it for whole 128-byte groups and
+falls back to the generic per-block call for the remainder.
+
+The method only takes the fast path when there is no padding, because
+the padding and final-block logic lives in the generic ECB lambda; with
+padding it defers with CALL-NEXT-METHOD, and the generic decrypt lambda
+is returned unchanged.
+
+  aes ecb 8k    558 -> ~1300-1950 MB/s (2.3-3.5x, loaded machine)
+
+Validation: byte-identical to the generic path across fifteen lengths
+(0, 16, 17, 31, 32, 33, 64, 127, 128, 129, 144, 256, 1000, 8192, 8208)
+driven by *aes-ecb-8x-enabled*, ECB roundtrips for 128/192/256-bit keys,
+repo aes/ctr/gcm vectors, full SBCL suite green, CCL aes/ctr vectors pass.
+
+Two traps worth recording.  First, I put (declare (dynamic-extent
+#'aes-ecb-8x)) on the closure that is *returned* and stored in the mode
+slot: it is stack allocated, so the caller got a dangling closure and
+the next encrypt faulted at address 0.  Never dynamic-extent a closure
+that escapes.  Second, an early version referenced a MODE-CIPHER-CHAIN
+accessor that does not exist -- I had invented a guard instead of
+reading the class.

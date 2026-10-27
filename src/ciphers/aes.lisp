@@ -986,6 +986,59 @@
   (:block-length 16)
   (:key-length (:fixed 16 24 32)))
 
+;;; AES ECB eight-wide fast path.
+;;;
+;;; The generic ECB loop encrypts one block per VOP call, which exposes
+;;; the full AESENC latency for every block even though the blocks are
+;;; independent.  When AES-NI is available and no padding is in play,
+;;; eight blocks are encrypted in one pipelined call.  Padding and
+;;; final-block handling keep the generic loop, which owns that logic.
+
+#+x86-64
+(defvar *aes-ecb-8x-enabled* t
+  "Set to NIL to force the generic ECB loop (validation only).")
+
+#+x86-64
+(defmethod mode-crypt-functions ((cipher aes) (mode ecb-mode))
+  #+(and sbcl ironclad-unsafe-assembly)
+  (if (and *aes-ecb-8x-enabled*
+           (aes-ni-supported-p)
+           (null (padding mode)))
+      (multiple-value-bind (generic-encrypt generic-decrypt)
+          (call-next-method)
+        (let ((efun (encrypt-function cipher))
+              (round-keys (encryption-round-keys cipher))
+              (n-rounds (n-rounds cipher)))
+          (declare (type function efun generic-decrypt)
+                   (type aes-round-keys round-keys)
+                   (type (integer 0 14) n-rounds))
+          (flet ((aes-ecb-8x (in out in-start in-end out-start handle-final-block)
+                   (declare (type simple-octet-vector in out)
+                            (type index in-start in-end out-start)
+                            (ignorable handle-final-block)
+                            (optimize (speed 3) (space 0) (debug 0)))
+                   (let ((offset in-start)
+                         (opos out-start))
+                     (declare (type index offset opos))
+                     (loop while (>= (- in-end offset) 128)
+                           do (aes-ni-encrypt-8x in offset out opos
+                                                 round-keys n-rounds)
+                              (incf offset 128)
+                              (incf opos 128))
+                     (loop while (>= (- in-end offset) 16)
+                           do (funcall efun cipher in offset out opos)
+                              (incf offset 16)
+                              (incf opos 16))
+                     (let ((n (- offset in-start)))
+                       (declare (type index n))
+                       (values n n)))))
+            ;; NB: the closure is stored in the mode, so it must not be
+            ;; dynamic-extent.
+            (values #'aes-ecb-8x generic-decrypt))))
+      (call-next-method))
+  #-(and sbcl ironclad-unsafe-assembly)
+  (call-next-method))
+
 ;;; AES CTR eight-wide fast path.
 ;;;
 ;;; The generic CTR loop encrypts one counter block per VOP call, which
