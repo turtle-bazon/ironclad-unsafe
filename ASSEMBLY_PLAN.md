@@ -1287,3 +1287,35 @@ the block is ~9500 Lisp operations of which the byte extractions are
 already minimal (each of the 16 words' four bytes is extracted exactly
 once per lookup-in-c call), so closing the remaining factor needs either
 a tighter emit of the xor trees or the SSSE3 pshufb S-box rewrite.
+
+## Update (McEliece cross-check widened; P-256 headroom measured)
+
+Confirmation: the earlier McEliece keygen changes (SSE row-xor and
+or-tree bit-plane packing) had only been differentially checked on two
+parameter sets.  All five now produce byte-identical public and private
+keys on SBCL (VOP path) and CCL (portable path) from the same seed --
+mceliece348864, 460896, 6688128, 6960119 and 8192128.  This matters
+because the repo's McEliece vectors only exercise encapsulation, so a
+keygen regression would otherwise go unnoticed.
+
+Measured the flagship field operation for the next piece of work:
+secp256r1-fe-mont-mul-asm is 40 ns (136 cycles) for a four-limb
+Montgomery multiply.  The op does 16 product mul-adds plus 8 reduction
+mul-adds (P[2] = 0 makes one step a carry propagation and P[0] is
+all-ones, so only P[1] and P[3] need multiplies) at about ten
+instructions each -- roughly 240 instructions, so it is running at
+1.76 IPC.  A hand-scheduled register-accumulator version should reach
+2.5-3 IPC, i.e. ~25 ns, which would take P-256 verify from ~212 us to
+~150 us (gap 3.9 -> ~2.9) and sign from 63 to ~50 us.  That is the
+realistic ceiling without BMI2/ADX:  with MULX (and optionally
+ADCX/ADOX) the same op should reach ~18 ns, but that needs a second VOP
+plus a runtime feature gate, since the existing VOP is compiled in
+unconditionally and must keep working on CPUs without those extensions.
+
+Not attempted yet: it is a hand-written CIOS rewrite of a core ECDSA
+primitive, and the honest cost/benefit at ~1.6x (plain) versus the
+gating complexity of 2.2x (MULX) did not justify starting it at the end
+of a long session.  The differential harness to do it safely is
+straightforward, though: the new VOP can be compared against the
+existing one over millions of random four-limb inputs, which is far
+stronger than any KAT.
