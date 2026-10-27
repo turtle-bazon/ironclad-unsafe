@@ -788,3 +788,35 @@ Along the way: my byte-level KAT expectations again had typos --
 always verify against hashlib, never memory; and SBCL hoists/CSEs
 VOP calls in microbenchmarks (0.0ns readings), so only sustained
 integrated runs and the official harness count.
+
+## Update (Poly1305 VOP attempt REVERTED -- negative result, this session)
+
+Attempted a donna-32 single-block Poly1305 VOP (GPRs + XMM products,
+mirroring the ECL C reference exactly) plus a batched variant, with a
+separate non-inlined driver loop.  Findings:
+
+- Register pressure is the wall: ~16 live GPR TNs plus pinned rax/rdx
+  plus call args exceed the packable set ("failed to pack Load-TN").
+  Fixed by keeping the five 64-bit s values in XMM regs (only t0,t1,u,u5
+  live as GPR temps) -- then it packs and builds.
+- Correctness was earned the hard way: an rr0 bug ((r0<<2)+(r0>>2)
+  instead of ((r0>>2)<<2)+(r0>>2)) passed single-block tests silently
+  because s4=0 kills the term when hibit=0; only a VOP-vs-generic
+  differential over multi-block inputs caught it (40/40 match after fix,
+  repo poly1305 vectors pass, suite green).
+- Performance is NEUTRAL: batched VOP (one call per 16K blocks) measures
+  1250 MB/s, identical to the generic Lisp loop.  SBCL already keeps the
+  whole donna-32 chain in unboxed u64 registers (both paths cons ~0
+  bytes/op), so the VOP body does the same work for the same cost; the
+  r-from-memory-per-term reloads erase any edge.  Batching amortized the
+  call overhead but the loop body itself is the bound in both versions.
+- REVERTED all Poly1305 assembly (VOP + driver + fndb entry) rather than
+  land ~250 lines of asm for zero gain.  Generic path holds 1.25 GB/s.
+  Lesson: for tight integer loops SBCL safety-0 output is already near
+  optimal -- verify with A/B (alternating, warmed, allocation-checked)
+  before investing in VOP work; single-run numbers lie (cold pages,
+  dead-code elimination to 0.0ns readings).
+- Also fixed along the way: my byte-level KAT expectations twice had
+  typos -- always verify KAT vectors against hashlib/repo testvecs,
+  never memory; and ABCL defun-wrapper load quirk (validate via flat
+  forms instead).
