@@ -1599,3 +1599,45 @@ scalar digest).  For the two Montgomery/EC cases the blocker is concrete:
 SBCL's assembler has no MULX, ADCX, ADOX or any VEX-encoded instruction,
 so taking the next factor means either hand-encoding VEX/ADX bytes inside
 the VOP or a different toolchain, not another scalar rearrangement.
+
+## Update (ADX two-carry-chain Montgomery multiply: tried, slower, reverted)
+
+SBCL 2.6.7 *does* provide MULX, ADCX, ADOX and VEX instructions (they live in
+the SB-X86-64-ASM instruction-set package; an earlier note in this file
+saying otherwise was from probing the wrong package), and the tree already
+has CPU detection for :bmi2 and :adx with the adx-supported-p predicate.
+So the "next factor" for the Montgomery multiplys looked reachable, and I
+implemented it.
+
+The form tried: keep the separated operand scanning structure, but
+accumulate each row with two independent carry chains -- MULX for the
+128-bit product (no flag clobber), ADCX for the low words, ADOX for the
+high words, with the chains' pending carries consumed at the next limb.
+It is correct: 120k+ adversarial differential trials against the SOS form
+at all four sizes, zero mismatches, first try.
+
+It is also slower:
+
+  mont-mul-16   sos 360ns   cios 320ns   adx 380ns
+  mont-mul-32   sos 1520ns  cios 1260ns  adx 1760ns
+
+The reason, as far as I can tell: this row form hands the high half of each
+limb position to the next iteration through memory (adox writes T[j+1], the
+next adcx/adox reads it), so the store-to-load forwarding latency sits
+directly on the dependency chain -- roughly 5 cycles, worse than the ~2.4
+the scalar register carry chain costs.  The dual carry chains remove a
+chain that was not the bottleneck and add memory traffic that is.
+
+The form real ADX implementations use keeps the accumulator in three
+registers and only stores the finished word once per limb, reading the next
+initial T word off the critical path.  That is a different loop shape from
+either of ours, and with two register accumulators plus flags there is not
+enough room for the third word without spilling; it would need a careful
+rewrite and probably the n=16/32 cases only.  Given that the register-based
+version is the one with a chance, and that this attempt produced a clear
+negative at 1.4x slower, the ADX VOPs and their dispatch were removed; the
+CIOS form from the previous entry stands, and this note is the starting
+point if the three-register form is ever attempted.
+
+Cost of finding out: about an hour, and the differential harness, which
+would also have caught a wrong ADX implementation.
