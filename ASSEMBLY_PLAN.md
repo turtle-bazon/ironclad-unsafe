@@ -1692,3 +1692,27 @@ The host was at load ~8 for this run (the previous refresh was ~3), so the
 absolute Lisp numbers here are depressed by roughly the usual 20-30%; the
 direct measurement of the same code was chacha 1365 MB/s and chacha-poly
 410->462.  123 measured rows, 46 ahead of the C reference and 92 within 2x.
+
+## Update (ABCL: the McEliece row-xor loop type)
+
+An ABCL run of the suite exposed a portability regression introduced with
+the McEliece row-xor change (rev 1070) and never checked on anything but
+SBCL and CCL: the portable branch of MCE-ROW-XOR! used
+
+    (loop for c of-type index from start below end ...)
+
+ABCL's LOOP signals "couldn't verify that INDEX is a subtype of the required
+type NUMBER" for that declaration, and the warning escalates to a
+compile failure, so mceliece.lisp did not compile at all and every McEliece
+test failed.  FIXNUM is accepted by all the implementations, and the loop
+body is unchanged.  (SBCL only ever takes the VOP branch of this function,
+so its behaviour and speed are unaffected.)
+
+Verified under ABCL 1.9.0: all five McEliece vector files, the keypair
+generator for all five parameter sets, and the roundtrip test pass; also
+HQC (3), BIKE (3), gcm-siv (vector + incremental) and chacha-poly, which
+are the other areas touched this session.
+
+Note for future portability checks: ABCL's LOOP is stricter about OF-TYPE
+than SBCL/CCL, so `of-type index` should be avoided in shared code.  Of the
+whole tree this was the only occurrence.

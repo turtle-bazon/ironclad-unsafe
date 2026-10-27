@@ -1047,7 +1047,10 @@ inner loop is worth vectorizing."
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (mce-xor-words dst src start (- end start))
   #-(and sbcl x86-64 ironclad-unsafe-assembly)
-  (loop for c of-type index from start below end
+  ;; ABCL's LOOP refuses `of-type index' here ("couldn't verify that
+  ;; INDEX is a subtype of NUMBER") and turns the warning into a
+  ;; compile failure; FIXNUM is accepted everywhere.
+  (loop for c of-type fixnum from start below end
         do (setf (aref dst c) (logxor (aref dst c) (aref src c))))
   (values))
 
