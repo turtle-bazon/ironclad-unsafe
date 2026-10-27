@@ -974,3 +974,36 @@ Validation: ml-dsa vectors pass (44/65/87), full SBCL suite green, CCL
 ml-dsa vectors pass.  Remaining ML-DSA time is NTT/INVNTT (44% of a
 verify) and Keccak (24%), both of which now need SIMD or Montgomery-NTT
 restructuring rather than declaration work.
+
+## Update (modular-inverse dispatch, this session)
+
+While looking at EC verify, I timed the two modular-inverse
+implementations in isolation and found the dispatcher had been picking
+the slow one for every odd modulus:
+
+  256-bit modulus:  binary GCD 30.7 us   Euclidean 2.7 us   (11x)
+  2048-bit modulus: binary GCD 480 us     Euclidean 20 us    (24x)
+
+The binary (division-free) inverse needs O(bits) bignum shifts and
+reductions, each allocating; the Euclidean one needs O(bits) bignum
+divisions, and SBCL's division is far better than its shift/reduce
+chain.  modular-inverse now always uses the Euclidean path (which
+already returns 0 for a non-invertible input, so the contract is
+unchanged).  modular-inverse-binary is left in place, documented, and
+no longer dispatched to.
+
+  dsa verify  1.000k -> 1.595k ops/s  (gap 3.41 -> 3.30)
+  dsa sign    1.350k -> 2.100k ops/s  (gap 3.38 -> 2.18)
+  secp256r1 verify  4.465k -> 4.670k  (inverse is ~12% of a verify)
+  rsa keygen: saves ~460 us of the phi inversion (small next to the
+  prime search)
+
+EC and DSA signing already went through modular-inverse-with-blinding,
+which calls the Euclidean inverse directly, so signing there was
+unaffected -- that is why only DSA (whose sign path uses the plain
+inverse) moved so much.
+
+Validation: rsa-sig, dsa and all five ECDSA signature vector sets pass;
+full SBCL suite green.  Note the benchmark's C-reference figures move
+10-40% between runs on this (loaded) machine, so compare absolute
+Lisp ops/s rather than the gap column.

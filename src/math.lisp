@@ -563,9 +563,16 @@ be odd with bit-length in [512, 4096]; callers gate this."
   (declare (type (integer 1 *) modulus))
   (declare (type (integer 0 *) n))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (if (or (zerop n) (evenp modulus))
-      (modular-inverse-euclid n modulus)
-      (modular-inverse-binary n modulus)))
+  ;; The binary (division-free) inverse was used for odd moduli on the
+  ;; theory that avoiding division wins; measurement says otherwise by a
+  ;; wide margin, because it needs O(bits) bignum shifts and reductions
+  ;; where the Euclidean one needs O(bits) divisions.  Measured on
+  ;; 256-bit: 31 us binary vs 2.7 us Euclid; on 2048-bit: 480 us vs
+  ;; 20 us.  Every EC and DSA sign and verify inverts a scalar here, so
+  ;; this is one of the hottest lines in the library.
+  (if (zerop n)
+      0
+      (modular-inverse-euclid n modulus)))
 
 (defun modular-inverse-with-blinding (n modulus &key prime)
   "As modular-inverse, but mask N with a blinding factor before
