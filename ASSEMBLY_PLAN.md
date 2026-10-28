@@ -2183,3 +2183,39 @@ sha256 1.53 -> 1.34 GB/s, aes 7.99 -> 7.27 GB/s) while the C column
 stayed put, so the run's counts (44 ahead, 77 within 2x) are not
 comparable with the previous refresh; the XMSS change is far larger than
 that drift, as the direct A/B above shows.
+
+## Investigation notes (falcon keygen, and an MD5 VOP that is fast but wrong)
+
+**Falcon keygen is the NTRU solve, and the solve is bignums.**  On a
+104 ms key generation (one sampling attempt, no retry): sampling f and g
+8 ms, the Gram norm check 4 ms, `falcon-ntru-solve` 80 ms.  Inside the
+solve, `falcon-karatsuba` is 70% cumulatively and the bignum primitives
+(SUBTRACT-BIGNUM, GENERIC-+, ASHIFT, TWO-ARG-*) another 20%.  The
+implementation is exact: the field norm, the lift/karatsuba products and
+the Babai reduction all run on `(simple-array integer)`, so every
+coefficient is a boxed bignum.  The reference implementation does the
+same recursion in `fpr` (double) with an FFT for the products and rounds
+only at the end, which is where the 10-20x comes from.  We already have
+the float FFT pieces (`falcon-fft`, `falcon-mul-fft`, `falcon-div-fft`,
+used by the Gram check and by `falcon-babai-reduce`), so the work is to
+move `falcon-field-norm` and the lift products into that domain -- a
+real project, not a tuning change, and one with a correctness cliff
+(the NTRU equation must stay exact).
+
+**MD5 VOP: 220 -> 120 ns per block, but not correct.**  A 64-round VOP
+with `:dword` adds/rotates and the state in four registers is 1.8x faster
+than the Lisp compression (220 -> 120 ns/block, i.e. 290 -> 530 MB/s,
+which would take the md5 row from 2.5x to ~1.3x).  It is not shipped
+because it produces the wrong digest.  The emitted instruction stream was
+checked mechanically against the RFC schedule: all 64 rounds have the
+right `k`, `s`, `T`, target register, second operand, and F/G/H/I
+operand roles, and the initial loads and final add-back are right.  A
+Lisp model of exactly the same round structure matches
+`update-md5-block` on the abc vector; the VOP does not.  Things ruled out
+along the way: `:dword` encoding (a one-round primitive VOP round-trips
+against Lisp, including immediates above 2^31 and the 32-bit rotate), the
+argument arrays (the block is not modified, the state is), and the
+rounds themselves (checked by parsing the disassembly).  Something in
+how SBCL expands/inlines a generator body of this size is miscompiling
+it, and chasing that was not worth more time; the scratch work is not in
+the tree.
