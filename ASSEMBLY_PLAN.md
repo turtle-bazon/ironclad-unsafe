@@ -1913,3 +1913,33 @@ SBCL suite is green.
 All the SLH-DSA SHAKE rows now sit at ~1.9-2.1 and are Keccak-bound.  123
 measured rows, 41 ahead of the C reference and 78 within 2x at load ~4.5;
 the counts are within the usual host noise of the previous run.
+
+## Update (ChaCha: four blocks in flight, 2x)
+
+The AVX2 core processed two blocks per YMM group.  A ChaCha quarter round
+is a serial chain (add, xor/rotate, add, xor/rotate), and with a single
+group there is nothing to overlap it with -- the two-block core measured
+1.05 GB/s, well under the ~2 GB/s the per-byte instruction count allows on
+this machine.
+
+Added a four-block core: two independent YMM groups (blocks A/B and C/D),
+so one group's chain fills the other's latency.  The per-byte instruction
+count is unchanged; only the instruction-level parallelism doubles.  The
+caller advances all four state counters by four per 256 octets, which also
+halves the per-byte counter bookkeeping (a new chacha-add-counter replaces
+two chacha-inc-counter calls per block).
+
+  chacha        1024 -> 2048 MB/s   (2x)
+  chacha/12     2048 -> 4096 MB/s
+  chacha/8      2048 -> 4096 MB/s
+  chacha-poly    410 ->  512 MB/s   (chacha is now 4us of its 16us)
+
+2048 MB/s is about the ceiling the instruction count implies here, so an
+eight-block version would not help.  On Zen 2 the 256-bit ops are split into
+two 128-bit uops, so this is purely a latency-hiding win; on a full-width
+AVX2 machine the same code should do better still.
+
+Validation: 360 randomized comparisons against the SSE core across all six
+variants (16/32-byte keys, 8/12/24-byte nonces, lengths 1B-8KB) with zero
+mismatches, the chacha-poly/xchacha-poly vector files, and the full SBCL
+suite.

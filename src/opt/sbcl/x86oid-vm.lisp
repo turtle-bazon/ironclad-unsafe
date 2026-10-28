@@ -5826,6 +5826,119 @@
         (inst vzeroupper)))
     (values)))
 
+;;; Four-block ChaCha core with AVX2.
+;;;
+;;; Two independent YMM groups (blocks A/B and C/D), so the serial
+;;; quarter-round chain of one group overlaps the other.  The two-block
+;;; core leaves the ALUs half idle on a machine whose 256-bit integer ops
+;;; are split into two 128-bit uops (Zen 2): the per-byte instruction
+;;; count is the same here, but there is twice the instruction-level
+;;; parallelism to hide the chain latency.
+
+#+x86-64
+(define-vop (chacha-core-4x-avx2)
+  (:translate ironclad-unsafe::chacha-core-4x-avx2)
+  (:policy :fast-safe)
+  (:args (state-a :scs (descriptor-reg))
+         (state-b :scs (descriptor-reg))
+         (state-c :scs (descriptor-reg))
+         (state-d :scs (descriptor-reg))
+         (plaintext :scs (descriptor-reg))
+         (plaintext-start :scs (unsigned-reg))
+         (out :scs (descriptor-reg))
+         (out-start :scs (unsigned-reg))
+         (n-rounds :scs (unsigned-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-8
+              unsigned-num
+              simple-array-unsigned-byte-8
+              unsigned-num
+              unsigned-num)
+  (:temporary (:sc int-avx2-reg) t0 t1 t2 t3 t4 t5 t6 t7 t8)
+  (:temporary (:sc int-sse-reg) x0)
+  (:temporary (:sc unsigned-reg) count)
+  (:generator 1000
+    (let ((disp (- (* n-word-bytes vector-data-offset) other-pointer-lowtag))
+          (repeat (gen-label)))
+      (macrolet
+          ((load-row (tn r sa sb)
+             `(progn
+                (inst vpxor ,tn ,tn ,tn)
+                (inst vmovdqu x0 (ea (+ disp (* 16 ,r)) ,sa))
+                (inst vinserti128 ,tn ,tn x0 0)
+                (inst vmovdqu x0 (ea (+ disp (* 16 ,r)) ,sb))
+                (inst vinserti128 ,tn ,tn x0 1)))
+           (qr (a b c d tmp)
+             `(progn
+                (inst vpaddd ,a ,a ,b)
+                (inst vpxor ,d ,d ,a)
+                (inst vpslld ,tmp ,d 16)
+                (inst vpsrld ,d ,d 16)
+                (inst vpor ,d ,d ,tmp)
+                (inst vpaddd ,c ,c ,d)
+                (inst vpxor ,b ,b ,c)
+                (inst vpslld ,tmp ,b 12)
+                (inst vpsrld ,b ,b 20)
+                (inst vpor ,b ,b ,tmp)
+                (inst vpaddd ,a ,a ,b)
+                (inst vpxor ,d ,d ,a)
+                (inst vpslld ,tmp ,d 8)
+                (inst vpsrld ,d ,d 24)
+                (inst vpor ,d ,d ,tmp)
+                (inst vpaddd ,c ,c ,d)
+                (inst vpxor ,b ,b ,c)
+                (inst vpslld ,tmp ,b 7)
+                (inst vpsrld ,b ,b 25)
+                (inst vpor ,b ,b ,tmp)))
+           (group-round (a b c d)
+             `(progn
+                (qr ,a ,b ,c ,d t8)
+                (inst vpshufd ,b ,b #b00111001)
+                (inst vpshufd ,c ,c #b01001110)
+                (inst vpshufd ,d ,d #b10010011)
+                (qr ,a ,b ,c ,d t8)
+                (inst vpshufd ,b ,b #b10010011)
+                (inst vpshufd ,c ,c #b01001110)
+                (inst vpshufd ,d ,d #b00111001)))
+           (out-lane (tn lane off)
+             `(progn
+                (inst vextracti128 x0 ,tn ,lane)
+                (inst vpxor x0 x0 (ea (+ disp ,off) plaintext plaintext-start))
+                (inst vmovdqu (ea (+ disp ,off) out out-start) x0)))
+           (out-row (tn r sa sb base)
+             `(progn
+                (load-row t8 ,r ,sa ,sb)
+                (inst vpaddd ,tn ,tn t8)
+                (out-lane ,tn 0 (+ ,base (* 16 ,r)))
+                (out-lane ,tn 1 (+ ,base 64 (* 16 ,r))))))
+        (load-row t0 0 state-a state-b)
+        (load-row t1 1 state-a state-b)
+        (load-row t2 2 state-a state-b)
+        (load-row t3 3 state-a state-b)
+        (load-row t4 0 state-c state-d)
+        (load-row t5 1 state-c state-d)
+        (load-row t6 2 state-c state-d)
+        (load-row t7 3 state-c state-d)
+        (inst mov count n-rounds)
+        (emit-label repeat)
+        (group-round t0 t1 t2 t3)
+        (group-round t4 t5 t6 t7)
+        (inst sub count 1)
+        (inst jmp :nz repeat)
+        (out-row t0 0 state-a state-b 0)
+        (out-row t1 1 state-a state-b 0)
+        (out-row t2 2 state-a state-b 0)
+        (out-row t3 3 state-a state-b 0)
+        (out-row t4 0 state-c state-d 128)
+        (out-row t5 1 state-c state-d 128)
+        (out-row t6 2 state-c state-d 128)
+        (out-row t7 3 state-c state-d 128)
+        (inst vzeroupper)))
+    (values)))
+
 #+x86-64
 (define-vop (mce-xor-words)
   ;; DST[START .. START+COUNT) ^= SRC[START .. START+COUNT), word by word.

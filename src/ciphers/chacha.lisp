@@ -81,6 +81,20 @@ the generic loop does (word 12 plus carry into word 13)."
     (setf (aref state 13) (mod32+ (aref state 13) 1)))
   (values))
 
+(defun chacha-add-counter (state n)
+  "Advance the 64-bit block counter of STATE by N, with the same carry
+behaviour as CHACHA-INC-COUNTER repeated N times."
+  (declare (type chacha-state state)
+           (type (unsigned-byte 5) n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((old (aref state 12)))
+    (declare (type (unsigned-byte 32) old))
+    (let ((new (mod32+ old n)))
+      (setf (aref state 12) new)
+      (when (< new old)
+        (setf (aref state 13) (mod32+ (aref state 13) 1)))))
+  (values))
+
 #+x86-64
 (defvar *chacha-avx2-enabled* t
   "Set to NIL to force the SSE two-block ChaCha core (validation only).")
@@ -200,34 +214,57 @@ the generic loop does (word 12 plus carry into word 13)."
                    (or (eq core-function #'chacha/20-core)
                        (eq core-function #'chacha/12-core)
                        (eq core-function #'chacha/8-core)))
-          (let ((2x-rounds (if (eq core-function #'chacha/8-core) 4
-                               (if (eq core-function #'chacha/12-core) 6 10)))
-                (state-b (make-array 16 :element-type '(unsigned-byte 32))))
+          (let* ((2x-rounds (if (eq core-function #'chacha/8-core) 4
+                                (if (eq core-function #'chacha/12-core) 6 10)))
+                 (avx2 (and *chacha-avx2-enabled*
+                            (avx2-supported-p)))
+                 (state-b (copy-seq state)))
             (declare (type (integer 4 10) 2x-rounds)
+                     (type boolean avx2)
                      (type chacha-state state-b))
-            (replace state-b state)
-            (chacha-inc-counter state-b)
-            (let ((avx2 (and *chacha-avx2-enabled*
-                             (avx2-supported-p))))
-              (declare (type boolean avx2))
-              (multiple-value-bind (q r)
-                  (truncate length 128)
-                (declare (type index q r))
-                (dotimes (i q)
-                  (declare (ignore i))
-                  (if avx2
-                      (chacha-core-2x-avx2 state state-b plaintext
-                                           plaintext-start ciphertext
-                                           ciphertext-start 2x-rounds)
-                      (chacha-core-2x state state-b plaintext plaintext-start
-                                      ciphertext ciphertext-start 2x-rounds))
-                  (chacha-inc-counter state)
-                  (chacha-inc-counter state)
-                  (chacha-inc-counter state-b)
-                  (chacha-inc-counter state-b)
-                  (incf plaintext-start 128)
-                  (incf ciphertext-start 128))
-                (decf length (* q 128))))))
+            (chacha-add-counter state-b 1)
+            ;; Four-block phase: two independent lane groups per VOP call,
+            ;; which gives the serial quarter-round chains something to
+            ;; overlap with.  Steps the counters by four per 256 octets.
+            (when (and avx2 (>= length 256))
+              (let ((state-c (copy-seq state))
+                    (state-d (copy-seq state)))
+                (declare (type chacha-state state-c state-d))
+                (chacha-add-counter state-c 2)
+                (chacha-add-counter state-d 3)
+                (multiple-value-bind (q4 r4)
+                    (truncate length 256)
+                  (declare (ignore r4))
+                  (dotimes (i q4)
+                    (declare (ignore i))
+                    (chacha-core-4x-avx2 state state-b state-c state-d
+                                         plaintext plaintext-start
+                                         ciphertext ciphertext-start 2x-rounds)
+                    (chacha-add-counter state 4)
+                    (chacha-add-counter state-b 4)
+                    (chacha-add-counter state-c 4)
+                    (chacha-add-counter state-d 4)
+                    (incf plaintext-start 256)
+                    (incf ciphertext-start 256))
+                  (decf length (* q4 256)))))
+            (multiple-value-bind (q r)
+                (truncate length 128)
+              (declare (type index q r))
+              (dotimes (i q)
+                (declare (ignore i))
+                (if avx2
+                    (chacha-core-2x-avx2 state state-b plaintext
+                                         plaintext-start ciphertext
+                                         ciphertext-start 2x-rounds)
+                    (chacha-core-2x state state-b plaintext plaintext-start
+                                    ciphertext ciphertext-start 2x-rounds))
+                (chacha-inc-counter state)
+                (chacha-inc-counter state)
+                (chacha-inc-counter state-b)
+                (chacha-inc-counter state-b)
+                (incf plaintext-start 128)
+                (incf ciphertext-start 128))
+              (decf length (* q 128)))))
         (loop
           (funcall core-function keystream-buffer state)
           (when (zerop (setf (aref state 12)
