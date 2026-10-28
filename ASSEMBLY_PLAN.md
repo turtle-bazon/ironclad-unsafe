@@ -2025,3 +2025,13 @@ limit.  Validation: FILL-CTR-BLOCKS-8 matches the old increment exactly
 on 2000 random IVs, a third of them within 64 of a 64-bit wrap (counter
 blocks and final IV both compared), the ctr/gcm/ccm/eax/gcm-siv vector
 files pass, and the full SBCL suite is green.
+
+## Update (benchmark refresh after the McEliece keygen work)
+
+  mceliece348864 keygen   ~150 -> 119 ms (fixed-seed A/B)
+  mceliece460896 keygen   ~390 -> 302 ms (fixed-seed A/B)
+
+The table's own keygen rows are dominated by how many retries a single
+sample happens to need, and the C column moved by more than the change;
+123 measured rows, 45 ahead of the C reference and 99 within 2x, but
+those counts are not comparable with the previous run (load ~7.8).
