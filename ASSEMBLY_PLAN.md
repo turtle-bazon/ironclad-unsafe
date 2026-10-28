@@ -1943,3 +1943,15 @@ Validation: 360 randomized comparisons against the SSE core across all six
 variants (16/32-byte keys, 8/12/24-byte nonces, lengths 1B-8KB) with zero
 mismatches, the chacha-poly/xchacha-poly vector files, and the full SBCL
 suite.
+
+## Update (benchmark refresh after the four-block ChaCha core)
+
+  chacha        1.052 -> 1.731 GB/s   (gap 3.22 -> 1.81)
+  chacha-poly     413 ->   559 MB/s   (gap 5.12 -> 3.81)
+  chacha/12      1.692 -> 2.540 GB/s
+  chacha/8       2.288 -> 3.390 GB/s
+
+123 measured rows, 44 ahead of the C reference and 76 within 2x at load
+~3.2.  Chacha-poly is now mostly Poly1305: 559 MB/s is 6us of Poly1305
+(scalar-optimal), 4us of ChaCha, ~2us of mode setup and ~4us of message
+allocation in an 8192-byte operation.
