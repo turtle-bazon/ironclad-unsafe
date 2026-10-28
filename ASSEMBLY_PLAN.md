@@ -2478,3 +2478,24 @@ ripemd-160 2.25x (wins), sm3 1.06x, sha512 0.83x (losses).  The win
 condition is a round with few live values and a simple schedule; SM3 and
 SHA-512 both need their message schedule too, and that plus the register
 pressure cancels the advantage.
+
+## Negative result (Camellia: one merged S-box table)
+
+The four S-boxes are separate DEFCONSTANT arrays, so binding them all
+locally costs four base registers (that version was slower, recorded
+earlier).  Merging them into one 1024-word table (S1 at 0, S2 at 256,
+S3 at 512, S4 at 768) needs only one base register, so the feistel can
+bind it once without the pressure:
+
+  camellia  81.9 MB/s before and after (interleaved A/B, rebuild each side)
+
+Exactly neutral.  The compiler was evidently already keeping the four
+constant-array addresses alive cheaply enough that one merged table buys
+nothing.  Reverted; no code change.
+
+With this, the Lisp-level candidates on the remaining 2x+ rows are
+exhausted: every fix that worked this month (Whirlpool tables, SLH-DSA
+and XMSS digest reuse, McEliece elimination, AES-CTR counters, MD5 and
+RIPEMD-160 rounds) removed *work*; the ones that failed (Camellia tables
+twice, Whirlpool locals, SHA-512 rounds, SM3 rounds, merged CIOS) tried to
+make the same work cheaper in Lisp.  What is left needs new primitives.
