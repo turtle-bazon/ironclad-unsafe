@@ -2676,3 +2676,14 @@ Cumulative against rev 1141 (same harness, interleaved builds):
 The SHA-2 variants were already ahead of the C reference (0.62-0.68);
 their gain is small because their per-hash state is smaller.  KATs for
 both families, the SHA-3/SHAKE/cSHAKE vectors and the full suite pass.
+
+### A note on table runs vs isolated A/B
+
+The full-table runs take ~25 minutes and the later public-key rows come
+out systematically slower than the same operations measured in a fresh
+image (SLH-DSA 128f verify: 125 ops/s in the table, 142-145 isolated
+before and after the padding change).  The C reference, measured in the
+same long run, moves too (SLH 128f keygen C: 333 -> 213 ops/s between
+two runs), so the "rows ahead/within 2x" counts move by several rows
+without any code change.  The isolated interleaved builds are the
+measurement of record for these rows; the table is a snapshot.
