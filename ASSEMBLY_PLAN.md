@@ -2876,3 +2876,21 @@ KATs and the full suite pass.
 Cumulative for the table: falcon-512 keygen 9.8x -> ~7.5x.  The rest of
 that row is the NTRU solve, which needs the reference's double-precision
 NTT/NTRU path rather than bignum Karatsuba.
+
+### Correction: the Falcon sampler gain is ~6-8%, not 1.3x
+
+The first A/B compared one five-key run against one, and the NTRU
+solve's random retries make keygen swing by 30-40%.  Repeating it five
+times per side, on freshly built images:
+
+  before (rev 1151)  80.8 84.8 79.2 81.6 81.6 ms   median 81.6
+  after  (rev 1152)  64.8 86.4 64.0 84.0 76.8 ms   median 76.8
+
+so the declaration change is worth about 6-8% of keygen, and the
+earlier "90 -> 69 ms" was two lucky/unlucky samples.  It is still a
+positive, zero-risk change (semantically identical arithmetic), and it
+also removes the generic calls for other implementations, but it does
+not move Falcon's 8x gap materially.
+
+Lesson for the log: keygen-like operations with rejection/retry loops
+need a distribution, not a single best-of-five number.
