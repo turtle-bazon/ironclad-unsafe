@@ -2418,3 +2418,21 @@ the operation, so it was not done.
 123 measured rows, 41 ahead of the C reference and 88 within 2x at load
 ~4.2.  GCM is now 1.62x from C with 45% of its one-shot time in mode
 construction, so the remaining gap is setup rather than cryptography.
+
+## Update (RIPEMD-160: 160-step VOP, 2.25x)
+
+The MD5 recipe applied to RIPEMD-160, which is the worst digest row.  The
+portable version keeps both lines' ten state words live in tagged
+fixnums; the VOP runs the lines *sequentially* in five registers and
+parks the right-hand line's result in a five-word scratch (the digest
+gained a SCRATCH slot for it) because the block is still needed by the
+left-hand line.  Each step is a three-or-four instruction F plus three
+32-bit adds, a rotate and the C-register rotate by 10.
+
+  ripemd-160   113.8 -> 256.0 MB/s   (2.25x)
+
+so the row should go from 2.71x behind C to about 1.2x.  Validation: the
+ripemd-160 and ripemd-160-incremental vector files pass, a differential
+of 300 random messages with the VOP on and off shows zero mismatches, the
+"abc" digest is byte-identical on SBCL, CCL and ABCL, and the full suite
+is green.

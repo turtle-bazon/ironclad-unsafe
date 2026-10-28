@@ -12,10 +12,21 @@
 
 (defconst +pristine-ripemd-160-registers+ (initial-ripemd-160-regs))
 
-(defun update-ripemd-160-block (regs block)
+#+x86-64
+(defvar *ripemd-160-block-asm-enabled* t
+  "Set to NIL to force the portable round loop (validation only).")
+
+(defun update-ripemd-160-block (regs block &optional scratch)
+  "Compress BLOCK into REGS.  SCRATCH, when supplied, is a five-word
+scratch buffer used by the assembly path."
   (declare (type ripemd-160-regs regs)
            (type (simple-array (unsigned-byte 32) (16)) block)
+           (ignorable scratch)
            #.(burn-baby-burn))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (when (and *ripemd-160-block-asm-enabled* scratch)
+    (ripemd-160-block-asm regs block scratch)
+    (return-from update-ripemd-160-block regs))
   (let* ((a1 (ripemd-160-regs-a regs)) (a2 a1)
          (b1 (ripemd-160-regs-b regs)) (b2 b1)
          (c1 (ripemd-160-regs-c regs)) (c2 c1)
@@ -156,6 +167,8 @@
              (:copier nil)
              (:include mdx))
   (regs (initial-ripemd-160-regs) :type ripemd-160-regs :read-only t)
+  (scratch (make-array 5 :element-type '(unsigned-byte 32))
+           :read-only t :type (simple-array (unsigned-byte 32) (5)))
   (block (make-array 16 :element-type '(unsigned-byte 32))
     :type (simple-array (unsigned-byte 32) (16)) :read-only t))
 
@@ -189,7 +202,8 @@ bounded by start and end, which must be numeric bounding-indices."
   (flet ((compress (state sequence offset)
            (let ((block (ripemd-160-block state)))
              (fill-block-ub8-le block sequence offset)
-             (update-ripemd-160-block (ripemd-160-regs state) block))))
+             (update-ripemd-160-block (ripemd-160-regs state) block
+                                      (ripemd-160-scratch state)))))
     (declare (dynamic-extent #'compress))
     (declare (notinline mdx-updater))
     (mdx-updater state #'compress sequence start end)))
@@ -220,14 +234,14 @@ The resulting RIPEMD-160 message-digest is returned as an array of twenty
     (fill-block-ub8-le block buffer 0)
     ;; Flush block first if length wouldn't fit
     (when (>= buffer-index 56)
-      (update-ripemd-160-block regs block)
+      (update-ripemd-160-block regs block (ripemd-160-scratch state))
       ;; Create new fully 0 padded block
       (loop for index of-type (integer 0 16) from 0 below 16
          do (setf (aref block index) #x00000000)))
     ;; Add 64bit message bit length
     (store-data-length block total-length 14)
     ;; Flush last block
-    (update-ripemd-160-block regs block)
+    (update-ripemd-160-block regs block (ripemd-160-scratch state))
     ;; Done, remember digest for later calls
     (finalize-registers state regs)))
 
