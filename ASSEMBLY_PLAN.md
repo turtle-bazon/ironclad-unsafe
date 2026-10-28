@@ -2518,3 +2518,28 @@ mean not creating the GMAC object and its cipher at all, i.e. folding the
 GHASH state into the GCM mode, which duplicates ~80 lines of the MAC's
 update/digest logic (or refactors it into shared functions) for ~1.2x on
 one row.  Not done.
+
+## Keccak output extraction: one 64-bit store per lane (SLH-DSA verify 1.05x)
+
+`keccak-state-extract-output` wrote the digest a byte at a time -- eight
+stores per 64-bit lane -- and walked all 25 elements even when the caller
+wanted 16 or 32 bytes.  The digest is just the little-endian state array,
+so when a whole lane fits, the whole lane is one unaligned 64-bit store,
+and only `(ceiling output-bytes 8)` elements can contribute at all:
+
+  extract 16 bytes   92 -> 24 ns
+  extract 32 bytes  116 -> 34 ns
+  extract 64 bytes  156 -> 50 ns
+
+A SHA-3 digest of a long message is unaffected (one extraction per
+message), but SLH-DSA squeezes a short hash thousands of times: a single
+128f verification makes 6261 extraction calls.  Interleaved A/B in one
+image, each side behind the same closure:
+
+  slh-dsa-shake-128f verify  9800 -> 9300 us  (1.054x)
+  slh-dsa-shake-128f sign   169.0 -> 159.0 ms (1.063x)
+
+The partial tail lane keeps the old byte-wise path, and the loop is
+clamped to 25 elements, so a caller that asks for more than the state
+holds cannot read past the end.  Suite green; sha3/shake/cshake/slh-dsa/
+ml-dsa vectors pass.  No change for SHA-2 families (separate finalizers).

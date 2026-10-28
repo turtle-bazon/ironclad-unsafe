@@ -116,31 +116,38 @@
                           (+ lo (ash hi 32))))))))))
 
 (defun keccak-state-extract-output (state output-bytes &optional (digest nil) (start 0))
-  (let ((digest (or digest
-                    (make-array (list output-bytes) :element-type '(unsigned-byte 8)))))
+  (let* ((digest (or digest
+                     (make-array (list output-bytes) :element-type '(unsigned-byte 8))))
+         (lanes (min (* +keccak-state-columns+ +keccak-state-rows+)
+                     (ceiling output-bytes +keccak-lane-byte-width+))))
     (declare (type keccak-state state)
              (type (simple-array (unsigned-byte 8) (*)) digest))
-    (dotimes (x +keccak-state-columns+)
-      (dotimes (y +keccak-state-rows+)
-        (let* ((element (+ (* y +keccak-state-columns+) x))
-               (offset (* element +keccak-lane-byte-width+)))
-          (when (< offset output-bytes)
-            ;; Split the lane once and store the eight bytes with constant
-            ;; shift counts.  A variable (byte 8 (* 8 i)) put SBCL on the
-            ;; generic path, which cost a quarter of ML-DSA verification.
-            (let* ((lane (aref state element))
-                   (lo (ldb (byte 32 0) lane))
+    ;; Only the first LANES elements can contribute output: the digest is
+    ;; the little-endian state array, so element N lives at byte 8N.  When
+    ;; the whole lane fits, store it with one unaligned 64-bit write; the
+    ;; tail lane, if any, still goes out byte by byte.
+    (dotimes (element lanes)
+      (let* ((offset (* element +keccak-lane-byte-width+))
+             (base (+ start offset))
+             (lane (aref state element)))
+        (declare (type fixnum offset base))
+        (if (<= (+ offset +keccak-lane-byte-width+) output-bytes)
+            (setf (ub64ref/le digest base) lane)
+            ;; Split the lane once and store the remaining bytes with
+            ;; constant shift counts.  A variable (byte 8 (* 8 i)) put
+            ;; SBCL on the generic path, which cost a quarter of ML-DSA
+            ;; verification.
+            (let* ((lo (ldb (byte 32 0) lane))
                    (hi (ldb (byte 32 32) lane))
-                   (base (+ start offset))
                    (limit (+ start output-bytes)))
               (declare (type (unsigned-byte 32) lo hi)
-                       (type fixnum base limit))
+                       (type fixnum limit))
               (macrolet ((put (at shift value)
                            `(when (< (+ base ,at) limit)
                               (setf (aref digest (+ base ,at))
                                     (ldb (byte 8 ,shift) ,value)))))
                 (put 0 0 lo) (put 1 8 lo) (put 2 16 lo) (put 3 24 lo)
-                (put 4 0 hi) (put 5 8 hi) (put 6 16 hi) (put 7 24 hi)))))))
+                (put 4 0 hi) (put 5 8 hi) (put 6 16 hi) (put 7 24 hi))))))
     digest))
 
 
