@@ -121,6 +121,7 @@
          (lanes (min (* +keccak-state-columns+ +keccak-state-rows+)
                      (ceiling output-bytes +keccak-lane-byte-width+))))
     (declare (type keccak-state state)
+             (type fixnum output-bytes start)
              (type (simple-array (unsigned-byte 8) (*)) digest))
     ;; Only the first LANES elements can contribute output: the digest is
     ;; the little-endian state array, so element N lives at byte 8N.  When
@@ -271,26 +272,6 @@ the content on normal form exit."
   (values))
 
 
-;;;
-;;; Message Padding for last block
-;;;
-
-(defun pad-message-to-width (message bit-width padding-type &optional (message-byte-length (length message)))
-  (let* ((width-bytes (truncate bit-width 8))
-         (padding-bytes (- width-bytes (mod message-byte-length width-bytes)))
-         (padded-message-byte-length (+ message-byte-length padding-bytes))
-         (padded-message (make-array padded-message-byte-length :element-type '(unsigned-byte 8))))
-    (replace padded-message message :end2 message-byte-length)
-    (setf (aref padded-message message-byte-length) (ecase padding-type
-                                                      (:xof #x1f)
-                                                      (:cshake #x04)
-                                                      (:keccak #x01)
-                                                      (:sha3 #x06)))
-    (loop for index from (1+ message-byte-length) below padded-message-byte-length
-          do (setf (aref padded-message index) #x00))
-    (setf (aref padded-message (1- padded-message-byte-length))
-          (logior #x80 (aref padded-message (1- padded-message-byte-length))))
-    padded-message))
 
 
 ;;;
@@ -489,11 +470,35 @@ the content on normal form exit."
              (type (integer 0 1600) bit-rate)
              (type integer output-byte-length))
 
-    ;; Process remaining data after padding it
-    (keccak-state-merge-input keccak-state
-                              bit-rate
-                              (pad-message-to-width buffer bit-rate padding-type buffer-index)
-                              0)
+    ;; Pad in place and absorb only the lanes that can be nonzero.
+    ;; PAD-MESSAGE-TO-WIDTH used to allocate a fresh padded block, copy
+    ;; the message into it and absorb the whole rate; an SLH-DSA hash
+    ;; pads a 16-octet message in a 136-octet rate, so 14 of the 17
+    ;; lanes were zeros absorbed thousands of times per operation.
+    (let* ((rate-bytes (truncate bit-rate 8))
+           (last-byte (1- rate-bytes))
+           (last-lane (1- (truncate rate-bytes +keccak-lane-byte-width+)))
+           (pad-lane (truncate buffer-index +keccak-lane-byte-width+))
+           (pad-lane-end (1- (* +keccak-lane-byte-width+ (1+ pad-lane))))
+           (pad-byte (ecase padding-type
+                       (:xof #x1f) (:cshake #x04) (:keccak #x01) (:sha3 #x06))))
+      (declare (type fixnum rate-bytes last-byte last-lane
+                     pad-lane pad-lane-end)
+               (type (unsigned-byte 8) pad-byte))
+      (setf (aref buffer buffer-index) pad-byte)
+      (loop for index of-type fixnum from (1+ buffer-index) to pad-lane-end
+            do (setf (aref buffer index) #x00))
+      (when (= pad-lane last-lane)
+        (setf (aref buffer last-byte)
+              (logior #x80 (aref buffer last-byte))))
+      (keccak-state-merge-input keccak-state
+                                (* 8 +keccak-lane-byte-width+ (1+ pad-lane))
+                                buffer 0)
+      ;; The 0x80 terminator sits in the last lane; add it directly
+      ;; instead of absorbing the run of zeros between the two lanes.
+      (unless (= pad-lane last-lane)
+        (setf (aref keccak-state last-lane)
+              (logxor (aref keccak-state last-lane) (ash #x80 56)))))
     (keccak-rounds keccak-state)
     (setf (sha3-buffer-index state) 0)
 

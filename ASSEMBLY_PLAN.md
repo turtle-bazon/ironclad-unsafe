@@ -2618,3 +2618,33 @@ Vector file passes and the full SBCL suite is green.  C reference is
 198.8 MB/s, so the gap moves 2.65 -> ~2.33.  Whirlpool remains a
 table-lookup bound digest (1280 lookups per block); this removes the
 bookkeeping around them, not the lookups.
+
+## SHA-3 padding without a fresh block (SLH-DSA verify 1.19x, sign 1.15x)
+
+`sha3-finalize` padded by calling `pad-message-to-width`, which allocated
+a new `rate-bytes`-long vector, copied the message into it, zero-filled
+the rest, and then absorbed the whole rate block.  For an SLH-DSA hash
+the message is 16 octets in a 136-octet rate, so three lanes carry data
+and fourteen carry zeros -- and by the zero-XOR identity those fourteen
+lanes need not be absorbed at all.  The finalizer now:
+
+* pads the state's *own* buffer in place (pad byte, zero only to the end
+  of the pad byte's lane, `0x80` terminator in the last lane or ORed
+  into the pad byte when they share a lane);
+* absorbs only the lanes up to and including the pad byte's lane;
+* XORs `0x80 << 56` straight into the last state lane when the
+  terminator is in a later lane.
+
+`pad-message-to-width` is gone; `keccak-state-extract-output` also
+declares `output-bytes` and `start` fixnum (the bounds computation was
+going through generic `CEILING1`).
+
+Interleaved builds, same harness, 8 KB digest and 128f:
+
+  sha3/256        256.0 -> 256.0 MB/s   (one padding per message: no change)
+  slh-dsa-shake-128f verify  8600 -> 7133-7266 us  (1.18-1.21x)
+  slh-dsa-shake-128f sign   138.4 -> 119.2-122.4 ms (1.13-1.16x)
+
+The whole sha3/shake/cshake vector set, the SLH-DSA and ML-DSA KATs and
+the full SBCL suite pass (the KATs also exercise the `:cshake` and
+`:keccak` padding bytes).
