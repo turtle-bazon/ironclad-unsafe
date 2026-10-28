@@ -2956,3 +2956,27 @@ crypto path.
 Left in place: the portable 64-bit-chunk loop.  The little-endian
 branch is still per-byte (curve25519/ed25519/ed448 scalars, 32-56
 bytes), but those are 0.4-2 us against operations of 50-650 us.
+
+## Where the remaining public-key time goes (measured)
+
+RSA-2048 verify (30 us): 17 Montgomery modmuls at 1.6 us each, plus
+3.0 us to convert the base into Montgomery form `(mod (* base 2^2048)
+m)` and 0.8 us to turn the result limbs back into an integer.  The
+modmul is instruction-throughput bound (~2 * n^2 products plus six
+instructions each); replacing the two conversions with a cached
+`R^2 mod m` would only save ~1.4 us of 30, so the remaining gap is the
+modmul itself -- an ADX/MULX implementation, which this SBCL backend
+cannot assemble.
+
+secp256r1 verify (208 us): 71% of samples in
+`secp256r1-fe-mont-mul`, 18.6 us in
+`modular-inverse-with-blinding` (9%; Euclid, already the faster of the
+two inverses here), 2 us decoding the (uncompressed) public point.
+Same ceiling.
+
+## Cross-implementation check after the unrolled code
+
+The ML-DSA unrolled NTT, the SBCL-only Whirlpool SAP path and the
+Falcon/Goldilocks declaration changes were checked on Clozure 1.13:
+the system loads, and the ML-DSA, Falcon, Ed448, ML-KEM, X-WING,
+Whirlpool and SHA3-256 vector files all pass.
