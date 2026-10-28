@@ -813,20 +813,25 @@
     (dotimes (j l row)
       (setf (aref row j) (aref a i j)))))
 
-(defun ml-dsa-matrix-for-key (key rho k l)
-  "The expanded public matrix A for RHO, memoized on KEY.
-A depends only on the public seed, but verification re-samples it with
-SHAKE on every call and each signature attempt would do the same; the
-sampling is 32% of an ML-DSA-65 verification.  The cached RHO is
-compared so a mutated key cannot use a stale matrix; concurrent first
-callers may both compute it, which is harmless."
+(defun ml-dsa-public-state (key rho pk k l)
+  "Memoized #(MATRIX TR) for the public seed RHO (and key bytes PK).
+A depends only on RHO, but verification re-samples it with SHAKE on
+every call and each signature attempt would do the same; the sampling
+is 32% of an ML-DSA-65 verification.  TR, the 64-byte hash of the
+public key, is another SHAKE of 1.3-2.6 KB per verification.  PK may be
+NIL when only the matrix is wanted (signing takes TR from the private
+key).  The cached RHO is compared so a mutated key cannot use a stale
+matrix; concurrent first callers may both compute it, which is
+harmless."
   (let ((cache (and key (ml-dsa-key-matrix key))))
     (if (and cache (equalp (car cache) rho))
         (cdr cache)
-        (let ((matrix (ml-dsa-gen-matrix rho k l)))
+        (let ((matrix (ml-dsa-gen-matrix rho k l))
+              (state nil))
+          (setf state (vector matrix (and pk (ml-dsa-shake256 pk 64))))
           (when key
-            (setf (ml-dsa-key-matrix key) (cons (copy-seq rho) matrix)))
-          matrix))))
+            (setf (ml-dsa-key-matrix key) (cons (copy-seq rho) state)))
+          state))))
 
 (defun ml-dsa-sample-eta-vec (v n seed start-nonce eta)
   (dotimes (i n)
@@ -1020,7 +1025,7 @@ callers may both compute it, which is harmless."
            (rhoprime (ml-dsa-shake256 (concatenate '(simple-array (unsigned-byte 8) (*))
                                                   key rnd mu)
                                       64))
-           (amat (ml-dsa-matrix-for-key cache-key rho k l)))
+           (amat (svref (ml-dsa-public-state cache-key rho nil k l) 0)))
       (ml-dsa-vec-ntt s1 l)
       (ml-dsa-vec-ntt s2 k)
       (ml-dsa-vec-ntt t0 k)
@@ -1096,11 +1101,12 @@ callers may both compute it, which is harmless."
         (return-from ml-dsa-verify-internal nil))
       (when (ml-dsa-chknorm-p z l (- gamma1 beta))
         (return-from ml-dsa-verify-internal nil))
-      (let* ((tr (ml-dsa-shake256 pk 64))
+      (let* ((state (ml-dsa-public-state cache-key rho pk k l))
+             (tr (svref state 1))
              (mu (ml-dsa-shake256 (concatenate '(simple-array (unsigned-byte 8) (*))
                                                tr pre msg)
                                   64))
-             (mat (ml-dsa-matrix-for-key cache-key rho k l)))
+             (mat (svref state 0)))
         (setf cp (ml-dsa-challenge cseed ctilde tau))
         (ml-dsa-vec-ntt z l)
         (dotimes (i k)

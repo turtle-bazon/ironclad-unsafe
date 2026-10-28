@@ -2769,3 +2769,50 @@ Also tested and rejected here: `(declaim (inline sha512-expand-block))`
 -- SHA-512 stayed at 341 MB/s (the min-of-trials numbers for both
 SHA-512 and SHA-384 converge once the party trick of a 4 ms scheduler
 pause no longer lands in every trial).
+
+## ML-DSA: cache tr with the matrix (verify ~3-5%)
+
+Verification also hashed the whole public key (1.3-2.6 KB) with SHAKE256
+to get `tr` on every call -- 8 us of a 253 us ML-DSA-65 verification.
+The key cache is now `#(matrix tr)` keyed by the public seed, with TR
+NIL on the signing path (signing takes TR from the private key).  The
+same three verify rows as the matrix cache, a further ~3-5%; KATs and
+the full suite pass.
+
+## Keccak: fusing theta's D into the rho/pi pass is neutral
+
+The round wrote `state ^= D` in one unrolled pass and then read the
+state again for rho/pi.  Fusing them (rotate `state[x,y] ^ D[x]` into
+the temporary) removes 50 of ~175 memory operations per round, but
+measured exactly the same 400 ns per permutation, byte-identical
+output.  The round is rotation/ALU-bound, not memory-bound; reverted
+before commit.
+
+## Measurement findings that change the remaining-gap list
+
+The table's digest/cipher/aead rows come from a single 0.2 s
+`time-op`, and allocation-heavy public-key rows run after the heap has
+grown through the whole suite.  Both bias the C/Lisp ratio upward.
+Isolated, fresh-image measurements of rows the table puts above 2:
+
+  mceliece348864 keygen   table 9.26 ops/s (2.73) -> 12.89 ops/s (1.96)
+  whirlpool               table 75.2 MB/s  (2.70) -> 93.1  MB/s  (2.18)
+  sm3                     table 119.4 MB/s (2.47) -> 146.3 MB/s (2.02)
+  sha512 family           table ~307 MB/s  (2.17) -> 341.3 MB/s (1.95)
+  cast5                   table 79.0 MB/s  (2.08) -> 85.3  MB/s (1.93)
+  camellia                table 79.5 MB/s  (2.34) -> 114   MB/s (1.63)
+
+So the real set above 2x is roughly the field/NTT/FFT-bound public-key
+rows plus chacha-poly, and the digest/cipher rows in the table are
+mostly measurement artifact.
+
+## The assembler ceiling
+
+The remaining hand-assembly plan (MULX/ADCX/ADOX for field and
+Montgomery arithmetic) is blocked by SBCL's backend here, not by the
+algorithms: ADCX, ADOX, RORX and SHLX are not defined, and the goldilocks
+multiply VOP already documents that SBCL's MULX is emitted with a VEX
+prefix, which encodes VPMADD52LUQ (AVX-512 IFMA) instead of the legacy
+BMI2 MULX.  Reaching the reference numbers on secp/ed448/RSA/DSA would
+need either a patched backend or a project-scale port (Falcon's fpr
+NTT/NTRU solve is the largest single remaining item).
