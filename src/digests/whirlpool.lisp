@@ -14,13 +14,13 @@
 (in-package :crypto-unsafe)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-(deftype whirlpool-regs () '(simple-array (unsigned-byte 32) (64)))
+(deftype whirlpool-regs () '(simple-array (unsigned-byte 64) (32)))
 (defun initial-whirlpool-regs ()
-  (make-array 64 :element-type '(unsigned-byte 32) :initial-element 0))
+  (make-array 32 :element-type '(unsigned-byte 64) :initial-element 0))
 (defconstant +whirlpool-regs-hash-offset+ 0)
-(defconstant +whirlpool-regs-k-offset+ 16)
-(defconstant +whirlpool-regs-state-offset+ 32)
-(defconstant +whirlpool-regs-l-offset+ 48)
+(defconstant +whirlpool-regs-k-offset+ 8)
+(defconstant +whirlpool-regs-state-offset+ 16)
+(defconstant +whirlpool-regs-l-offset+ 24)
 ) ; EVAL-WHEN
 
 (defconst +pristine-whirlpool-registers+ (initial-whirlpool-regs))
@@ -29,8 +29,8 @@
   (declare (type whirlpool-regs regs)
            (type (integer 0 #.(- array-dimension-limit 64)) start))
   (flet ((stuff-registers (buffer start)
-             (dotimes (i 16 buffer)
-               (setf (ub32ref/be buffer (+ start (* 4 i))) (aref regs i)))))
+             (dotimes (i 8 buffer)
+               (setf (ub64ref/be buffer (+ start (* 8 i))) (aref regs i)))))
     (declare (inline stuff-registers))
     (cond
       (buffer (stuff-registers buffer start))
@@ -129,31 +129,41 @@
        do (dotimes (j 256)
             (setf (aref result i j) (calculate-table-word i j 4)))
        finally (return result)))
+
+  (defun calculate-c ()
+    "The eight 64-bit tables, merged from their two 32-bit halves.  One
+lookup then yields both halves of an output word: the reference does 8
+lookups per output word, and the split form needs 16."
+    (let ((even (calculate-c-even))
+          (odd (calculate-c-odd))
+          (result (make-array '(8 256) :element-type '(unsigned-byte 64)
+                              :initial-element 0)))
+      (dotimes (i 8 result)
+        (dotimes (j 256)
+          (setf (aref result i j)
+                (logior (ash (aref even i j) 32) (aref odd i j)))))))
 ) ; EVAL-WHEN
 
-(declaim (type (simple-array (unsigned-byte 32) (22)) +rc+))
+(declaim (type (simple-array (unsigned-byte 64) (11)) +rc+))
 (defconst +rc+
-  #.(loop with result = (make-array 22 :element-type '(unsigned-byte 32)
+  #.(loop with result = (make-array 11 :element-type '(unsigned-byte 64)
                                     :initial-element 0)
        with one-row-of-bytes = (make-array 8 :element-type '(unsigned-byte 8))
        for r from 1 to +whirlpool-rounds+
        do (progn
             (loop for j below 8 do
                  (setf (aref one-row-of-bytes j) (s (+ (* 8 (- r 1)) j))))
-            (setf (aref result (* 2 r)) (ub32ref/be one-row-of-bytes 0))
-            (setf (aref result (+ (* 2 r) 1)) (ub32ref/be one-row-of-bytes 4)))
+            (setf (aref result r) (ub64ref/be one-row-of-bytes 0)))
        finally (return result)))
 
-(declaim (type (simple-array (unsigned-byte 32) (8 256)) +c-even+ +c-odd+))
-(defconst +c-even+ #.(calculate-c-even))
-(defconst +c-odd+ #.(calculate-c-odd))
+(declaim (type (simple-array (unsigned-byte 64) (8 256)) +c+))
+(defconst +c+ #.(calculate-c))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   ;;; Macro helper functions.
   (defun extract-byte (k row column)
-    (if (>= column 4)
-        `(ldb (byte 8 ,(- 24 (* 8 (- column 4)))) (,k ,(1+ (* 2 row))))
-        `(ldb (byte 8 ,(- 24 (* 8 column))) (,k ,(* 2 row)))))
+    ;; Column 0 is the most significant byte of the 64-bit word.
+    `(ldb (byte 8 ,(- 56 (* 8 column))) (,k ,row)))
   
   (defun split (lst)
     (let* ((n (length lst))
@@ -168,34 +178,30 @@
         (multiple-value-bind (terms1 terms2) (split terms)
           `(logxor ,(generate-xor terms1) ,(generate-xor terms2)))))
   
-  (defun one-slice (to from i ce co)
-    ;; CE and CO are the caller's local names for the two tables.  Naming
-    ;; them locally is worth a large factor: they are DEFCONSTANT arrays,
-    ;; so a direct reference reloads the array pointer from the symbol
-    ;; value cell on each of the sixteen lookups per slice.
+  (defun one-slice (to from i c)
+    ;; C is the caller's local name for the table.  Naming it locally is
+    ;; worth a large factor: it is a DEFCONSTANT array, so a direct
+    ;; reference reloads the array pointer from the symbol value cell on
+    ;; each lookup.
     (let ((indices (loop for n below 8 collect (gensym))))
       `(let (,@(loop for index in indices
                      for j below 8
                      collect `(,index ,(extract-byte from (mod (- i j) 8) j))))
-        (setf (,to ,(* 2 i))
-         ,(generate-xor `,(loop for index in indices
-                                for j below 8
-                                collect `(aref ,ce ,j ,index))))
-        (setf (,to ,(1+ (* 2 i)))
-         ,(generate-xor `,(loop for index in indices
-                                for j below 8
-                                collect `(aref ,co ,j ,index)))))))
+        (setf (,to ,i)
+              ,(generate-xor (loop for index in indices
+                                   for j below 8
+                                   collect `(aref ,c ,j ,index)))))))
 ) ; EVAL-WHEN
 
-(defmacro lookup-in-c (to from ce co)
+(defmacro lookup-in-c (to from c)
   `(progn
-    ,@(loop for i below 8 collect (one-slice to from i ce co))))
+    ,@(loop for i below 8 collect (one-slice to from i c))))
 
 (defun update-whirlpool-block (regs block)
-  "this is the core part of the whirlpool algorithm. it takes a complete 16
+  "this is the core part of the whirlpool algorithm. it takes a complete 8
 word block of input, and updates the working state in the regs."
   (declare (type whirlpool-regs regs)
-           (type (simple-array (unsigned-byte 32) (16)) block)
+           (type (simple-array (unsigned-byte 64) (8)) block)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (macrolet ((hash (i)
                `(aref regs (+ ,i +whirlpool-regs-hash-offset+)))
@@ -205,34 +211,32 @@ word block of input, and updates the working state in the regs."
                `(aref regs (+ ,i +whirlpool-regs-state-offset+)))
              (l (i)
                `(aref regs (+ ,i +whirlpool-regs-l-offset+))))
-    (let ((ce +c-even+)
-          (co +c-odd+))
-    (declare (type (simple-array (unsigned-byte 32) (8 256)) ce co))
-    ;; Compute and apply K^0 to the cipher state
-    (loop for i below 16
-       do (setf (state i) (logxor (aref block i) (setf (k i) (hash i)))))
-    ;; Iterate over all rounds
-    (loop for r of-type (integer 1 11) from 1 to +whirlpool-rounds+
-       do (progn
-            ;; Compute K^r from K^{r-1}
-            (lookup-in-c l k ce co)
-            (setf (l 0) (logxor (l 0) (aref +rc+ (* 2 r))))
-            (setf (l 1) (logxor (l 1) (aref +rc+ (+ (* 2 r) 1))))
-            (loop for i below 16
-               do (setf (k i) (l i)))
-            ;; Apply the r-th round transformation
-            (lookup-in-c l state ce co)
-            (loop for i below 16
-               do (setf (l i) (logxor (l i) (k i))))
-            (loop for i below 16
-               do (setf (state i) (l i)))))
-    ;; Apply the Miyaguchi-Preneel compression function
-    (loop for i below 16
-       do (setf (hash i)
-                (logxor (hash i)
-                        (logxor (state i)
-                                (aref block i)))))
-    regs)))
+    (let ((c +c+))
+      (declare (type (simple-array (unsigned-byte 64) (8 256)) c))
+      ;; Compute and apply K^0 to the cipher state
+      (loop for i below 8
+            do (setf (state i) (logxor (aref block i) (setf (k i) (hash i)))))
+      ;; Iterate over all rounds
+      (loop for r of-type (integer 1 11) from 1 to +whirlpool-rounds+
+            do (progn
+                 ;; Compute K^r from K^{r-1}
+                 (lookup-in-c l k c)
+                 (setf (l 0) (logxor (l 0) (aref +rc+ r)))
+                 (loop for i below 8
+                       do (setf (k i) (l i)))
+                 ;; Apply the r-th round transformation
+                 (lookup-in-c l state c)
+                 (loop for i below 8
+                       do (setf (l i) (logxor (l i) (k i))))
+                 (loop for i below 8
+                       do (setf (state i) (l i)))))
+      ;; Apply the Miyaguchi-Preneel compression function
+      (loop for i below 8
+            do (setf (hash i)
+                     (logxor (hash i)
+                             (logxor (state i)
+                                     (aref block i))))))
+    regs))
 
 ;;; Mid-Level Drivers
 
@@ -243,8 +247,8 @@ word block of input, and updates the working state in the regs."
              (:copier nil)
              (:include mdx))
   (regs (initial-whirlpool-regs) :type whirlpool-regs :read-only t)
-  (block (make-array 16 :element-type '(unsigned-byte 32))
-    :type (simple-array (unsigned-byte 32) (16)) :read-only t))
+  (block (make-array 8 :element-type '(unsigned-byte 64))
+    :type (simple-array (unsigned-byte 64) (8)) :read-only t))
 
 (defmethod reinitialize-instance ((state whirlpool) &rest initargs)
   (declare (ignore initargs))
@@ -275,7 +279,7 @@ simple-string or a simple-array with element-type (unsigned-byte 8),
 bounded by start and end, which must be numeric bounding-indices."
   (flet ((compress (state sequence offset)
            (let ((block (whirlpool-block state)))
-             (fill-block-ub8-be block sequence offset)
+             (fill-block-ub8-be/64-8 block sequence offset)
              (update-whirlpool-block (whirlpool-regs state) block))))
     (declare (dynamic-extent #'compress))
     (declare (notinline mdx-updater))
@@ -296,7 +300,7 @@ FINALIZE-WHIRLPOOL-STATE results in unspecified behaviour."
         (total-length (* 8 (whirlpool-amount state))))
     (declare (type whirlpool-regs regs)
              (type (integer 0 63) buffer-index)
-             (type (simple-array (unsigned-byte 32) (16)) block)
+             (type (simple-array (unsigned-byte 64) (8)) block)
              (type (simple-array (unsigned-byte 8) (64)) buffer))
     ;; Add mandatory bit 1 padding
     (setf (aref buffer buffer-index) #x80)
@@ -304,17 +308,17 @@ FINALIZE-WHIRLPOOL-STATE results in unspecified behaviour."
     (loop for index of-type (integer 0 64)
        from (1+ buffer-index) below 64
        do (setf (aref buffer index) #x00))
-    (fill-block-ub8-be block buffer 0)
+    (fill-block-ub8-be/64-8 block buffer 0)
     ;; Flush block first if length wouldn't fit
     (when (>= buffer-index 32)
       (update-whirlpool-block regs block)
       ;; Create new fully 0 padded block
-      (loop for index of-type (integer 0 16) from 0 below 16
-         do (setf (aref block index) #x00000000)))
-    ;; Add 256 bit message bit length
-    (loop for i of-type (integer 0 8) from 0 below 8
-       do (setf (aref block (+ 8 i))
-                (ldb (byte 32 (- 256 (* 32 (1+ i)))) total-length)))
+      (loop for index of-type (integer 0 8) from 0 below 8
+         do (setf (aref block index) 0)))
+    ;; Add 256 bit message bit length, big-endian, in the last four words
+    (loop for i of-type (integer 0 4) from 0 below 4
+       do (setf (aref block (+ 4 i))
+                (ldb (byte 64 (- 256 (* 64 (1+ i)))) total-length)))
     ;; Flush last block
     (update-whirlpool-block regs block)
     ;; Done, remember digest for later calls

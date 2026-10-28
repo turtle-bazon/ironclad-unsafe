@@ -172,6 +172,14 @@
   (:variant nil 64 t))
 
 #+x86-64
+(define-vop (fill-block-ub8-be/64-8 fill-block-ub8)
+  (:translate ironclad-unsafe::fill-block-ub8-be/64-8)
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-8
+              positive-fixnum)
+  (:variant t 64 t))
+
+#+x86-64
 (define-vop (fill-block-ub8-be/64 fill-block-ub8)
   (:translate ironclad-unsafe::fill-block-ub8-be/64)
   (:arg-types simple-array-unsigned-byte-64

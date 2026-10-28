@@ -1833,3 +1833,32 @@ move this row: it has to keep the 5-word accumulator and the modulus limbs
 in registers at once, which is the shape an earlier attempt here ran out of
 registers on.  With MULX freeing RAX/RDX it is probably feasible, but it is
 a careful hand-allocation job, not a rearrangement.
+
+## Update (Whirlpool: merge the table halves, 1.97x)
+
+Whirlpool was doing twice the table lookups of the reference.  The
+eight C tables are 256-entry 64-bit values, but the implementation stored
+them as two 32-bit halves in separate arrays (+C-EVEN+ and +C-ODD+) and
+the register file as 64 32-bit words (each 64-bit state word split into
+two).  One output word therefore cost 16 lookups and 16 XORs where the
+reference needs 8 and 8, i.e. 2560 loads per 64-byte block against the
+reference's 1280 -- and 1280 loads at two per cycle is exactly the
+throughput the C numbers show.
+
+The tables are now one (8 256) u64 array, the register file is 32 u64
+words, the block is eight u64 words, and the round constants are one u64
+per round.  The block is filled with a new fill-block-ub8-be/64-8 VOP:
+the existing /64 variant copies 128 bytes for SHA-512's 1024-bit block,
+and using it here overwrote the 64-byte whirlpool block.
+
+  whirlpool  33.6 -> 66.1 MB/s   (interleaved A/B in one session, min of 8)
+
+Also tried: hoisting the eight source words out of the slice loop so they
+are loaded once per call instead of eight times.  It is the obvious next
+step and it made things *worse* (41 MB/s) -- eight live words plus the two
+accessor macros and the table spill the register file, and the reloads
+were cheaper than the spills.  Reverted.
+
+Validation: whirlpool digest and incremental vector files pass under SBCL,
+CCL and ABCL (the portable path changed too), the published digests of ""
+and "abc" match, and the full SBCL suite is green.

@@ -881,6 +881,19 @@ behavior."
         do (setf (aref block i) (ub64ref/le buffer j)))
   (values))
 
+(defun fill-block-ub8-be/64-8 (block buffer offset)
+  "Convert a complete 64 (unsigned-byte 8) input vector segment starting at
+OFFSET into the given eight-qword big-endian block."
+  (declare (type (integer 0 #.(- array-dimension-limit 64)) offset)
+           (type (simple-array (unsigned-byte 64) (*)) block)
+           (type simple-octet-vector buffer)
+           #.(burn-baby-burn))
+  (loop for i of-type (integer 0 8) from 0
+        for j of-type (integer 0 #.array-dimension-limit)
+        from offset to (+ offset 63) by 8
+        do (setf (aref block i) (ub64ref/be buffer j)))
+  (values))
+
 (defun fill-block-ub8-be/64 (block buffer offset)
   "Convert a complete 128 (unsigned-byte 8) input vector segment
 starting from offset into the given 16 qword SHA1 block.  Calling this

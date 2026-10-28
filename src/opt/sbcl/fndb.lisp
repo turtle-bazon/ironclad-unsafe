@@ -19,6 +19,13 @@
   (any) :overwrite-fndb-silently t)
 
 #+x86-64
+(defknown ironclad-unsafe::fill-block-ub8-be/64-8
+  ((simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 8) (*))
+   (integer 0 #.(- array-dimension-limit 64))) (values)
+  (any) :overwrite-fndb-silently t)
+
+#+x86-64
 (defknown ironclad-unsafe::fill-block-ub8-be/64
   ((simple-array (unsigned-byte 64) (*))
    (simple-array (unsigned-byte 8) (*))
