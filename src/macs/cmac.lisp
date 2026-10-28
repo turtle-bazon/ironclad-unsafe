@@ -55,6 +55,10 @@
   (reinitialize-instance (cmac-cipher mac) :key key :mode :ecb)
   mac)
 
+#+x86-64
+(defvar *cmac-fused-mac* t
+  "Set to NIL to force the generic XOR+encrypt MAC block (validation only).")
+
 (defun update-cmac (cmac sequence &key (start 0) (end (length sequence)))
   (declare (type (simple-array (unsigned-byte 8) (*)) sequence)
            (type index start end)
@@ -81,8 +85,17 @@
       (setf buffer-index 0))
 
     (loop while (> remaining block-length) do
-      (xor-block block-length buffer 0 sequence start buffer 0)
-      (funcall encryption-function cipher buffer 0 buffer 0)
+      #+(and sbcl x86-64 ironclad-unsafe-assembly)
+      (if (and (typep cipher 'aes) (aes-ni-supported-p) *cmac-fused-mac*)
+          (aes-ni-mac-block buffer sequence start
+                            (encryption-round-keys cipher) (n-rounds cipher))
+          (progn
+            (xor-block block-length buffer 0 sequence start buffer 0)
+            (funcall encryption-function cipher buffer 0 buffer 0)))
+      #-(and sbcl x86-64 ironclad-unsafe-assembly)
+      (progn
+        (xor-block block-length buffer 0 sequence start buffer 0)
+        (funcall encryption-function cipher buffer 0 buffer 0))
       (incf start block-length)
       (decf remaining block-length))
 

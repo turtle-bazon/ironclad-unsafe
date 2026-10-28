@@ -2237,3 +2237,33 @@ same one-line shape as the XMSS change and the two LMS vector files pass.
 error in both the old and the new code -- it is not part of the suite and
 was already broken -- so HSS is validated only by the state-exhaustion
 test.)
+
+## Update (one fused CBC-MAC block for CCM, CMAC, EAX and ETM)
+
+CCM's MAC loop, CMAC's bulk loop and therefore EAX and ETM all did two
+calls per block: an XOR VOP (`xor128`/`xor-block`) and then the block
+encryption (a generic `encrypt-in-place` in CCM, a `funcall` of the
+encrypt function in CMAC).  Both loops are serial -- the chain is the
+input of the next block -- so that per-block overhead sits directly on
+the critical path.
+
+Added `aes-ni-mac-block`, which is `chain := AES(chain xor data[off..])`
+in one VOP (the same round structure as `aes-ni-encrypt`, with the XOR
+folded into the first `pxor`).  CCM and CMAC select it when the cipher is
+AES and AES-NI is present, with the old path kept behind
+`*ccm-fused-mac*` / `*cmac-fused-mac*` for validation.
+
+Interleaved A/B, min of four:
+
+  ccm   20 -> 16 us per 8 KB message   (1.25x)
+  eax   32 -> 24 us per 8 KB message   (1.33x)
+  cmac  16 ->  8 us per 8 KB buffer    (2.0x, 1.0 GB/s)
+
+ETM uses the same CMAC, so it moves with it.  Validation: the ccm, eax,
+etm and cmac vector files pass, and the full SBCL suite is green.
+
+NB while adding the VOP: `src/opt/sbcl/x86oid-vm.lisp` contains the whole
+`aes-ni-encrypt`/`aes-ni-decrypt`/key-schedule block twice, byte for
+byte (the second definition simply wins at load time).  That predates
+this work and is harmless, but it is a trap for anyone editing those
+VOPs with a single-occurrence replace.

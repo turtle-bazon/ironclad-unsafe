@@ -108,6 +108,10 @@ to be complete."
     (encrypt (ccm-ecb mode) input output)
     output))
 
+#+x86-64
+(defvar *ccm-fused-mac* t
+  "Set to NIL to force the generic XOR+encrypt MAC block (validation only).")
+
 (defun ccm-simple-octet-vector-p (data)
   "True when DATA can be handed to the assembly xor128 VOP, which
 assumes the heap layout of a simple vector."
@@ -168,6 +172,23 @@ lookups hoisted out of the loop; only a partial block is buffered."
         (when (= (fill-pointer pending) 16)
           (ccm-process-pending-block mode)))
       (when (zerop (fill-pointer pending))
+        #+(and sbcl x86-64 ironclad-unsafe-assembly)
+        (let ((round-keys (encryption-round-keys ecb))
+              (n-rounds (n-rounds ecb))
+              (fused (aes-ni-supported-p)))
+          (declare (ignorable round-keys n-rounds fused))
+          (loop while (<= 16 (- end pos))
+                do (if (and simple fused *ccm-fused-mac*)
+                       (aes-ni-mac-block chain data pos round-keys n-rounds)
+                       (progn
+                         (if simple
+                             (xor128 chain 0 data pos chain 0)
+                             (dotimes (i 16)
+                               (setf (aref chain i)
+                                     (logxor (aref chain i) (aref data (+ pos i))))))
+                         (aes-encrypt-block ecb chain 0 chain 0)))
+                   (incf pos 16)))
+        #-(and sbcl x86-64 ironclad-unsafe-assembly)
         (loop while (<= 16 (- end pos))
               do (if simple
                      (xor128 chain 0 data pos chain 0)
