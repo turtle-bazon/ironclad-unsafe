@@ -728,6 +728,34 @@ when TRANSPOSED, exactly like the reference gen_matrix."
     (dotimes (j k row)
       (setf (aref row j) (aref a i j)))))
 
+(defun ml-kem-public-state (key pk pk-start pk-end kp)
+  "Return #(SEED HPK PKPV MATRIX) for the public key in PK[PK-START,
+PK-END), cached on KEY when one is supplied.  All four are pure
+functions of the public key: MATRIX expansion is 27 us of a 173 us
+ML-KEM-768 encapsulation, HPK is a SHA3-256 of the key, and PKPV is its
+bit-decoded form.  Decapsulation re-encrypts under the same public key,
+so it uses the same cache on the private key object.  The stored copy is
+compared against the caller's bytes, so a mutated key cannot read stale
+state."
+  (let* ((kk (ml-kem-params-k kp))
+         (cache (and key (ml-kem-key-public-state key))))
+    (if (and cache
+             (let ((copy (car cache)))
+               (and (= (length copy) (- pk-end pk-start))
+                    (not (mismatch copy pk :start2 pk-start :end2 pk-end)))))
+        (cdr cache)
+        (let* ((pk-copy (and key (subseq pk pk-start pk-end)))
+               (seed (subseq pk (- pk-end 32) pk-end))
+               (hpk (digest-sequence :sha3/256 pk :start pk-start :end pk-end))
+               (pkpv (ml-kem-new-polyvec kk))
+               (matrix (ml-kem-gen-matrix seed t kk))
+               (state nil))
+          (ml-kem-polyvec-frombytes pkpv kk pk pk-start)
+          (setf state (vector seed hpk pkpv matrix))
+          (when key
+            (setf (ml-kem-key-public-state key) (cons pk-copy state)))
+          state))))
+
 (defun ml-kem-noise-poly (seed nonce eta)
   "ETA = 2/3 noise polynomial from a PRF buffer of ETA*64 octets."
   (let ((buf (ml-kem-prf seed nonce (* eta 64)))
@@ -793,15 +821,16 @@ when TRANSPOSED, exactly like the reference gen_matrix."
       (ml-kem-polyvec-tobytes skpv kk sk-enc 0)
       (values pk-enc sk-enc))))
 
-(defun ml-kem-indcpa-encrypt (message pk coins32 kp)
-  "From 32-byte MESSAGE, public key PK and 32-byte COINS returns ct."
+(defun ml-kem-indcpa-encrypt (message pk coins32 kp &optional state)
+  "From 32-byte MESSAGE, public key PK and 32-byte COINS returns ct.
+STATE, when supplied, is the ML-KEM-PUBLIC-STATE for PK."
   (let* ((kk (ml-kem-params-k kp))
          (du (ml-kem-params-du kp))
          (dv (ml-kem-params-dv kp))
          (eta1 (ml-kem-params-eta1 kp))
          (eta2 (ml-kem-params-eta2 kp))
-         (pkpv (ml-kem-new-polyvec kk))
-         (seed (make-array 32 :element-type '(unsigned-byte 8)))
+         (pkpv (if state (svref state 2) (ml-kem-new-polyvec kk)))
+         (seed (if state (svref state 0) (make-array 32 :element-type '(unsigned-byte 8))))
          (sp (ml-kem-new-polyvec kk))
          (ep (ml-kem-new-polyvec kk))
          (epp (ml-kem-new-poly))
@@ -809,9 +838,12 @@ when TRANSPOSED, exactly like the reference gen_matrix."
          (v (ml-kem-new-poly))
          (kpoly (ml-kem-new-poly))
          at)
-    (ml-kem-polyvec-frombytes pkpv kk pk 0)
-    (replace seed pk :start2 (* 384 kk))
-    (setf at (ml-kem-gen-matrix seed t kk))
+    (unless state
+      (ml-kem-polyvec-frombytes pkpv kk pk 0)
+      (replace seed pk :start2 (* 384 kk))
+      (setf at (ml-kem-gen-matrix seed t kk)))
+    (when state
+      (setf at (svref state 3)))
     (ml-kem-poly-frommsg kpoly message 0)
     (dotimes (i kk)
       (setf (aref sp i) (ml-kem-noise-poly coins32 i eta1))
@@ -879,27 +911,32 @@ when TRANSPOSED, exactly like the reference gen_matrix."
         (replace sk coins64 :start1 (+ pk-end 32) :start2 32 :end2 64)
         (values pk sk)))))
 
-(defun ml-kem-encaps-from-message (message pk kp)
+(defun ml-kem-encaps-from-message (message pk kp &optional state)
   "Deterministic encapsulation of 32-byte MESSAGE under PK;
-returns (ct ss-32)."
-  (let* ((hpk (ml-kem-sha3-256 pk))
+returns (ct ss-32).  STATE, when supplied, is the
+ML-KEM-PUBLIC-STATE for PK."
+  (let* ((state (or state (ml-kem-public-state nil pk 0 (length pk) kp)))
+         (hpk (svref state 1))
          (buf (concatenate '(simple-array (unsigned-byte 8) (*)) message hpk))
          (kr (ml-kem-sha3-512 buf))
-         (ct (ml-kem-indcpa-encrypt message pk (subseq kr 32 64) kp)))
+         (ct (ml-kem-indcpa-encrypt message pk (subseq kr 32 64) kp state)))
     (values ct (subseq kr 0 32))))
 
-(defun ml-kem-decapsulate (ct sk kp)
-  "Decapsulation with implicit rejection; returns 32-byte secret."
+(defun ml-kem-decapsulate (ct sk kp &optional state)
+  "Decapsulation with implicit rejection; returns 32-byte secret.
+STATE, when supplied, is the ML-KEM-PUBLIC-STATE for the public key
+embedded in SK (its expansion is reused by the re-encryption)."
   (let* ((kk (ml-kem-params-k kp))
          (polyvecbytes (* 384 kk))
          (pk-end (+ polyvecbytes (ml-kem-params-pkbytes kp)))
+         (state (or state (ml-kem-public-state nil sk polyvecbytes pk-end kp)))
          (m (ml-kem-indcpa-decrypt ct (subseq sk 0 polyvecbytes) kp))
          (pk (subseq sk polyvecbytes pk-end))
-         (hpk (subseq sk pk-end (+ pk-end 32)))
+         (hpk (svref state 1))
          (z (subseq sk (+ pk-end 32) (+ pk-end 64)))
          (buf (concatenate '(simple-array (unsigned-byte 8) (*)) m hpk))
          (kr (ml-kem-sha3-512 buf))
-         (ct2 (ml-kem-indcpa-encrypt m pk (subseq kr 32 64) kp))
+         (ct2 (ml-kem-indcpa-encrypt m pk (subseq kr 32 64) kp state))
          (fail (not (equalp ct ct2)))
          (ss-reject (ml-kem-rkprf z ct)))
     (if fail ss-reject (subseq kr 0 32))))
@@ -911,7 +948,10 @@ returns (ct ss-32)."
 
 (defclass ml-kem-key ()
   ((kind :initarg :kind :reader ml-kem-key-kind)
-   (bytes :initarg :bytes :reader ml-kem-key-bytes)))
+   (bytes :initarg :bytes :reader ml-kem-key-bytes)
+   ;; (PK-COPY . #(SEED HPK PKPV MATRIX)) for this key's public half;
+   ;; see ML-KEM-PUBLIC-STATE.
+   (public-state :initform nil :accessor ml-kem-key-public-state)))
 
 (defclass ml-kem-public-key (ml-kem-key)
   ())
@@ -974,9 +1014,10 @@ returns (ct ss-32)."
   (list :bytes (copy-seq (ml-kem-key-bytes private-key))))
 
 (defmethod encapsulate-key ((public-key ml-kem-public-key))
-  (ml-kem-encaps-from-message (random-data 32)
-                              (ml-kem-key-bytes public-key)
-                              (ml-kem-params-for-kind (ml-kem-key-kind public-key))))
+  (let* ((pk (ml-kem-key-bytes public-key))
+         (kp (ml-kem-params-for-kind (ml-kem-key-kind public-key))))
+    (ml-kem-encaps-from-message (random-data 32) pk kp
+                                (ml-kem-public-state public-key pk 0 (length pk) kp))))
 
 (defmethod decapsulate-key ((private-key ml-kem-private-key) ciphertext)
   (let* ((kp (ml-kem-params-for-kind (ml-kem-key-kind private-key)))
@@ -984,4 +1025,10 @@ returns (ct ss-32)."
     (unless (and (typep ciphertext '(simple-array (unsigned-byte 8) (*)))
                  (= (length ciphertext) ctlen))
       (error 'invalid-message-length :kind (ml-kem-key-kind private-key)))
-    (ml-kem-decapsulate ciphertext (ml-kem-key-bytes private-key) kp)))
+    (let ((sk (ml-kem-key-bytes private-key)))
+      (ml-kem-decapsulate ciphertext sk kp
+                          (ml-kem-public-state
+                           private-key sk (* 384 (ml-kem-params-k kp))
+                           (+ (* 384 (ml-kem-params-k kp))
+                              (ml-kem-params-pkbytes kp))
+                           kp)))))

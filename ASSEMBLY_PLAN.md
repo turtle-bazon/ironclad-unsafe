@@ -2728,3 +2728,44 @@ reference moved from 5633 to 8025 ops/s between two runs (openssl
 speed only gets a handful of samples), even though our absolute rate
 rose 2760 -> 3700 ops/s.  Treat the ahead/within-2x counts as ±7 rows;
 use the absolute columns.
+
+## ML-KEM: cache the decoded public state (encaps 1.29x, decaps 1.26x)
+
+Encapsulation rebuilt three pure functions of the public key on every
+call: the expanded KxK matrix A^T (27 us of a 173 us ML-KEM-768
+encapsulation), `H(pk)` (5 us), and the bit-decoded public vector t
+(~3 us).  Decapsulation re-encrypts during the Fujisaki-Okamoto check,
+so it pays for the same matrix.
+
+`ml-kem-public-state` returns `#(seed hpk pkpv matrix)` and caches it on
+the key object as `(pk-copy . state)`; the stored bytes are compared
+against the caller's slice on each call, so a mutated key cannot use
+stale state.  Both the public-key and private-key objects have the slot
+(decapsulation uses its own, from the public half embedded in sk).
+X-WING calls the byte-level entries with no key object and keeps
+computing fresh state, unchanged.
+
+  ML-KEM-512   encaps 126 -> 91 us    decaps -> 99 us
+  ML-KEM-768   encaps 173 -> 135 us   decaps 190 -> 151 us
+  ML-KEM-1024  encaps 245 -> 187 us   decaps -> 220 us
+
+Memory per used key: matrix K^2 polys (18 KB at 768, 32 KB at 1024)
+plus the decoded public vector and a 0.8-1.6 KB copy of pk.  KATs for
+ML-KEM and X-WING pass, as does the full suite.
+
+### Host note: runaway CCL test processes
+
+While chasing a 24 ms vs 28 ms SHA-512 timing swing I found three
+Clozure test processes (`asdf:test-system :ironclad-unsafe/tests`,
+started two days earlier) each pinning a core at 100%, with load
+average ~4 on four cores.  They are killed now.  Every measurement on
+this host before this point, including the recent full-table runs, was
+taken with three cores saturated; the interleaved within-image A/B
+comparisons are still valid (both sides share the load), but absolute
+table numbers and cross-process single-shot timings were pessimistic
+and noisy.  Re-run the table on the quiet host.
+
+Also tested and rejected here: `(declaim (inline sha512-expand-block))`
+-- SHA-512 stayed at 341 MB/s (the min-of-trials numbers for both
+SHA-512 and SHA-384 converge once the party trick of a 4 ms scheduler
+pause no longer lands in every trial).
