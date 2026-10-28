@@ -2047,3 +2047,43 @@ GCM is now roughly one third CTR, one third GHASH and one third setup.
 123 measured rows, 47 ahead of the C reference and 102 within 2x at load
 ~3.9 (the previous run had 45 and 99 at load ~7.8, so the counts are
 moving in the right direction but the C column is still noisy).
+
+## Investigation notes (things measured but not landed)
+
+**Montgomery is the whole of DSA/RSA.**  Measured on a 2048-bit key with
+min-of-five over thousands of operations: one `mont-mul-limbs` at n=32
+takes 1.45 us, so the seventeen of them in a 65537-exponent RSA verify
+account for 24.6 us of the 30.4 us total; the bignum Montgomery
+conversions (base*R mod m, limbs in and out) are only 4.6 us.  A CIOS
+call does 2*n^2 limb-pair products (multiply row plus reduction row), so
+2048 pairs in 1.45 us is ~3 cycles per pair at 4.2 GHz -- the `add`/`adc`
+carry chain, as expected.  The conversion is not worth caching until the
+multiply itself is fixed.  A 2-way CIOS with MULX and ADCX/ADOX is the
+next real step (OpenSSL runs the same 2*n^2 pairs at about 1 cycle per
+pair), but the previously tried ADX SOS was slower because it had to
+store the partial products, so this needs the interleaved form, not a
+different one.
+
+NB: SBCL 2.6.7's `mulx` looks correctly encoded -- it emits
+VEX.NDD.LZ.F2.0F38.W1 F6, which *is* MULX; the VOP comment claiming the
+VEX prefix turns it into VPMADD52LUQ is wrong.  A test VOP needs the
+usual order (defun, defknown, define-vop, then a caller compiled after
+it) and the `ironclad-unsafe-vm` package, which is why the scratch
+attempt did not get far.
+
+**The digest gaps are Lisp-vs-hand-written-C, not a bug.**  Disassembling
+`update-md5-block` shows SBCL keeping the 32-bit words in tagged-fixnum
+form (`SHL 1` on array loads, `BTR 33` for the mod-2^32 mask, `SAR 1`
+again), roughly 30 instructions per round against C's ~10.  It is not
+free to avoid: a microbenchmark of `(ldb (byte 32 0) (+ a b))` on ub32
+against `(logand #xffffffff (+ a b))` on ub64 measured the same 2.0 ns
+per iteration (the ub64 form was 2.4).  Closing md5/ripemd-160/sm3/
+sha512 would need per-algorithm VOPs (sha512 also needs AVX2 to match
+OpenSSL), not a type declaration.
+
+**ed448 is field-multiply bound.**  `goldilocks-fe-mul-buf` (mul-raw VOP
+plus reduce VOP plus an eight-limb copy) measures ~208 cycles; with
+~5300 field multiplies per verify that is the whole 707 us.  The MUL
+form costs 64 products of two 56-bit limbs and a serial add/adc carry
+chain; MULX with two independent ADCX/ADOX accumulators is the same
+opening as the Montgomery case.
