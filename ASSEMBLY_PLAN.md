@@ -2543,3 +2543,36 @@ The partial tail lane keeps the old byte-wise path, and the loop is
 clamped to 25 elements, so a caller that asks for more than the state
 holds cannot read past the end.  Suite green; sha3/shake/cshake/slh-dsa/
 ml-dsa vectors pass.  No change for SHA-2 families (separate finalizers).
+
+## Negative results (SLH-DSA absorb paths, 64-bit-limb Poly1305)
+
+Three contained ideas measured after the lane-store win, all rejected:
+
+* **Squeeze straight into the caller's buffer.**  SLH-DSA's `thash` and
+  `prf_addr` squeeze into the shared 64-byte scratch and then `replace`
+  `n` bytes into the caller's array.  Writing the digest directly into
+  the caller's array (all callers pass an `n`-byte simple array) saved
+  1.1% of 128f verification -- below the noise floor of a 9 ms
+  operation -- and signalled a type error on one signing path, so the
+  scratch copy stays.
+
+* **One absorber instead of two `update-digest` calls.**  A 128f
+  verification makes 6261 squeezes and 12522 `update-digest` calls
+  (address, then data), each of which pays generic dispatch and
+  range checks.  A `sha3-update-pair` that does the two `replace`s and
+  one buffer-index update directly, guarded by the room left in the
+  block, saved only 1.3% verify / 0.7% sign.  The two calls are not the
+  bottleneck; the permutation is.
+
+* **Poly1305 with 3 x 44-bit limbs (poly1305-donna-64 shape).**  This
+  should cut 25 32x32 products per block to 9 64x64 products.  It does
+  not, because SBCL boxes 128-bit intermediates: `(* a b)` followed by
+  a shift to take the high half costs 12.8 ns per product versus 2.4 ns
+  for the low half.  The whole block came out at 230 ns versus 13.4 ns
+  for the existing 5 x 32-bit limbs.  For a future assembly version:
+  `sb-kernel:%multiply-high` is 2.8 ns and correct, i.e. the backend
+  *can* expose the high half, but only as a separate call; a VOP with
+  `mulx` (or `mul` twice) is the only way to use the 9-product
+  algorithm.  Poly1305 is otherwise already at 1.19 GB/s, roughly half
+  of chacha-poly's 555 MB/s budget, so closing that row needs AVX2
+  four-block Poly1305 (powers of r) more than scalar tuning.
