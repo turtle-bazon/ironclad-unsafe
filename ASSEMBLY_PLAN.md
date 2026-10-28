@@ -1955,3 +1955,24 @@ suite.
 ~3.2.  Chacha-poly is now mostly Poly1305: 559 MB/s is 6us of Poly1305
 (scalar-optimal), 4us of ChaCha, ~2us of mode setup and ~4us of message
 allocation in an 8192-byte operation.
+
+## Update (McEliece: 32-byte row xor on AVX2)
+
+The keypair generator's Gaussian elimination is a stream of row XORs, and
+the inner loop did them eight bytes at a time with the SSE form (`mov`/
+`xor`/`mov` on two 64-bit words per step).  Added `mce-xor-words-avx2`,
+which does 32 bytes per step with a single `vpxor` on a YMM register, and
+dispatch on `avx2-supported-p` through `*mce-avx2-xor*`.
+
+Interleaved A/B on fixed seeds (min of three, keygen includes the retry
+loop so the numbers are noisy):
+
+  mceliece348864   144.0 -> 135.3 ms   (1.06x)
+  mceliece460896   378.0 -> 349.3 ms   (1.08x)
+
+The gain is modest because the row xor is only ~10-15% of keygen; the
+elimination's other half is the pivot scan and the bit-plane packing.
+Validation: the new VOP is bit-identical to the old one on 15 whole
+keypairs (all five parameter sets, three seeds each), the McEliece
+testvec files and keygen roundtrips pass under CCL and ABCL, and the full
+SBCL suite is green.

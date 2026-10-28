@@ -1036,6 +1036,12 @@ Returns T on success, NIL when the matrix is not systematic."
                  (byte 8 (* 8 (logand i 7)))
                  (aref row (ash i -3)))))))
 
+#+x86-64
+(defvar *mce-avx2-xor*
+  #+(and sbcl x86-64 ironclad-unsafe-assembly) (avx2-supported-p)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
+  "Use the 32-byte row xor when the CPU has AVX2.")
+
 (declaim (inline mce-row-xor!))
 (defun mce-row-xor! (dst src start end)
   "DST[START..END) := DST[START..END) XOR SRC[START..END), word by word.
@@ -1045,7 +1051,9 @@ inner loop is worth vectorizing."
            (type index start end)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
-  (mce-xor-words dst src start (- end start))
+  (if *mce-avx2-xor*
+      (mce-xor-words-avx2 dst src start (- end start))
+      (mce-xor-words dst src start (- end start)))
   #-(and sbcl x86-64 ironclad-unsafe-assembly)
   ;; ABCL's LOOP refuses `of-type index' here ("couldn't verify that
   ;; INDEX is a subtype of NUMBER") and turns the warning into a

@@ -5986,6 +5986,55 @@
       (emit-label done))))
 
 #+x86-64
+(define-vop (mce-xor-words-avx2)
+  ;; As MCE-XOR-WORDS, thirty-two bytes per step.  Selected at run time.
+  (:translate ironclad-unsafe::mce-xor-words-avx2)
+  (:policy :fast-safe)
+  (:args (dst :scs (descriptor-reg))
+         (src :scs (descriptor-reg))
+         (start :scs (unsigned-reg))
+         (count :scs (unsigned-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64
+              positive-fixnum
+              positive-fixnum)
+  (:temporary (:sc unsigned-reg) dp sp cnt w)
+  (:temporary (:sc int-avx2-reg) y0)
+  (:generator 1000
+    (let ((disp (- (* n-word-bytes vector-data-offset) other-pointer-lowtag))
+          (top (gen-label))
+          (tail (gen-label))
+          (wtail (gen-label))
+          (done (gen-label)))
+      (inst lea dp (ea disp dst start 8))
+      (inst lea sp (ea disp src start 8))
+      (inst mov cnt count)
+      (inst shr cnt 2)
+      (inst jmp :z tail)
+      (emit-label top)
+      (inst vmovdqu y0 (ea 0 dp))
+      (inst vpxor y0 y0 (ea 0 sp))
+      (inst vmovdqu (ea 0 dp) y0)
+      (inst add dp 32)
+      (inst add sp 32)
+      (inst sub cnt 1)
+      (inst jmp :nz top)
+      (emit-label tail)
+      (inst mov cnt count)
+      (inst and cnt 3)
+      (inst jmp :z done)
+      (emit-label wtail)
+      (inst mov w (ea 0 dp))
+      (inst xor w (ea 0 sp))
+      (inst mov (ea 0 dp) w)
+      (inst add dp 8)
+      (inst add sp 8)
+      (inst sub cnt 1)
+      (inst jmp :nz wtail)
+      (emit-label done)
+      (inst vzeroupper))))
+
+#+x86-64
 (define-vop (aes-ni-encrypt-8x)
   ;; Eight independent blocks in one call, with all eight AESENCs of a
   ;; round issued back to back so the chains overlap.  Used by the AES
