@@ -2648,3 +2648,31 @@ Interleaved builds, same harness, 8 KB digest and 128f:
 The whole sha3/shake/cshake vector set, the SLH-DSA and ML-DSA KATs and
 the full SBCL suite pass (the KATs also exercise the `:cshake` and
 `:keccak` padding bytes).
+
+## SLH-DSA: reset the seeded digest instead of copying it (verify 1.24x, sign 1.17x)
+
+After the padding change the profile still showed COPY-DIGEST (2.9%) and
+UB8-BASH-COPY (3.7%) per hash.  Both come from re-seeding the working
+digest by copying the template:
+
+* SHAKE: the template has PUB-SEED in the buffer and has *not*
+  permuted yet, so its state is all zeros.  `SLH-SHAKE-RESET` fills the
+  25 lanes with zero, copies only the N seed bytes into the buffer and
+  sets the buffer index; copy-digest moved 200 state bytes and 200
+  buffer bytes instead.
+* SHA-256/512: the template has just compressed its padded prefix
+  block, so its buffer is empty (`buffer-index` 0) and only the
+  register state and `mdx-amount` need copying.  Skipping the buffer is
+  safe because the updater rewrites the buffer from index 0 and the
+  finalizer only reads bytes it has written.
+
+Cumulative against rev 1141 (same harness, interleaved builds):
+
+  slh-dsa-shake-128f verify  8600 -> 6900-7000 us   (1.23-1.25x)
+  slh-dsa-shake-128f sign   138.4 -> 118.2-118.9 ms (1.16-1.17x)
+  slh-dsa-sha2-128f  verify  ~1940 -> 1900 us
+  slh-dsa-sha2-128f  sign    33.3 -> 30.9 ms
+
+The SHA-2 variants were already ahead of the C reference (0.62-0.68);
+their gain is small because their per-hash state is smaller.  KATs for
+both families, the SHA-3/SHAKE/cSHAKE vectors and the full suite pass.

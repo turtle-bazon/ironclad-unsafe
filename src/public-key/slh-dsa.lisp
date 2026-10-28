@@ -184,21 +184,21 @@ cached seeded prefix (no per-call prefix absorb or consing)."
          (scratch (slh-ctx-out64 ctx)))
     (cond ((eq family :shake)
            (let ((d (slh-ctx-work-shake ctx)))
-             (copy-digest (slh-ctx-template-shake ctx) d)
+             (slh-shake-reset ctx d)
              (update-digest d addr)
              (update-digest d data)
              (slh-shake-squeeze d scratch)
              (replace out scratch :end2 n)))
           ((and (eq family :sha2-512) (> (length data) n))
            (let ((d (slh-ctx-work-512 ctx)))
-             (copy-digest (slh-ctx-template-512 ctx) d)
+             (slh-sha512-reset ctx d)
              (update-digest d addr)
              (update-digest d data)
              (produce-digest d :digest scratch)
              (replace out scratch :end2 n)))
           (t
            (let ((d (slh-ctx-work-256 ctx)))
-             (copy-digest (slh-ctx-template-256 ctx) d)
+             (slh-sha256-reset ctx d)
              (update-digest d addr)
              (update-digest d data)
              (produce-digest d :digest scratch)
@@ -212,13 +212,13 @@ sk_seed. SHA2 families: SHA-256 continuing from the cached prefix."
          (out (make-array n :element-type '(unsigned-byte 8))))
     (if (eq (slh-params-family *slh-params*) :shake)
         (let ((d (slh-ctx-work-shake ctx)))
-          (copy-digest (slh-ctx-template-shake ctx) d)
+          (slh-shake-reset ctx d)
           (update-digest d addr)
           (update-digest d (slh-ctx-sk-seed ctx))
           (slh-shake-squeeze d out))
         (let ((d (slh-ctx-work-256 ctx))
               (scratch (slh-ctx-out64 ctx)))
-          (copy-digest (slh-ctx-template-256 ctx) d)
+          (slh-sha256-reset ctx d)
           (update-digest d addr)
           (update-digest d (slh-ctx-sk-seed ctx))
           (produce-digest d :digest scratch)
@@ -300,7 +300,7 @@ sk_seed. SHA2 families: SHA-256 continuing from the cached prefix."
   ;; Performance: prefix-absorbed digest templates (like the reference
   ;; state_seeded) plus reusable working objects and scratch space, all
   ;; lazily initialized so direct low-level use keeps working.
-  (t256 nil) (t512 nil) (tshake nil)
+  (t256 nil) (t512 nil)
   (w256 nil) (w512 nil) (wshake nil)
   (out64 (make-array 64 :element-type '(unsigned-byte 8) :initial-element 0)
          :type (simple-array (unsigned-byte 8) (*)))
@@ -314,15 +314,21 @@ sk_seed. SHA2 families: SHA-256 continuing from the cached prefix."
     (replace block (slh-ctx-pub-seed ctx))
     block))
 
-(defun slh-ctx-template-shake (ctx)
-  "SHAKE256 with PUB-SEED already absorbed.  Both thash and prf_addr
-start with it, so one copy-digest replaces a fresh MAKE-DIGEST (and its
-state allocation) on every hash call."
-  (or (slh-ctx-tshake ctx)
-      (setf (slh-ctx-tshake ctx)
-            (let ((d (make-digest :shake256 :output-length (slh-n))))
-              (update-digest d (slh-ctx-pub-seed ctx))
-              d))))
+(defun slh-shake-reset (ctx d)
+  "Reset D to a fresh SHAKE256 state with PUB-SEED already in the
+buffer.  The seeded prefix is shorter than the rate, so no permutation
+has happened yet: the state is all zeros and the buffer holds N bytes.
+COPY-DIGEST copied 200 bytes of state and 200 bytes of buffer to
+achieve the same thing, on every one of the thousands of hashes in an
+SLH-DSA operation."
+  (declare (type sha3 d))
+  (let ((state (sha3-state d))
+        (buffer (sha3-buffer d))
+        (n (slh-n)))
+    (fill state 0)
+    (replace buffer (slh-ctx-pub-seed ctx) :end2 n)
+    (setf (sha3-buffer-index d) n))
+  d)
 
 (defun slh-ctx-work-shake (ctx)
   (or (slh-ctx-wshake ctx)
@@ -350,6 +356,26 @@ state allocation) on every hash call."
 (defun slh-ctx-work-512 (ctx)
   (or (slh-ctx-w512 ctx)
       (setf (slh-ctx-w512 ctx) (make-digest :sha512))))
+
+(defun slh-sha256-reset (ctx d)
+  "Reset D to the seeded SHA-256 template state.  The template has just
+compressed its 64-byte prefix block, so its buffer is empty and only the
+register state and message length have to be copied."
+  (declare (type sha256 d))
+  (let ((tmpl (slh-ctx-template-256 ctx)))
+    (replace (sha256-regs d) (sha256-regs tmpl))
+    (setf (mdx-amount d) (mdx-amount tmpl)
+          (mdx-buffer-index d) 0))
+  d)
+
+(defun slh-sha512-reset (ctx d)
+  "Reset D to the seeded SHA-512 template state, as SLH-SHA256-RESET."
+  (declare (type sha512 d))
+  (let ((tmpl (slh-ctx-template-512 ctx)))
+    (replace (sha512-regs d) (sha512-regs tmpl))
+    (setf (mdx-amount d) (mdx-amount tmpl)
+          (mdx-buffer-index d) 0))
+  d)
 
 (defun slh-mgf1-512 (out outlen in)
   "MGF1-SHA-512 (reference: mgf1_512). No input consing."
