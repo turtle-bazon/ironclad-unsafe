@@ -2816,3 +2816,36 @@ prefix, which encodes VPMADD52LUQ (AVX-512 IFMA) instead of the legacy
 BMI2 MULX.  Reaching the reference numbers on secp/ed448/RSA/DSA would
 need either a patched backend or a project-scale port (Falcon's fpr
 NTT/NTRU solve is the largest single remaining item).
+
+## ML-DSA: unroll the NTT and the pointwise products (verify 1.4-1.6x)
+
+The NTT was a three-deep loop nest, so every butterfly paid index
+arithmetic and a branch, and the compiler could not see the constant
+offsets.  The reference ntt.c is fully unrolled.  Both transforms are now
+expanded at macroexpansion time with constant indices and literal zetas
+(`unrolled-ml-dsa-ntt` / `-invntt`):
+
+  forward NTT   3800 -> 1600 ns   (2.4x)
+  inverse NTT   2400 -> 1800 ns   (1.33x)
+
+Checked against the loop version on 200 random polynomials (0
+mismatches).  The pointwise montgomery multiply and accumulate loops
+(256 fqmuls each) are unrolled with DOTIMES-UNROLLED for the same
+reason.  Whole-operation effect, isolated:
+
+  ml-dsa-44 verify  173 -> 107-120 us
+  ml-dsa-65 verify  240 -> 147-173 us
+  ml-dsa-87 verify  347 -> 227-240 us
+
+Against the table's C references that puts 65 verify *faster* than the
+C side and 44/87 at ~1.1-1.4x, instead of 2.4/2.0/1.7.  Signing gains
+less (the NTTs are a smaller share there); 65 sign 1.5 -> 1.4 ms.
+
+Two things measured and reverted: inlining and unrolling
+`vec-use-hint`'s 256-coefficient loop made verification 25% *slower*
+(code growth in an already hot function), and binding the second lane
+of each inverse butterfly to a local was neutral.  Note for builders:
+the fully unrolled functions make ml-dsa.lisp memory-hungry to compile;
+a 1 GB SBCL heap compiles the system but ran out while compiling a
+second copy of the experiment in one image (`--dynamic-space-size 4096`
+is a safe choice).
