@@ -1,1080 +1,1078 @@
 ((:CATEGORY "aead" :ALGORITHM "ccm" :SOURCE "openssl aes-256-ccm" :OPERATION
-  "encrypt 8192-byte message" :UNIT "bytes/s" :VALUE 7.94233344d8)
+  "encrypt 8192-byte message" :UNIT "bytes/s" :VALUE 7.4316032d8)
  (:CATEGORY "aead" :ALGORITHM "ccm" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte message" :UNIT "bytes/s" :VALUE 3.1330147349263203d8)
+  "encrypt 8192-byte message" :UNIT "bytes/s" :VALUE 3.377544712276433d8)
  (:CATEGORY "aead" :ALGORITHM "chacha-poly" :SOURCE "openssl chacha20-poly1305"
-  :OPERATION "encrypt 8192-byte message" :UNIT "bytes/s" :VALUE 2.138348032d9)
+  :OPERATION "encrypt 8192-byte message" :UNIT "bytes/s" :VALUE 1.988225536d9)
  (:CATEGORY "aead" :ALGORITHM "chacha-poly" :SOURCE "ironclad-unsafe"
   :OPERATION "encrypt 8192-byte message" :UNIT "bytes/s" :VALUE
-  4.6202648986754996d8)
+  4.670644705882339d8)
  (:CATEGORY "aead" :ALGORITHM "eax" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte message" :UNIT "bytes/s" :VALUE 2.729970350148245d8)
+  "encrypt 8192-byte message" :UNIT "bytes/s" :VALUE 2.701271480927802d8)
  (:CATEGORY "aead" :ALGORITHM "etm" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte message" :UNIT "bytes/s" :VALUE 3.6925070749292916d8)
+  "encrypt 8192-byte message" :UNIT "bytes/s" :VALUE 3.576199719001399d8)
  (:CATEGORY "aead" :ALGORITHM "gcm" :SOURCE "openssl aes-256-gcm" :OPERATION
-  "encrypt 8192-byte message" :UNIT "bytes/s" :VALUE 1.51488d9)
+  "encrypt 8192-byte message" :UNIT "bytes/s" :VALUE 1.327195648d9)
  (:CATEGORY "aead" :ALGORITHM "gcm" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte message" :UNIT "bytes/s" :VALUE 6.395872020639887d8)
+  "encrypt 8192-byte message" :UNIT "bytes/s" :VALUE 6.490898745506262d8)
  (:CATEGORY "aead" :ALGORITHM "gcm-siv" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte message" :UNIT "bytes/s" :VALUE 1.7256361718191382d8)
+  "encrypt 8192-byte message" :UNIT "bytes/s" :VALUE 1.5470437295626938d8)
  (:CATEGORY "aead" :ALGORITHM "xchacha-poly" :SOURCE "ironclad-unsafe"
   :OPERATION "encrypt 8192-byte message" :UNIT "bytes/s" :VALUE
-  4.628024119758771d8)
+  4.6308894117646915d8)
  (:CATEGORY "cipher" :ALGORITHM "3des" :SOURCE "openssl des-ede3-cbc"
-  :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 3.5691008d7)
+  :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 3.2294912d7)
  (:CATEGORY "cipher" :ALGORITHM "3des" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 2.981858181418187d7)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 2.93680263197368d7)
  (:CATEGORY "cipher" :ALGORITHM "aes" :SOURCE "openssl aes-256-cbc" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.13440256d9)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.084002304d9)
  (:CATEGORY "cipher" :ALGORITHM "aes" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 7.950337208313959d9)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 7.881828392156864d9)
  (:CATEGORY "cipher" :ALGORITHM "arcfour" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 3.129737951310242d8)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 3.0641869581304187d8)
  (:CATEGORY "cipher" :ALGORITHM "aria" :SOURCE "openssl aria-256-cbc"
-  :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.3157888d8)
+  :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.2121344d8)
  (:CATEGORY "cipher" :ALGORITHM "aria" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 7.724978750212498d7)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 7.655347446525535d7)
  (:CATEGORY "cipher" :ALGORITHM "blowfish" :SOURCE "openssl bf-cbc" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.7023232d8)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.57778432d8)
  (:CATEGORY "cipher" :ALGORITHM "blowfish" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 9.981902090489554d7)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 9.842638786806062d7)
  (:CATEGORY "cipher" :ALGORITHM "camellia" :SOURCE "openssl camellia-256-cbc"
-  :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.81047296d8)
+  :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.64291072d8)
  (:CATEGORY "cipher" :ALGORITHM "camellia" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 8.249302753486228d7)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 8.142766572334276d7)
  (:CATEGORY "cipher" :ALGORITHM "cast5" :SOURCE "openssl cast5-cbc" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.58456832d8)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.44280064d8)
  (:CATEGORY "cipher" :ALGORITHM "cast5" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 8.60560994390056d7)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 8.481129411764708d7)
  (:CATEGORY "cipher" :ALGORITHM "chacha" :SOURCE "openssl chacha20" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 3.390998016d9)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 3.141999104d9)
  (:CATEGORY "cipher" :ALGORITHM "chacha" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.0965346773266141d9)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.0963298783506088d9)
  (:CATEGORY "cipher" :ALGORITHM "chacha/12" :SOURCE "ironclad-unsafe"
   :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE
-  1.6916805015974932d9)
+  1.6869532557011633d9)
  (:CATEGORY "cipher" :ALGORITHM "chacha/8" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 2.287552164478355d9)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 2.3120165999170017d9)
  (:CATEGORY "cipher" :ALGORITHM "des" :SOURCE "openssl des-cbc" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 8.5779968d7)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 9.1121664d7)
  (:CATEGORY "cipher" :ALGORITHM "des" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 7.872472637636799d7)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 7.86018469907651d7)
  (:CATEGORY "cipher" :ALGORITHM "idea" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 4.6817045914770454d7)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 4.657128714356421d7)
  (:CATEGORY "cipher" :ALGORITHM "kalyna128" :SOURCE "ironclad-unsafe"
   :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE
-  1.0661781382186177d8)
+  1.0702794486027576d8)
  (:CATEGORY "cipher" :ALGORITHM "kalyna256" :SOURCE "ironclad-unsafe"
   :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE
-  9.10536247318764d7)
+  9.047973520264797d7)
  (:CATEGORY "cipher" :ALGORITHM "kalyna512" :SOURCE "ironclad-unsafe"
   :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE
-  9.424848875755607d7)
+  9.363362366376336d7)
  (:CATEGORY "cipher" :ALGORITHM "kuznyechik" :SOURCE "ironclad-unsafe"
   :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE
-  6.332384338078313d7)
+  6.229984850075754d7)
  (:CATEGORY "cipher" :ALGORITHM "misty1" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 3.03920160798392d7)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 3.0023679999999974d7)
  (:CATEGORY "cipher" :ALGORITHM "rc2" :SOURCE "openssl rc2-cbc" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 5.7067008d7)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 5.8601984d7)
  (:CATEGORY "cipher" :ALGORITHM "rc2" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 4.952039239803793d7)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 4.890575094249068d7)
  (:CATEGORY "cipher" :ALGORITHM "rc5" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.4823349883250627d8)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.476183638163615d8)
  (:CATEGORY "cipher" :ALGORITHM "rc6" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.2799872001279958d8)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.2771264143679261d8)
  (:CATEGORY "cipher" :ALGORITHM "salsa20" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 4.500252698736519d8)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 4.4793408065919435d8)
  (:CATEGORY "cipher" :ALGORITHM "salsa20/12" :SOURCE "ironclad-unsafe"
   :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE
-  7.079081404592966d8)
+  7.060684799999994d8)
  (:CATEGORY "cipher" :ALGORITHM "salsa20/8" :SOURCE "ironclad-unsafe"
   :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE
-  9.947446125538766d8)
+  9.827483662581716d8)
  (:CATEGORY "cipher" :ALGORITHM "seed" :SOURCE "openssl seed-cbc" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 9.6949248d7)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.0368512d8)
  (:CATEGORY "cipher" :ALGORITHM "seed" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 7.655385723071373d7)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 7.643021354679658d7)
  (:CATEGORY "cipher" :ALGORITHM "serpent" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 6.082529587352054d7)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 6.008801955990237d7)
  (:CATEGORY "cipher" :ALGORITHM "sm4" :SOURCE "openssl sm4-cbc" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.29641984d8)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.37344d8)
  (:CATEGORY "cipher" :ALGORITHM "sm4" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 7.700402995970057d7)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 7.647193764031167d7)
  (:CATEGORY "cipher" :ALGORITHM "sosemanuk" :SOURCE "ironclad-unsafe"
   :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE
-  5.619274303628473d8)
+  5.600842395788013d8)
  (:CATEGORY "cipher" :ALGORITHM "square" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 8.937427312863462d7)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 8.826835865820695d7)
  (:CATEGORY "cipher" :ALGORITHM "tea" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 4.227029729702693d7)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 4.325332746672523d7)
  (:CATEGORY "cipher" :ALGORITHM "threefish1024" :SOURCE "ironclad-unsafe"
   :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE
-  4.2254124729376286d8)
+  4.19180448195519d8)
  (:CATEGORY "cipher" :ALGORITHM "threefish256" :SOURCE "ironclad-unsafe"
   :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE
-  4.386384468077672d8)
+  4.388842055789714d8)
  (:CATEGORY "cipher" :ALGORITHM "threefish512" :SOURCE "ironclad-unsafe"
   :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE
-  4.1946926265368605d8)
+  4.1189375999999964d8)
  (:CATEGORY "cipher" :ALGORITHM "twofish" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.4057331426685762d8)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.399998800012003d8)
  (:CATEGORY "cipher" :ALGORITHM "xchacha" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.0939542102289472d9)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.0966930330696669d9)
  (:CATEGORY "cipher" :ALGORITHM "xchacha/12" :SOURCE "ironclad-unsafe"
   :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE
-  1.6905336273318605d9)
+  1.6882808385958118d9)
  (:CATEGORY "cipher" :ALGORITHM "xchacha/8" :SOURCE "ironclad-unsafe"
   :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE
-  2.314667413325872d9)
+  2.3108991310086846d9)
  (:CATEGORY "cipher" :ALGORITHM "xor" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 2.2638478807606027d8)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 2.2411545098039147d8)
  (:CATEGORY "cipher" :ALGORITHM "xsalsa20" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 4.5043486782566017d8)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 4.476086419567935d8)
  (:CATEGORY "cipher" :ALGORITHM "xsalsa20/12" :SOURCE "ironclad-unsafe"
   :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE
-  6.921761182388191d8)
+  6.917221041684355d8)
  (:CATEGORY "cipher" :ALGORITHM "xsalsa20/8" :SOURCE "ironclad-unsafe"
   :OPERATION "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE
-  9.972071739641286d8)
+  9.881550592247024d8)
  (:CATEGORY "cipher" :ALGORITHM "xtea" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 4.8332558337208234d7)
+  "encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 4.898791506042462d7)
  (:CATEGORY "cipher-mode" :ALGORITHM "cbc" :SOURCE "ironclad-unsafe" :OPERATION
-  "AES encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 6.244289557104442d8)
+  "AES encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 6.272173439132794d8)
  (:CATEGORY "cipher-mode" :ALGORITHM "cfb" :SOURCE "ironclad-unsafe" :OPERATION
-  "AES encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 5.931387943060275d8)
+  "AES encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 5.908040859795744d8)
  (:CATEGORY "cipher-mode" :ALGORITHM "cfb8" :SOURCE "ironclad-unsafe"
   :OPERATION "AES encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE
-  3.071984640076795d7)
+  3.0514894851051286d7)
  (:CATEGORY "cipher-mode" :ALGORITHM "ctr" :SOURCE "ironclad-unsafe" :OPERATION
-  "AES encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.4962128778712244d9)
+  "AES encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 1.4822046979530237d9)
  (:CATEGORY "cipher-mode" :ALGORITHM "ecb" :SOURCE "ironclad-unsafe" :OPERATION
-  "AES encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 7.926089009554939d9)
+  "AES encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 7.911466362668174d9)
  (:CATEGORY "cipher-mode" :ALGORITHM "ofb" :SOURCE "ironclad-unsafe" :OPERATION
-  "AES encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 6.397510412447928d8)
+  "AES encrypt 8192-byte buffer" :UNIT "bytes/s" :VALUE 6.316674509803957d8)
  (:CATEGORY "digest" :ALGORITHM "adler32" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 7.084406177969099d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 7.033136102958435d8)
  (:CATEGORY "digest" :ALGORITHM "ascon-hash256" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 4300756.992430085d0)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 4300778.496107513d0)
  (:CATEGORY "digest" :ALGORITHM "ascon-xof128" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 4341738.291308536d0)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 4300778.496107513d0)
  (:CATEGORY "digest" :ALGORITHM "blake2" :SOURCE "openssl blake2b512"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 8.20729856d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 7.30563072d8)
  (:CATEGORY "digest" :ALGORITHM "blake2" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 6.318458007709951d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 6.29876581234189d8)
  (:CATEGORY "digest" :ALGORITHM "blake2/160" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 6.31146328536716d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 6.312658823529447d8)
  (:CATEGORY "digest" :ALGORITHM "blake2/256" :SOURCE "openssl blake2b512"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 8.20455936d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 7.17576704d8)
  (:CATEGORY "digest" :ALGORITHM "blake2/256" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 6.379078504607466d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 6.298765812341834d8)
  (:CATEGORY "digest" :ALGORITHM "blake2/384" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 6.37457292713541d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 6.313511264887365d8)
  (:CATEGORY "digest" :ALGORITHM "blake2s" :SOURCE "openssl blake2s256"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 5.35823872d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 4.83600896d8)
  (:CATEGORY "digest" :ALGORITHM "blake2s" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.032238477615203d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.002762586187064d8)
  (:CATEGORY "digest" :ALGORITHM "blake2s/128" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.035120824395873d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.994161029194849d8)
  (:CATEGORY "digest" :ALGORITHM "blake2s/160" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.038397608011982d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.972452337738333d8)
  (:CATEGORY "digest" :ALGORITHM "blake2s/224" :SOURCE "ironclad-unsafe"
   :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE
-  3.0301904980949986d8)
+  3.0052051479485005d8)
  (:CATEGORY "digest" :ALGORITHM "blake3" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.4913461432692945d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.4835637821810868d8)
  (:CATEGORY "digest" :ALGORITHM "crc24" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.7719875400622934d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.771149488505123d8)
  (:CATEGORY "digest" :ALGORITHM "crc32" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 4.6071347286527234d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 4.6100249498752433d8)
  (:CATEGORY "digest" :ALGORITHM "crc32c" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 4.6120729396352947d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 4.6144250980392414d8)
  (:CATEGORY "digest" :ALGORITHM "cshake128" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE
-  3.1813472932635283d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.157559036614441d8)
  (:CATEGORY "digest" :ALGORITHM "cshake256" :SOURCE "ironclad-unsafe"
   :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE
-  2.5530240348798215d8)
+  2.5341825290873507d8)
  (:CATEGORY "digest" :ALGORITHM "groestl" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 7.327670723292783d7)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 7.20482797586011d7)
  (:CATEGORY "digest" :ALGORITHM "groestl/224" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 9.949134254328713d7)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 9.912220877791244d7)
  (:CATEGORY "digest" :ALGORITHM "groestl/256" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 9.981902090489532d7)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 9.930792156862801d7)
  (:CATEGORY "digest" :ALGORITHM "groestl/384" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 7.327670723292783d7)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 7.258039419605756d7)
  (:CATEGORY "digest" :ALGORITHM "jh" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 5.914594427027856d7)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 5.861317386826144d7)
  (:CATEGORY "digest" :ALGORITHM "jh/224" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 5.9432662836685725d7)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 5.808098959505193d7)
  (:CATEGORY "digest" :ALGORITHM "jh/256" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 5.91046889531106d7)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 5.783523082384579d7)
  (:CATEGORY "digest" :ALGORITHM "jh/384" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 5.935074324628367d7)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 5.78352308238463d7)
  (:CATEGORY "digest" :ALGORITHM "keccak" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.477010214948923d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.4864235357646322d8)
  (:CATEGORY "digest" :ALGORITHM "keccak/224" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.75084609153909d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE
+  2.7627381863090885d8)
  (:CATEGORY "digest" :ALGORITHM "keccak/256" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.613644531777337d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE
+  2.6300152998469839d8)
  (:CATEGORY "digest" :ALGORITHM "keccak/384" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.095503122484403d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.084034379828116d8)
  (:CATEGORY "digest" :ALGORITHM "kupyna" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 5.832645673543225d7)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 5.7794559999999695d7)
  (:CATEGORY "digest" :ALGORITHM "kupyna/256" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 8.806355968220145d7)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 8.74892476612856d7)
  (:CATEGORY "digest" :ALGORITHM "md2" :SOURCE "ironclad-unsafe" :OPERATION
   "hash 8192-byte block" :UNIT "bytes/s" :VALUE 8765396.17301912d0)
  (:CATEGORY "digest" :ALGORITHM "md4" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.9157564212178874d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.924767576162113d8)
  (:CATEGORY "digest" :ALGORITHM "md5" :SOURCE "openssl md5" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 6.9240832d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 6.92661248d8)
  (:CATEGORY "digest" :ALGORITHM "md5" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.81679103208971d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.8217061829381514d8)
  (:CATEGORY "digest" :ALGORITHM "ripemd-128" :SOURCE "ironclad-unsafe"
   :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE
-  1.7809318953405204d8)
+  1.7797521568627396d8)
  (:CATEGORY "digest" :ALGORITHM "ripemd-160" :SOURCE "openssl ripemd160"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.00600832d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.8558848d8)
  (:CATEGORY "digest" :ALGORITHM "ripemd-160" :SOURCE "ironclad-unsafe"
   :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE
-  1.1083720581397076d8)
+  1.1009937900621115d8)
  (:CATEGORY "digest" :ALGORITHM "sha1" :SOURCE "openssl sha1" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.562665472d9)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.546235392d9)
  (:CATEGORY "digest" :ALGORITHM "sha1" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.6933923460765278d9)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.6659084609153795d9)
  (:CATEGORY "digest" :ALGORITHM "sha224" :SOURCE "openssl sha224" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.457948672d9)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.474293248d9)
  (:CATEGORY "digest" :ALGORITHM "sha224" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.537180154099227d9)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.5135463522682362d9)
  (:CATEGORY "digest" :ALGORITHM "sha256" :SOURCE "openssl sha256" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.47085824d9)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.482097152d9)
  (:CATEGORY "digest" :ALGORITHM "sha256" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.5400882995585272d9)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.516618336908313d9)
  (:CATEGORY "digest" :ALGORITHM "sha3" :SOURCE "openssl sha3-512" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.3730688d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.38919168d8)
  (:CATEGORY "digest" :ALGORITHM "sha3" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.508541714582844d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.4946229268853632d8)
  (:CATEGORY "digest" :ALGORITHM "sha3/224" :SOURCE "openssl sha3-224"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 4.24775168d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 4.2189824d8)
  (:CATEGORY "digest" :ALGORITHM "sha3/224" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.779122104389474d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.7684587154128766d8)
  (:CATEGORY "digest" :ALGORITHM "sha3/256" :SOURCE "openssl sha3-256"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 4.20123648d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 4.21421568d8)
  (:CATEGORY "digest" :ALGORITHM "sha3/256" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.639449202753982d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.639039604801972d8)
  (:CATEGORY "digest" :ALGORITHM "sha3/384" :SOURCE "openssl sha3-384"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.455744d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.46363392d8)
  (:CATEGORY "digest" :ALGORITHM "sha3/384" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.107780522194764d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.0373300266997194d8)
  (:CATEGORY "digest" :ALGORITHM "sha384" :SOURCE "openssl sha384" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 6.59534336d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 6.58653184d8)
  (:CATEGORY "digest" :ALGORITHM "sha384" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.380411897940565d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.2681820590896994d8)
  (:CATEGORY "digest" :ALGORITHM "sha512" :SOURCE "openssl sha512" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 6.6087424d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 6.6685696d8)
  (:CATEGORY "digest" :ALGORITHM "sha512" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.3791831040844744d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.29005176470593d8)
  (:CATEGORY "digest" :ALGORITHM "sha512/224" :SOURCE "openssl sha512-224"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 6.66340352d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 6.73990656d8)
  (:CATEGORY "digest" :ALGORITHM "sha512/224" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE
-  3.3828525714742625d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.325492517612196d8)
  (:CATEGORY "digest" :ALGORITHM "sha512/256" :SOURCE "openssl sha512-256"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 6.63132672d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 6.58442752d8)
  (:CATEGORY "digest" :ALGORITHM "sha512/256" :SOURCE "ironclad-unsafe"
   :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE
-  3.3795927020364845d8)
+  3.3230681846590716d8)
  (:CATEGORY "digest" :ALGORITHM "shake128" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.195683221583887d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.146531467342658d8)
  (:CATEGORY "digest" :ALGORITHM "shake256" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.6603386983065042d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.623871361286416d8)
  (:CATEGORY "digest" :ALGORITHM "skein1024" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE
-  3.7846661533385086d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.724549019607832d8)
  (:CATEGORY "digest" :ALGORITHM "skein1024/384" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE
-  3.8076225618871844d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.755584844151533d8)
  (:CATEGORY "digest" :ALGORITHM "skein1024/512" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.809260953695226d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.74288737112633d8)
  (:CATEGORY "digest" :ALGORITHM "skein256" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.091629883701142d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.6994887025564814d8)
  (:CATEGORY "digest" :ALGORITHM "skein256/128" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.158409807950955d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE
+  3.7310277448612696d8)
  (:CATEGORY "digest" :ALGORITHM "skein256/160" :SOURCE "ironclad-unsafe"
   :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE
-  3.1088484557577163d8)
+  3.7424964875175565d8)
  (:CATEGORY "digest" :ALGORITHM "skein256/224" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE
-  3.1112904870951635d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.718311616883806d8)
  (:CATEGORY "digest" :ALGORITHM "skein512" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.649108154459222d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.585620471897635d8)
  (:CATEGORY "digest" :ALGORITHM "skein512/128" :SOURCE "ironclad-unsafe"
   :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE
-  3.6433737831310785d8)
+  3.6134550654493856d8)
  (:CATEGORY "digest" :ALGORITHM "skein512/160" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.662606573934236d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.61183474082629d8)
  (:CATEGORY "digest" :ALGORITHM "skein512/224" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.664672876635611d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.625763137254891d8)
  (:CATEGORY "digest" :ALGORITHM "skein512/256" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.599546802266047d8)
- (:CATEGORY "digest" :ALGORITHM "skein512/384" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.589698503014946d8)
- (:CATEGORY "digest" :ALGORITHM "sm3" :SOURCE "openssl sm3" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.9041408d8)
- (:CATEGORY "digest" :ALGORITHM "sm3" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.3369277153614211d8)
- (:CATEGORY "digest" :ALGORITHM "streebog" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 4.190187049064748d7)
- (:CATEGORY "digest" :ALGORITHM "streebog/256" :SOURCE "ironclad-unsafe"
   :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE
-  4.1860910695446454d7)
+  3.6281823772643626d8)
+ (:CATEGORY "digest" :ALGORITHM "skein512/384" :SOURCE "ironclad-unsafe"
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.631905040474792d8)
+ (:CATEGORY "digest" :ALGORITHM "sm3" :SOURCE "openssl sm3" :OPERATION
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 2.49626624d8)
+ (:CATEGORY "digest" :ALGORITHM "sm3" :SOURCE "ironclad-unsafe" :OPERATION
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.3266877665611652d8)
+ (:CATEGORY "digest" :ALGORITHM "streebog" :SOURCE "ironclad-unsafe" :OPERATION
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 4.161494385056122d7)
+ (:CATEGORY "digest" :ALGORITHM "streebog/256" :SOURCE "ironclad-unsafe"
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 4.160250980392217d7)
  (:CATEGORY "digest" :ALGORITHM "tiger" :SOURCE "ironclad-unsafe" :OPERATION
-  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 4.667345326546786d8)
+  "hash 8192-byte block" :UNIT "bytes/s" :VALUE 4.651347829782498d8)
  (:CATEGORY "digest" :ALGORITHM "tree-hash" :SOURCE "ironclad-unsafe"
   :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE
-  3.3521496392517984d8)
+  3.3877846610766894d8)
  (:CATEGORY "digest" :ALGORITHM "whirlpool" :SOURCE "openssl whirlpool"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.97704192d8)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 1.7113856d8)
  (:CATEGORY "digest" :ALGORITHM "whirlpool" :SOURCE "ironclad-unsafe"
-  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 3.674093629531846d7)
+  :OPERATION "hash 8192-byte block" :UNIT "bytes/s" :VALUE 7.790553047234751d7)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-p256" :SOURCE "ironclad-unsafe" :OPERATION
-  "derive-keypair" :UNIT "ops/s" :VALUE 23724.88137559477d0)
+  "derive-keypair" :UNIT "ops/s" :VALUE 24838.235294120168d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-p256" :SOURCE "ironclad-unsafe" :OPERATION
-  "open" :UNIT "ops/s" :VALUE 163343.36656634774d0)
+  "open" :UNIT "ops/s" :VALUE 160964.1951790124d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-p256" :SOURCE "ironclad-unsafe" :OPERATION
-  "seal" :UNIT "ops/s" :VALUE 153659.23170383033d0)
+  "seal" :UNIT "ops/s" :VALUE 152034.2398288114d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-p256" :SOURCE "ironclad-unsafe" :OPERATION
-  "setup-recipient" :UNIT "ops/s" :VALUE 1189.9940500298326d0)
+  "setup-recipient" :UNIT "ops/s" :VALUE 1194.988050119427d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-p256" :SOURCE "ironclad-unsafe" :OPERATION
-  "setup-sender" :UNIT "ops/s" :VALUE 2374.976250237355d0)
+  "setup-sender" :UNIT "ops/s" :VALUE 2344.976550234357d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-p384" :SOURCE "ironclad-unsafe" :OPERATION
-  "derive-keypair" :UNIT "ops/s" :VALUE 2034.989825050727d0)
+  "derive-keypair" :UNIT "ops/s" :VALUE 2029.4117647060882d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-p384" :SOURCE "ironclad-unsafe" :OPERATION
-  "open" :UNIT "ops/s" :VALUE 157418.42581575477d0)
+  "open" :UNIT "ops/s" :VALUE 161598.3840161731d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-p384" :SOURCE "ironclad-unsafe" :OPERATION
-  "seal" :UNIT "ops/s" :VALUE 153109.2344538166d0)
+  "seal" :UNIT "ops/s" :VALUE 152644.236778805d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-p384" :SOURCE "ironclad-unsafe" :OPERATION
-  "setup-recipient" :UNIT "ops/s" :VALUE 94.9990500094942d0)
+  "setup-recipient" :UNIT "ops/s" :VALUE 89.99955000225624d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-p384" :SOURCE "ironclad-unsafe" :OPERATION
-  "setup-sender" :UNIT "ops/s" :VALUE 179.99910000451248d0)
+  "setup-sender" :UNIT "ops/s" :VALUE 184.99722504161562d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-p521" :SOURCE "ironclad-unsafe" :OPERATION
-  "derive-keypair" :UNIT "ops/s" :VALUE 2594.9870250646863d0)
+  "derive-keypair" :UNIT "ops/s" :VALUE 2299.999999999804d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-p521" :SOURCE "ironclad-unsafe" :OPERATION
-  "open" :UNIT "ops/s" :VALUE 164109.1794540908d0)
+  "open" :UNIT "ops/s" :VALUE 166819.16590418207d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-p521" :SOURCE "ironclad-unsafe" :OPERATION
-  "seal" :UNIT "ops/s" :VALUE 149999.2500037604d0)
+  "seal" :UNIT "ops/s" :VALUE 152274.2386287958d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-p521" :SOURCE "ironclad-unsafe" :OPERATION
-  "setup-recipient" :UNIT "ops/s" :VALUE 98.03825452691511d0)
+  "setup-recipient" :UNIT "ops/s" :VALUE 99.05613652765089d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-p521" :SOURCE "ironclad-unsafe" :OPERATION
-  "setup-sender" :UNIT "ops/s" :VALUE 219.99890000551525d0)
+  "setup-sender" :UNIT "ops/s" :VALUE 209.99790002101702d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-x25519" :SOURCE "ironclad-unsafe"
-  :OPERATION "derive-keypair" :UNIT "ops/s" :VALUE 2504.974950250703d0)
+  :OPERATION "derive-keypair" :UNIT "ops/s" :VALUE 2499.9999999999054d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-x25519" :SOURCE "ironclad-unsafe"
-  :OPERATION "open" :UNIT "ops/s" :VALUE 156329.21835389687d0)
+  :OPERATION "open" :UNIT "ops/s" :VALUE 166514.1674291744d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-x25519" :SOURCE "ironclad-unsafe"
-  :OPERATION "seal" :UNIT "ops/s" :VALUE 152113.47886522385d0)
+  :OPERATION "seal" :UNIT "ops/s" :VALUE 156984.2150789132d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-x25519" :SOURCE "ironclad-unsafe"
-  :OPERATION "setup-recipient" :UNIT "ops/s" :VALUE 464.99767501165724d0)
+  :OPERATION "setup-recipient" :UNIT "ops/s" :VALUE 454.9977250113419d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-x25519" :SOURCE "ironclad-unsafe"
-  :OPERATION "setup-sender" :UNIT "ops/s" :VALUE 924.9953750230577d0)
+  :OPERATION "setup-sender" :UNIT "ops/s" :VALUE 914.9862752059586d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-x448" :SOURCE "ironclad-unsafe" :OPERATION
-  "derive-keypair" :UNIT "ops/s" :VALUE 1499.992500037604d0)
+  "derive-keypair" :UNIT "ops/s" :VALUE 1504.9924750375155d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-x448" :SOURCE "ironclad-unsafe" :OPERATION
-  "open" :UNIT "ops/s" :VALUE 160828.39171607318d0)
+  "open" :UNIT "ops/s" :VALUE 160379.19810399783d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-x448" :SOURCE "ironclad-unsafe" :OPERATION
-  "seal" :UNIT "ops/s" :VALUE 143939.28030360848d0)
+  "seal" :UNIT "ops/s" :VALUE 151383.48616515077d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-x448" :SOURCE "ironclad-unsafe" :OPERATION
-  "setup-recipient" :UNIT "ops/s" :VALUE 249.99875000626733d0)
+  "setup-recipient" :UNIT "ops/s" :VALUE 245.09683776059296d0)
  (:CATEGORY "hpke" :ALGORITHM "dhkem-x448" :SOURCE "ironclad-unsafe" :OPERATION
-  "setup-sender" :UNIT "ops/s" :VALUE 459.9954000459719d0)
+  "setup-sender" :UNIT "ops/s" :VALUE 484.9951500485393d0)
  (:CATEGORY "kdf" :ALGORITHM "argon2d" :SOURCE "ironclad-unsafe" :OPERATION
-  "derive-key" :UNIT "ops/s" :VALUE 8099.95950020263d0)
+  "derive-key" :UNIT "ops/s" :VALUE 7864.921350786439d0)
  (:CATEGORY "kdf" :ALGORITHM "argon2i" :SOURCE "ironclad-unsafe" :OPERATION
-  "derive-key" :UNIT "ops/s" :VALUE 6649.966750166239d0)
+  "derive-key" :UNIT "ops/s" :VALUE 6609.933900661066d0)
  (:CATEGORY "kdf" :ALGORITHM "argon2id" :SOURCE "ironclad-unsafe" :OPERATION
-  "derive-key" :UNIT "ops/s" :VALUE 7439.925600743943d0)
+  "derive-key" :UNIT "ops/s" :VALUE 7284.963575182112d0)
  (:CATEGORY "kdf" :ALGORITHM "bcrypt" :SOURCE "ironclad-unsafe" :OPERATION
-  "derive-key" :UNIT "ops/s" :VALUE 749.9962500187487d0)
+  "derive-key" :UNIT "ops/s" :VALUE 744.9962750186237d0)
  (:CATEGORY "kdf" :ALGORITHM "bcrypt-pbkdf" :SOURCE "ironclad-unsafe"
-  :OPERATION "derive-key" :UNIT "ops/s" :VALUE 11.718658447980934d0)
+  :OPERATION "derive-key" :UNIT "ops/s" :VALUE 11.71870422381173d0)
  (:CATEGORY "kdf" :ALGORITHM "hkdf" :SOURCE "ironclad-unsafe" :OPERATION
-  "derive-key" :UNIT "ops/s" :VALUE 370643.14678426547d0)
+  "derive-key" :UNIT "ops/s" :VALUE 354236.45763542753d0)
  (:CATEGORY "kdf" :ALGORITHM "hmac-kdf" :SOURCE "ironclad-unsafe" :OPERATION
-  "derive-key" :UNIT "ops/s" :VALUE 382363.0881845585d0)
+  "derive-key" :UNIT "ops/s" :VALUE 380981.19018809556d0)
  (:CATEGORY "kdf" :ALGORITHM "pbkdf1" :SOURCE "ironclad-unsafe" :OPERATION
-  "derive-key" :UNIT "ops/s" :VALUE 4414.955850441466d0)
+  "derive-key" :UNIT "ops/s" :VALUE 4549.977250113742d0)
  (:CATEGORY "kdf" :ALGORITHM "pbkdf2" :SOURCE "ironclad-unsafe" :OPERATION
-  "derive-key" :UNIT "ops/s" :VALUE 954.9952250238733d0)
+  "derive-key" :UNIT "ops/s" :VALUE 1039.9948000259983d0)
  (:CATEGORY "kdf" :ALGORITHM "scrypt-kdf" :SOURCE "ironclad-unsafe" :OPERATION
-  "derive-key" :UNIT "ops/s" :VALUE 279.99860000699954d0)
+  "derive-key" :UNIT "ops/s" :VALUE 309.99845000774945d0)
  (:CATEGORY "mac" :ALGORITHM "blake2-mac" :SOURCE "ironclad-unsafe" :OPERATION
-  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 6.286887531124647d8)
+  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 6.238145618543884d8)
  (:CATEGORY "mac" :ALGORITHM "blake2s-mac" :SOURCE "ironclad-unsafe" :OPERATION
-  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 3.014231328843351d8)
+  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 2.990079999999991d8)
  (:CATEGORY "mac" :ALGORITHM "cmac" :SOURCE "ironclad-unsafe" :OPERATION
-  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 5.810966145169265d8)
+  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 5.74499215007846d8)
  (:CATEGORY "mac" :ALGORITHM "gmac" :SOURCE "ironclad-unsafe" :OPERATION
-  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 3.8394700852991214d9)
+  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 3.7808569114309273d9)
  (:CATEGORY "mac" :ALGORITHM "hmac" :SOURCE "ironclad-unsafe" :OPERATION
-  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 1.5134234728826332d9)
+  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 1.4902402287988536d9)
  (:CATEGORY "mac" :ALGORITHM "kmac128" :SOURCE "ironclad-unsafe" :OPERATION
-  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 3.165782571087139d8)
+  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 3.137520312398433d8)
  (:CATEGORY "mac" :ALGORITHM "kmac256" :SOURCE "ironclad-unsafe" :OPERATION
-  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 2.64680873191271d8)
+  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 2.61896930515347d8)
  (:CATEGORY "mac" :ALGORITHM "poly1305" :SOURCE "ironclad-unsafe" :OPERATION
-  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 1.219045424772874d9)
+  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 1.211830441695575d9)
  (:CATEGORY "mac" :ALGORITHM "siphash" :SOURCE "ironclad-unsafe" :OPERATION
-  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 1.5415628521857367d9)
+  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 1.477051174744124d9)
  (:CATEGORY "mac" :ALGORITHM "skein-mac" :SOURCE "ironclad-unsafe" :OPERATION
-  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 3.644584354156434d8)
+  "MAC 8192-byte block" :UNIT "bytes/s" :VALUE 3.603215167848361d8)
  (:CATEGORY "prng" :ALGORITHM "fortuna" :SOURCE "ironclad-unsafe" :OPERATION
-  "generate 4096 bytes" :UNIT "bytes/s" :VALUE 7.012316938415422d7)
+  "generate 4096 bytes" :UNIT "bytes/s" :VALUE 6.995933020334888d7)
  (:CATEGORY "prng" :ALGORITHM "fortuna-generator" :SOURCE "ironclad-unsafe"
-  :OPERATION "generate 4096 bytes" :UNIT "bytes/s" :VALUE 7.00002899985499d7)
+  :OPERATION "generate 4096 bytes" :UNIT "bytes/s" :VALUE 7.172024279757282d7)
  (:CATEGORY "prng" :ALGORITHM "os" :SOURCE "ironclad-unsafe" :OPERATION
-  "generate 4096 bytes" :UNIT "bytes/s" :VALUE 7.36289597104024d8)
+  "generate 4096 bytes" :UNIT "bytes/s" :VALUE 7.310467695322998d8)
  (:CATEGORY "public-key" :ALGORITHM "bike-l1" :SOURCE "ironclad-unsafe"
-  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 100.96056768684893d0)
+  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 105.76872226576043d0)
  (:CATEGORY "public-key" :ALGORITHM "bike-l1" :SOURCE "ironclad-unsafe"
-  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 989.9950500247483d0)
+  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 954.9952250238733d0)
  (:CATEGORY "public-key" :ALGORITHM "bike-l1" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 264.9973500264932d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 264.99735002650266d0)
  (:CATEGORY "public-key" :ALGORITHM "bike-l3" :SOURCE "ironclad-unsafe"
-  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 33.65368435728741d0)
+  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 34.99965000350035d0)
  (:CATEGORY "public-key" :ALGORITHM "bike-l3" :SOURCE "ironclad-unsafe"
-  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 354.99645003549097d0)
+  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 334.9966500335034d0)
  (:CATEGORY "public-key" :ALGORITHM "bike-l3" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 84.90525988084931d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 84.99999999999879d0)
  (:CATEGORY "public-key" :ALGORITHM "bike-l5" :SOURCE "ironclad-unsafe"
-  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 14.70581026563609d0)
+  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 15.384437871870855d0)
  (:CATEGORY "public-key" :ALGORITHM "bike-l5" :SOURCE "ironclad-unsafe"
-  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 142.1554690640269d0)
+  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 142.1568627450976d0)
  (:CATEGORY "public-key" :ALGORITHM "bike-l5" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 34.31338908442149d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 34.31355728648421d0)
  (:CATEGORY "public-key" :ALGORITHM "curve25519" :SOURCE "ironclad-unsafe"
-  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 2859.985700071495d0)
+  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 2794.98602506992d0)
  (:CATEGORY "public-key" :ALGORITHM "curve25519" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 2699.973000270027d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 2544.9872750636205d0)
  (:CATEGORY "public-key" :ALGORITHM "curve448" :SOURCE "ironclad-unsafe"
-  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 1489.985100149015d0)
+  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 1484.9925750371224d0)
  (:CATEGORY "public-key" :ALGORITHM "curve448" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 1449.9927500362476d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 1514.9848501514882d0)
  (:CATEGORY "public-key" :ALGORITHM "dsa" :SOURCE "ironclad-unsafe" :OPERATION
-  "keygen" :UNIT "ops/s" :VALUE 1.8115810754994524d0)
+  "keygen" :UNIT "ops/s" :VALUE 4.237288135593272d0)
  (:CATEGORY "public-key" :ALGORITHM "dsa" :SOURCE "openssl dsa2048" :OPERATION
-  "sign" :UNIT "ops/s" :VALUE 4131.0d0)
+  "sign" :UNIT "ops/s" :VALUE 4614.5d0)
  (:CATEGORY "public-key" :ALGORITHM "dsa" :SOURCE "ironclad-unsafe" :OPERATION
-  "sign" :UNIT "ops/s" :VALUE 2514.987425062826d0)
+  "sign" :UNIT "ops/s" :VALUE 2599.9610005850063d0)
  (:CATEGORY "public-key" :ALGORITHM "dsa" :SOURCE "openssl dsa2048" :OPERATION
-  "verify" :UNIT "ops/s" :VALUE 4728.5d0)
+  "verify" :UNIT "ops/s" :VALUE 5237.0d0)
  (:CATEGORY "public-key" :ALGORITHM "dsa" :SOURCE "ironclad-unsafe" :OPERATION
-  "verify" :UNIT "ops/s" :VALUE 1834.9816501835185d0)
+  "verify" :UNIT "ops/s" :VALUE 1919.9904000479967d0)
  (:CATEGORY "public-key" :ALGORITHM "ecdsa" :SOURCE "ironclad-unsafe"
-  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 3404.982975085119d0)
+  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 3489.982550087244d0)
  (:CATEGORY "public-key" :ALGORITHM "ecdsa" :SOURCE "ironclad-unsafe"
-  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 3474.982625086869d0)
+  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 3554.9644503555355d0)
  (:CATEGORY "public-key" :ALGORITHM "ecdsa" :SOURCE "ironclad-unsafe"
-  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 2674.973250267527d0)
+  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 2714.98642506787d0)
  (:CATEGORY "public-key" :ALGORITHM "ecdsa" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 23284.883575582084d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 24374.87812560933d0)
  (:CATEGORY "public-key" :ALGORITHM "ecdsa" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 15729.842701573158d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 15384.923075384599d0)
  (:CATEGORY "public-key" :ALGORITHM "ecdsa" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 4749.9762501187415d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 4734.976325118367d0)
  (:CATEGORY "public-key" :ALGORITHM "ed25519" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 46339.76830115842d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 46889.76555117217d0)
  (:CATEGORY "public-key" :ALGORITHM "ed25519" :SOURCE "openssl ed25519"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 23838.5d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 26826.5d0)
  (:CATEGORY "public-key" :ALGORITHM "ed25519" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 34574.827125864314d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 34619.653803461115d0)
  (:CATEGORY "public-key" :ALGORITHM "ed25519" :SOURCE "openssl ed25519"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 8806.5d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 9838.5d0)
  (:CATEGORY "public-key" :ALGORITHM "ed25519" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 7929.920700792798d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 8019.91980080208d0)
  (:CATEGORY "public-key" :ALGORITHM "ed448" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 2129.989350053246d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 2209.9889500552463d0)
  (:CATEGORY "public-key" :ALGORITHM "ed448" :SOURCE "openssl ed448" :OPERATION
-  "sign" :UNIT "ops/s" :VALUE 4119.5d0)
+  "sign" :UNIT "ops/s" :VALUE 4957.0d0)
  (:CATEGORY "public-key" :ALGORITHM "ed448" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 2074.9896250518714d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 2104.9894750526214d0)
  (:CATEGORY "public-key" :ALGORITHM "ed448" :SOURCE "openssl ed448" :OPERATION
-  "verify" :UNIT "ops/s" :VALUE 4245.5d0)
+  "verify" :UNIT "ops/s" :VALUE 4669.0d0)
  (:CATEGORY "public-key" :ALGORITHM "ed448" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 1429.9857001430144d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 1434.9928250358726d0)
  (:CATEGORY "public-key" :ALGORITHM "elgamal" :SOURCE "ironclad-unsafe"
-  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 274.9972500275028d0)
+  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 274.99862500687453d0)
  (:CATEGORY "public-key" :ALGORITHM "elgamal" :SOURCE "ironclad-unsafe"
-  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 149.99925000374975d0)
+  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 151.96003941157292d0)
  (:CATEGORY "public-key" :ALGORITHM "elgamal" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 1.572317155238018d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 1.4204424394110284d0)
  (:CATEGORY "public-key" :ALGORITHM "elgamal" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 239.99760002399387d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 264.99999999999625d0)
  (:CATEGORY "public-key" :ALGORITHM "elgamal" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 154.99922500387473d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 154.99845001550156d0)
  (:CATEGORY "public-key" :ALGORITHM "falcon-1024" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 2.551000885197337d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 2.7173765359971087d0)
  (:CATEGORY "public-key" :ALGORITHM "falcon-1024" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 99.99900000999745d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 99.05660377358669d0)
  (:CATEGORY "public-key" :ALGORITHM "falcon-1024" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 5024.974875125617d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 5014.924776128299d0)
  (:CATEGORY "public-key" :ALGORITHM "falcon-512" :SOURCE "C falcon-512-clean"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 75.95135119865506d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 75.78948890073453d0)
  (:CATEGORY "public-key" :ALGORITHM "falcon-512" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 7.575728879814839d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 9.493610799931723d0)
  (:CATEGORY "public-key" :ALGORITHM "falcon-512" :SOURCE "C falcon-512-clean"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 242.82777868865367d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 261.3436188333467d0)
  (:CATEGORY "public-key" :ALGORITHM "falcon-512" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 204.99795002050206d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 204.9999999999971d0)
  (:CATEGORY "public-key" :ALGORITHM "falcon-512" :SOURCE "C falcon-512-clean"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 19842.845023086436d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 25400.697102157592d0)
  (:CATEGORY "public-key" :ALGORITHM "falcon-512" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 13174.934125329353d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 13384.866151338634d0)
  (:CATEGORY "public-key" :ALGORITHM "hqc-128" :SOURCE "C hqc-128" :OPERATION
-  "decapsulate" :UNIT "ops/s" :VALUE 328.3726096652925d0)
+  "decapsulate" :UNIT "ops/s" :VALUE 400.4515589936773d0)
  (:CATEGORY "public-key" :ALGORITHM "hqc-128" :SOURCE "ironclad-unsafe"
-  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 779.9961000194986d0)
+  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 774.9961250193737d0)
  (:CATEGORY "public-key" :ALGORITHM "hqc-128" :SOURCE "C hqc-128" :OPERATION
-  "encapsulate" :UNIT "ops/s" :VALUE 563.7601609597368d0)
+  "encapsulate" :UNIT "ops/s" :VALUE 612.4467643244515d0)
  (:CATEGORY "public-key" :ALGORITHM "hqc-128" :SOURCE "ironclad-unsafe"
-  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 1154.9999999999836d0)
+  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 1154.9884501154706d0)
  (:CATEGORY "public-key" :ALGORITHM "hqc-128" :SOURCE "C hqc-128" :OPERATION
-  "keygen" :UNIT "ops/s" :VALUE 665.1686918559772d0)
+  "keygen" :UNIT "ops/s" :VALUE 1189.5571036071967d0)
  (:CATEGORY "public-key" :ALGORITHM "hqc-128" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 2604.9609255860855d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 2539.9873000635857d0)
  (:CATEGORY "public-key" :ALGORITHM "hqc-192" :SOURCE "C hqc-192" :OPERATION
-  "decapsulate" :UNIT "ops/s" :VALUE 106.65880049333113d0)
+  "decapsulate" :UNIT "ops/s" :VALUE 133.36790345143456d0)
  (:CATEGORY "public-key" :ALGORITHM "hqc-192" :SOURCE "ironclad-unsafe"
-  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 254.99745002550256d0)
+  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 304.99847500762445d0)
  (:CATEGORY "public-key" :ALGORITHM "hqc-192" :SOURCE "C hqc-192" :OPERATION
-  "encapsulate" :UNIT "ops/s" :VALUE 162.62902363277445d0)
+  "encapsulate" :UNIT "ops/s" :VALUE 199.79357113364583d0)
  (:CATEGORY "public-key" :ALGORITHM "hqc-192" :SOURCE "ironclad-unsafe"
-  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 424.9978750106243d0)
+  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 369.9944500832444d0)
  (:CATEGORY "public-key" :ALGORITHM "hqc-192" :SOURCE "C hqc-192" :OPERATION
-  "keygen" :UNIT "ops/s" :VALUE 345.6992207825176d0)
+  "keygen" :UNIT "ops/s" :VALUE 351.0924050254641d0)
  (:CATEGORY "public-key" :ALGORITHM "hqc-192" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 924.9953750231234d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 897.058823529409d0)
  (:CATEGORY "public-key" :ALGORITHM "hqc-256" :SOURCE "C hqc-256" :OPERATION
-  "decapsulate" :UNIT "ops/s" :VALUE 61.67618122648417d0)
+  "decapsulate" :UNIT "ops/s" :VALUE 56.885802636575704d0)
  (:CATEGORY "public-key" :ALGORITHM "hqc-256" :SOURCE "ironclad-unsafe"
-  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 159.9984000160016d0)
+  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 156.86274509803874d0)
  (:CATEGORY "public-key" :ALGORITHM "hqc-256" :SOURCE "C hqc-256" :OPERATION
-  "encapsulate" :UNIT "ops/s" :VALUE 98.42982715435635d0)
+  "encapsulate" :UNIT "ops/s" :VALUE 106.98270444101635d0)
  (:CATEGORY "public-key" :ALGORITHM "hqc-256" :SOURCE "ironclad-unsafe"
-  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 239.99880000599958d0)
+  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 244.9987750061246d0)
  (:CATEGORY "public-key" :ALGORITHM "hqc-256" :SOURCE "C hqc-256" :OPERATION
-  "keygen" :UNIT "ops/s" :VALUE 183.8619162949731d0)
+  "keygen" :UNIT "ops/s" :VALUE 116.36642568669527d0)
  (:CATEGORY "public-key" :ALGORITHM "hqc-256" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 519.9974000129992d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 524.9947500525053d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece348864" :SOURCE
   "C mceliece348864-clean" :OPERATION "decapsulate" :UNIT "ops/s" :VALUE
-  57.98032317554097d0)
+  60.8876114159626d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece348864" :SOURCE "ironclad-unsafe"
-  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 76.92270710237122d0)
+  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 76.92307692307752d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece348864" :SOURCE
   "C mceliece348864-clean" :OPERATION "encapsulate" :UNIT "ops/s" :VALUE
-  33790.63274672873d0)
+  39337.55687274025d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece348864" :SOURCE "ironclad-unsafe"
-  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 43384.56615433585d0)
+  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 40584.797076014554d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece348864" :SOURCE
   "C mceliece348864-clean" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  25.25473034864368d0)
+  28.23402498135639d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece348864" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 8.928531569055446d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 11.193946313833662d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece460896" :SOURCE "C mceliece460896"
-  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 26.4292513126963d0)
+  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 28.449979471917658d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece460896" :SOURCE "ironclad-unsafe"
-  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 32.40710734159822d0)
+  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 31.249581478820012d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece460896" :SOURCE "C mceliece460896"
-  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 16237.456558140502d0)
+  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 21717.88392515245d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece460896" :SOURCE "ironclad-unsafe"
-  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 16659.91670041647d0)
+  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 15719.999999999776d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece460896" :SOURCE "C mceliece460896"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 6.382279824444455d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 7.226828188158659d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece460896" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 4.46424585494775d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 3.4246340778488222d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece6688128" :SOURCE
   "C mceliece6688128" :OPERATION "decapsulate" :UNIT "ops/s" :VALUE
-  13.523521612851638d0)
+  14.891181401292526d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece6688128" :SOURCE "ironclad-unsafe"
-  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 21.929728378383718d0)
+  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 21.929728378385082d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece6688128" :SOURCE
   "C mceliece6688128" :OPERATION "encapsulate" :UNIT "ops/s" :VALUE
-  7738.560234427801d0)
+  13120.088180371715d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece6688128" :SOURCE "ironclad-unsafe"
-  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 9839.901600984098d0)
+  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 9299.953500232485d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece6688128" :SOURCE
   "C mceliece6688128" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  1.537949591411738d0)
+  1.7878134716066216d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece6688128" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 1.7857047194389746d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 2.5509943776083914d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece6960119" :SOURCE
   "C mceliece6960119" :OPERATION "decapsulate" :UNIT "ops/s" :VALUE
-  14.074390723048845d0)
+  15.277861798713191d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece6960119" :SOURCE "ironclad-unsafe"
-  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 22.321328922638617d0)
+  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 22.32122927473733d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece6960119" :SOURCE
   "C mceliece6960119" :OPERATION "encapsulate" :UNIT "ops/s" :VALUE
-  5434.782598132447d0)
+  7258.948636363243d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece6960119" :SOURCE "ironclad-unsafe"
-  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 10569.947150264232d0)
+  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 10319.948400257983d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece6960119" :SOURCE
   "C mceliece6960119" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  1.6944812285319861d0)
+  1.899715784708772d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece6960119" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 1.5527829752874762d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 4.23725222667606d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece8192128" :SOURCE
   "C mceliece8192128" :OPERATION "decapsulate" :UNIT "ops/s" :VALUE
-  11.141413464830663d0)
+  12.018925920366364d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece8192128" :SOURCE "ironclad-unsafe"
   :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 18.867835529077624d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece8192128" :SOURCE
   "C mceliece8192128" :OPERATION "encapsulate" :UNIT "ops/s" :VALUE
-  5954.6494878346875d0)
+  11771.353677720104d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece8192128" :SOURCE "ironclad-unsafe"
-  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 11224.887751121814d0)
+  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 10814.945925270356d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece8192128" :SOURCE
   "C mceliece8192128" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  1.9085868000440802d0)
+  2.1717627889972855d0)
  (:CATEGORY "public-key" :ALGORITHM "mceliece8192128" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 3.205107659566361d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 2.17389886587696d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-dsa-44" :SOURCE "C mldsa-44-ref"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 11286.427072276318d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 7073.036477186673d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-dsa-44" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 4209.978950105392d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 4214.957850421392d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-dsa-44" :SOURCE "C mldsa-44-ref"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 1015.2469650091956d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 644.4532332029463d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-dsa-44" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 924.9953750231234d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 852.9411764705857d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-dsa-44" :SOURCE "C mldsa-44-ref"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 11572.467098268999d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 7791.560219295903d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-dsa-44" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 3964.960350396399d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 3964.96035039654d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-dsa-65" :SOURCE "C mldsa-65-ref"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 4040.0286870370796d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 3407.0622371298596d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-dsa-65" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 2544.9872750636205d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 2564.9743502565257d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-dsa-65" :SOURCE "C mldsa-65-ref"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 657.3373014153434d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 579.8594060369579d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-dsa-65" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 574.9942500575057d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 599.997000014999d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-dsa-65" :SOURCE "C mldsa-65-ref"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 4305.445579459206d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 4238.81473381612d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-dsa-65" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 2464.987675061621d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 2514.987425062871d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-dsa-87" :SOURCE "C mldsa-87-ref"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 4213.790939561938d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 2246.095656711786d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-dsa-87" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 1619.9919000404973d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 1624.9918750406223d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-dsa-87" :SOURCE "C mldsa-87-ref"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 1019.6745981098246d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 595.7448379979822d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-dsa-87" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 459.9954000460046d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 474.9952500475048d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-dsa-87" :SOURCE "C mldsa-87-ref"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 4544.814279803034d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 2552.446377370314d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-dsa-87" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 1569.9921500392472d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 1574.9921250393722d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-kem-1024" :SOURCE "ironclad-unsafe"
-  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 3434.982825085869d0)
+  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 3469.965300347035d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-kem-1024" :SOURCE "ironclad-unsafe"
-  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 3909.9804500977434d0)
+  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 3944.999999999944d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-kem-1024" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 4544.954550454546d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 4639.953600464047d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-kem-512" :SOURCE "ironclad-unsafe"
-  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 8709.956450217735d0)
+  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 8469.99999999988d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-kem-512" :SOURCE "ironclad-unsafe"
-  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 9009.90990090077d0)
+  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 8609.956950215235d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-kem-512" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 10519.947400262981d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 12049.879501205121d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-kem-768" :SOURCE "ironclad-unsafe"
-  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 5064.974675126617d0)
+  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 5179.9741001294915d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-kem-768" :SOURCE "ironclad-unsafe"
-  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 5254.973725131366d0)
+  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 5789.97105014474d0)
  (:CATEGORY "public-key" :ALGORITHM "ml-kem-768" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 6929.930700693069d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 7064.894026589768d0)
  (:CATEGORY "public-key" :ALGORITHM "p-224" :SOURCE "ironclad-unsafe"
-  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 3664.963350366537d0)
+  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 3714.962850371537d0)
  (:CATEGORY "public-key" :ALGORITHM "p-224" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 5904.94095059056d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 6244.968775156114d0)
  (:CATEGORY "public-key" :ALGORITHM "p-224" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 5744.9712751436155d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 5704.999999999919d0)
  (:CATEGORY "public-key" :ALGORITHM "p-224" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 3909.9804500977434d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 4089.959100409041d0)
  (:CATEGORY "public-key" :ALGORITHM "p-256" :SOURCE "ironclad-unsafe"
-  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 3404.982975085119d0)
+  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 3489.982550087244d0)
  (:CATEGORY "public-key" :ALGORITHM "p-256" :SOURCE "ironclad-unsafe"
-  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 3474.982625086869d0)
+  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 3554.9644503555355d0)
  (:CATEGORY "public-key" :ALGORITHM "p-256" :SOURCE "ironclad-unsafe"
-  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 2674.973250267527d0)
+  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 2714.98642506787d0)
  (:CATEGORY "public-key" :ALGORITHM "p-256" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 23284.883575582084d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 24374.87812560933d0)
  (:CATEGORY "public-key" :ALGORITHM "p-256" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 15729.842701573158d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 15384.923075384599d0)
  (:CATEGORY "public-key" :ALGORITHM "p-256" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 4749.9762501187415d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 4734.976325118367d0)
  (:CATEGORY "public-key" :ALGORITHM "p-384" :SOURCE "ironclad-unsafe"
-  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 225.48798541190476d0)
+  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 234.99765002350236d0)
  (:CATEGORY "public-key" :ALGORITHM "p-384" :SOURCE "ironclad-unsafe"
   :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 229.9988500057496d0)
  (:CATEGORY "public-key" :ALGORITHM "p-384" :SOURCE "ironclad-unsafe"
-  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 194.99902500487465d0)
+  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 174.9991250043747d0)
  (:CATEGORY "public-key" :ALGORITHM "p-384" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 1949.9805001950197d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 1989.9900500497465d0)
  (:CATEGORY "public-key" :ALGORITHM "p-384" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 1809.9909500452468d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 1874.9999999999734d0)
  (:CATEGORY "public-key" :ALGORITHM "p-384" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 1329.9867001330133d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 1369.9794503082778d0)
  (:CATEGORY "public-key" :ALGORITHM "p-521" :SOURCE "ironclad-unsafe"
-  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 269.9973000269835d0)
+  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 254.99745002550256d0)
  (:CATEGORY "public-key" :ALGORITHM "p-521" :SOURCE "ironclad-unsafe"
-  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 274.998625006855d0)
+  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 249.99875000624957d0)
  (:CATEGORY "public-key" :ALGORITHM "p-521" :SOURCE "ironclad-unsafe"
-  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 234.9988250058913d0)
+  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 224.99887500562463d0)
  (:CATEGORY "public-key" :ALGORITHM "p-521" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 2259.977400226023d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 2329.976700233023d0)
  (:CATEGORY "public-key" :ALGORITHM "p-521" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 2809.985950070245d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 2504.974950250525d0)
  (:CATEGORY "public-key" :ALGORITHM "p-521" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 704.992950070507d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 704.9964750176238d0)
  (:CATEGORY "public-key" :ALGORITHM "prime256v1" :SOURCE "ironclad-unsafe"
-  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 3404.982975085119d0)
+  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 3489.982550087244d0)
  (:CATEGORY "public-key" :ALGORITHM "prime256v1" :SOURCE "ironclad-unsafe"
-  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 3474.982625086869d0)
+  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 3554.9644503555355d0)
  (:CATEGORY "public-key" :ALGORITHM "prime256v1" :SOURCE "ironclad-unsafe"
-  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 2674.973250267527d0)
+  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 2714.98642506787d0)
  (:CATEGORY "public-key" :ALGORITHM "prime256v1" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 23284.883575582084d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 24374.87812560933d0)
  (:CATEGORY "public-key" :ALGORITHM "prime256v1" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 15729.842701573158d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 15384.923075384599d0)
  (:CATEGORY "public-key" :ALGORITHM "prime256v1" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 4749.9762501187415d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 4734.976325118367d0)
  (:CATEGORY "public-key" :ALGORITHM "rsa" :SOURCE "ironclad-unsafe" :OPERATION
-  "decrypt" :UNIT "ops/s" :VALUE 1189.994050029748d0)
+  "decrypt" :UNIT "ops/s" :VALUE 1184.9881501184698d0)
  (:CATEGORY "public-key" :ALGORITHM "rsa" :SOURCE "ironclad-unsafe" :OPERATION
-  "encrypt" :UNIT "ops/s" :VALUE 17534.824651753675d0)
+  "encrypt" :UNIT "ops/s" :VALUE 17674.823251767677d0)
  (:CATEGORY "public-key" :ALGORITHM "rsa" :SOURCE "ironclad-unsafe" :OPERATION
-  "keygen" :UNIT "ops/s" :VALUE 11.193946313833662d0)
+  "keygen" :UNIT "ops/s" :VALUE 3.3783555516516617d0)
  (:CATEGORY "public-key" :ALGORITHM "rsa" :SOURCE "openssl rsa2048" :OPERATION
-  "sign" :UNIT "ops/s" :VALUE 1806.5d0)
+  "sign" :UNIT "ops/s" :VALUE 1970.0d0)
  (:CATEGORY "public-key" :ALGORITHM "rsa" :SOURCE "ironclad-unsafe" :OPERATION
-  "sign" :UNIT "ops/s" :VALUE 1229.9938500307478d0)
+  "sign" :UNIT "ops/s" :VALUE 1204.993975030123d0)
  (:CATEGORY "public-key" :ALGORITHM "rsa" :SOURCE "openssl rsa2048" :OPERATION
-  "verify" :UNIT "ops/s" :VALUE 61901.0d0)
+  "verify" :UNIT "ops/s" :VALUE 68476.5d0)
  (:CATEGORY "public-key" :ALGORITHM "rsa" :SOURCE "ironclad-unsafe" :OPERATION
-  "verify" :UNIT "ops/s" :VALUE 31479.685203147197d0)
+  "verify" :UNIT "ops/s" :VALUE 32294.83852580732d0)
  (:CATEGORY "public-key" :ALGORITHM "secp224r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 3664.963350366537d0)
+  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 3714.962850371537d0)
  (:CATEGORY "public-key" :ALGORITHM "secp224r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 5904.94095059056d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 6244.968775156114d0)
  (:CATEGORY "public-key" :ALGORITHM "secp224r1" :SOURCE "openssl ecdsap224"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 19083.5d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 21781.5d0)
  (:CATEGORY "public-key" :ALGORITHM "secp224r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 5744.9712751436155d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 5704.999999999919d0)
  (:CATEGORY "public-key" :ALGORITHM "secp224r1" :SOURCE "openssl ecdsap224"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 8796.5d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 10032.0d0)
  (:CATEGORY "public-key" :ALGORITHM "secp224r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 3909.9804500977434d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 4089.959100409041d0)
  (:CATEGORY "public-key" :ALGORITHM "secp256k1" :SOURCE "ironclad-unsafe"
-  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 464.9976750116242d0)
+  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 484.99515004850485d0)
  (:CATEGORY "public-key" :ALGORITHM "secp256k1" :SOURCE "ironclad-unsafe"
-  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 509.99745001274914d0)
+  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 519.9948000519682d0)
  (:CATEGORY "public-key" :ALGORITHM "secp256k1" :SOURCE "ironclad-unsafe"
-  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 245.09683776059296d0)
+  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 254.99872500637457d0)
  (:CATEGORY "public-key" :ALGORITHM "secp256k1" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 509.99745001274914d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 524.9973750131242d0)
  (:CATEGORY "public-key" :ALGORITHM "secp256k1" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 504.99495005050505d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 459.9977000114992d0)
  (:CATEGORY "public-key" :ALGORITHM "secp256k1" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 619.9969000154989d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 644.9967750161239d0)
  (:CATEGORY "public-key" :ALGORITHM "secp256r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 3404.982975085119d0)
+  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 3489.982550087244d0)
  (:CATEGORY "public-key" :ALGORITHM "secp256r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 3474.982625086869d0)
+  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 3554.9644503555355d0)
  (:CATEGORY "public-key" :ALGORITHM "secp256r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 2674.973250267527d0)
+  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 2714.98642506787d0)
  (:CATEGORY "public-key" :ALGORITHM "secp256r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 23284.883575582084d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 24374.87812560933d0)
  (:CATEGORY "public-key" :ALGORITHM "secp256r1" :SOURCE "openssl ecdsap256"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 45658.20703125d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 51161.0d0)
  (:CATEGORY "public-key" :ALGORITHM "secp256r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 15729.842701573158d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 15384.923075384599d0)
  (:CATEGORY "public-key" :ALGORITHM "secp256r1" :SOURCE "openssl ecdsap256"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 16243.5d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 17912.5d0)
  (:CATEGORY "public-key" :ALGORITHM "secp256r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 4749.9762501187415d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 4734.976325118367d0)
  (:CATEGORY "public-key" :ALGORITHM "secp384r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 225.48798541190476d0)
+  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 234.99765002350236d0)
  (:CATEGORY "public-key" :ALGORITHM "secp384r1" :SOURCE "ironclad-unsafe"
   :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 229.9988500057496d0)
  (:CATEGORY "public-key" :ALGORITHM "secp384r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 194.99902500487465d0)
+  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 174.9991250043747d0)
  (:CATEGORY "public-key" :ALGORITHM "secp384r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 1949.9805001950197d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 1989.9900500497465d0)
  (:CATEGORY "public-key" :ALGORITHM "secp384r1" :SOURCE "openssl ecdsap384"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 1076.0d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 1192.5d0)
  (:CATEGORY "public-key" :ALGORITHM "secp384r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 1809.9909500452468d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 1874.9999999999734d0)
  (:CATEGORY "public-key" :ALGORITHM "secp384r1" :SOURCE "openssl ecdsap384"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 1277.5d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 1433.5d0)
  (:CATEGORY "public-key" :ALGORITHM "secp384r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 1329.9867001330133d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 1369.9794503082778d0)
  (:CATEGORY "public-key" :ALGORITHM "secp521r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 269.9973000269835d0)
+  :OPERATION "decrypt" :UNIT "ops/s" :VALUE 254.99745002550256d0)
  (:CATEGORY "public-key" :ALGORITHM "secp521r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 274.998625006855d0)
+  :OPERATION "diffie-hellman" :UNIT "ops/s" :VALUE 249.99875000624957d0)
  (:CATEGORY "public-key" :ALGORITHM "secp521r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 234.9988250058913d0)
+  :OPERATION "encrypt" :UNIT "ops/s" :VALUE 224.99887500562463d0)
  (:CATEGORY "public-key" :ALGORITHM "secp521r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 2259.977400226023d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 2329.976700233023d0)
  (:CATEGORY "public-key" :ALGORITHM "secp521r1" :SOURCE "openssl ecdsap521"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 3432.0d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 3933.5d0)
  (:CATEGORY "public-key" :ALGORITHM "secp521r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 2809.985950070245d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 2504.974950250525d0)
  (:CATEGORY "public-key" :ALGORITHM "secp521r1" :SOURCE "openssl ecdsap521"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 1872.5d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 2140.5d0)
  (:CATEGORY "public-key" :ALGORITHM "secp521r1" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 704.992950070507d0)
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 704.9964750176238d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-128f" :SOURCE
   "C slh-dsa-sha2-128f" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  326.86755536921316d0)
+  237.8001328726748d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-128f" :SOURCE
   "ironclad-unsafe" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  699.9965000174988d0)
+  694.9965250173738d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-128f" :SOURCE
   "C slh-dsa-sha2-128f" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  14.302952581094114d0)
+  20.350276526336724d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-128f" :SOURCE
   "ironclad-unsafe" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  29.999850000749948d0)
+  29.411476358075557d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-128f" :SOURCE
   "C slh-dsa-sha2-128f" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  226.80416830872375d0)
+  321.9808138216022d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-128f" :SOURCE
   "ironclad-unsafe" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  484.99515004850485d0)
+  514.9948500515052d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-128s" :SOURCE
   "C slh-dsa-sha2-128s" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  6.603693638836119d0)
+  7.218828788648674d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-128s" :SOURCE
   "ironclad-unsafe" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  11.029330666686253d0)
+  11.029371215546877d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-128s" :SOURCE
   "C slh-dsa-sha2-128s" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  0.8757490423098394d0)
+  0.9775413689015834d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-128s" :SOURCE
   "ironclad-unsafe" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  1.4285612245626726d0)
+  1.4204464747359438d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-128s" :SOURCE
   "C slh-dsa-sha2-128s" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  830.4420278542223d0)
+  968.0608093846624d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-128s" :SOURCE
   "ironclad-unsafe" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  1474.9926250368724d0)
+  1469.9853001469626d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-192f" :SOURCE
   "C slh-dsa-sha2-192f" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  282.36861688856646d0)
+  333.06633312684295d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-192f" :SOURCE
   "ironclad-unsafe" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  464.9976750116242d0)
+  449.9932501012431d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-192f" :SOURCE
   "C slh-dsa-sha2-192f" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  11.129435817454224d0)
+  13.067011100658814d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-192f" :SOURCE
-  "ironclad-unsafe" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  14.423007581694112d0)
+  "ironclad-unsafe" :OPERATION "sign" :UNIT "ops/s" :VALUE 16.66652777893539d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-192f" :SOURCE
   "C slh-dsa-sha2-192f" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  179.92953828210375d0)
+  224.95068230631d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-192f" :SOURCE
   "ironclad-unsafe" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  319.9968000320032d0)
+  319.99840000799946d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-192s" :SOURCE
   "C slh-dsa-sha2-192s" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  4.560448947027995d0)
+  5.119504447967888d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-192s" :SOURCE
   "ironclad-unsafe" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  7.5757001840893725d0)
+  7.46263087588891d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-192s" :SOURCE
   "C slh-dsa-sha2-192s" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  0.42300791260259957d0)
+  0.594580980811844d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-192s" :SOURCE
   "ironclad-unsafe" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  0.7082102817968701d0)
+  0.7062102006413824d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-192s" :SOURCE
   "C slh-dsa-sha2-192s" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  597.3248082813923d0)
+  663.7673393483745d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-192s" :SOURCE
   "ironclad-unsafe" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  839.9958000209986d0)
+  869.9956500217485d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-256f" :SOURCE
   "C slh-dsa-sha2-256f" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  77.73923841826758d0)
+  62.99243628913553d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-256f" :SOURCE
   "ironclad-unsafe" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  181.3716599428388d0)
+  181.37077087479295d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-256f" :SOURCE
   "C slh-dsa-sha2-256f" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  4.269644576976116d0)
+  4.768009519722132d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-256f" :SOURCE
-  "ironclad-unsafe" :OPERATION "sign" :UNIT "ops/s" :VALUE 8.064451093136359d0)
+  "ironclad-unsafe" :OPERATION "sign" :UNIT "ops/s" :VALUE 8.196654125786031d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-256f" :SOURCE
   "C slh-dsa-sha2-256f" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  154.45787851534683d0)
+  171.7964858081976d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-256f" :SOURCE
   "ironclad-unsafe" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  304.99847500762445d0)
+  274.99862500687453d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-256s" :SOURCE
   "C slh-dsa-sha2-256s" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  5.05876874218782d0)
+  5.685929934899329d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-256s" :SOURCE
   "ironclad-unsafe" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  11.193946313833365d0)
+  10.869565217391171d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-256s" :SOURCE
   "C slh-dsa-sha2-256s" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  0.46447113339121077d0)
+  0.5222375200245768d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-256s" :SOURCE
   "ironclad-unsafe" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  0.7812445068745612d0)
+  0.7788107404231606d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-256s" :SOURCE
   "C slh-dsa-sha2-256s" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  307.92927214290756d0)
+  343.1853837514726d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-sha2-256s" :SOURCE
   "ironclad-unsafe" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  579.997100014499d0)
+  584.997075014624d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-128f" :SOURCE
   "C slh-dsa-shake-128f" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  291.62425998928427d0)
+  242.29125989255388d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-128f" :SOURCE
   "ironclad-unsafe" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  142.15616590115383d0)
+  149.99925000374975d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-128f" :SOURCE
   "C slh-dsa-shake-128f" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  12.873306187215107d0)
+  14.578316911334777d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-128f" :SOURCE
-  "ironclad-unsafe" :OPERATION "sign" :UNIT "ops/s" :VALUE 6.493443245682386d0)
+  "ironclad-unsafe" :OPERATION "sign" :UNIT "ops/s" :VALUE
+  6.4934643281536735d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-128f" :SOURCE
   "C slh-dsa-shake-128f" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  202.1753337555217d0)
+  234.67919988809624d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-128f" :SOURCE
   "ironclad-unsafe" :OPERATION "verify" :UNIT "ops/s" :VALUE
   107.8426086146684d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-128s" :SOURCE
   "C slh-dsa-shake-128s" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  4.5562919948001985d0)
+  5.273035435045941d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-128s" :SOURCE
   "ironclad-unsafe" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  2.2935622002600926d0)
+  2.252237034434441d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-128s" :SOURCE
   "C slh-dsa-shake-128s" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  0.6232083805094927d0)
+  0.7047832950528979d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-128s" :SOURCE
   "ironclad-unsafe" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  0.30863987960575545d0)
+  0.3082594101579487d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-128s" :SOURCE
   "C slh-dsa-shake-128s" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  563.4853435577329d0)
+  641.2081356902318d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-128s" :SOURCE
   "ironclad-unsafe" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  304.99695003050306d0)
+  299.997000030003d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-192f" :SOURCE
   "C slh-dsa-shake-192f" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  153.25087908256657d0)
+  226.91614741404132d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-192f" :SOURCE
   "ironclad-unsafe" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  102.94016725326087d0)
+  104.99947500262482d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-192f" :SOURCE
   "C slh-dsa-shake-192f" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  7.652055649275801d0)
+  8.975289194784976d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-192f" :SOURCE
   "ironclad-unsafe" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  3.9682382212770126d0)
+  4.0322255465681796d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-192f" :SOURCE
   "C slh-dsa-shake-192f" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  153.3608529199779d0)
+  155.6104212989627d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-192f" :SOURCE
   "ironclad-unsafe" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  74.99925000749542d0)
+  74.99999999999893d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-192s" :SOURCE
   "C slh-dsa-shake-192s" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  3.1132400203736323d0)
+  3.514200779391563d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-192s" :SOURCE
   "ironclad-unsafe" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  1.602553829783144d0)
+  1.6025563979660307d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-192s" :SOURCE
   "C slh-dsa-shake-192s" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  0.36069025688965944d0)
+  0.39694984360408747d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-192s" :SOURCE
   "ironclad-unsafe" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  0.1761791982049453d0)
+  0.17705266449210577d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-192s" :SOURCE
   "C slh-dsa-shake-192s" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  400.63076145561894d0)
+  458.88295372291867d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-192s" :SOURCE
   "ironclad-unsafe" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  214.99892500537464d0)
+  221.15171969499488d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-256f" :SOURCE
   "C slh-dsa-shake-256f" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  77.60610116630149d0)
+  84.58666738084852d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-256f" :SOURCE
   "ironclad-unsafe" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  38.46135355118561d0)
+  37.73549306138653d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-256f" :SOURCE
   "C slh-dsa-shake-256f" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  3.8870017465885534d0)
+  4.336648484585d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-256f" :SOURCE
   "ironclad-unsafe" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  1.9379732288378253d0)
+  1.9083860206906937d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-256f" :SOURCE
   "C slh-dsa-shake-256f" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  138.47072447821878d0)
+  154.86564477518453d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-256f" :SOURCE
   "ironclad-unsafe" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  70.75404949009973d0)
+  73.52869089518633d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-256s" :SOURCE
   "C slh-dsa-shake-256s" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  4.756440020635239d0)
+  5.288463167890791d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-256s" :SOURCE
   "ironclad-unsafe" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  2.427172683627743d0)
+  2.293567460699711d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-256s" :SOURCE
   "C slh-dsa-shake-256s" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  0.4225348480354863d0)
+  0.47125326330804373d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-256s" :SOURCE
   "ironclad-unsafe" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  0.20080184191513595d0)
+  0.1970041965833959d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-256s" :SOURCE
   "C slh-dsa-shake-256s" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  298.286817048082d0)
+  322.23438985875725d0)
  (:CATEGORY "public-key" :ALGORITHM "slh-dsa-shake-256s" :SOURCE
   "ironclad-unsafe" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  149.99850001499084d0)
+  142.15477223374154d0)
  (:CATEGORY "public-key" :ALGORITHM "x-wing" :SOURCE "ironclad-unsafe"
-  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 689.9931000690559d0)
+  :OPERATION "decapsulate" :UNIT "ops/s" :VALUE 709.9929000710072d0)
  (:CATEGORY "public-key" :ALGORITHM "x-wing" :SOURCE "ironclad-unsafe"
-  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 704.9964750175737d0)
+  :OPERATION "encapsulate" :UNIT "ops/s" :VALUE 799.9960000199986d0)
  (:CATEGORY "public-key" :ALGORITHM "x-wing" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 2014.9899250505148d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 1889.9905500472469d0)
  (:CATEGORY "public-key" :ALGORITHM "xmss-sha2-10-256" :SOURCE
   "C xmss-sha2_10_256" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  0.5105495287887113d0)
+  0.569608494286671d0)
  (:CATEGORY "public-key" :ALGORITHM "xmss-sha2-10-256" :SOURCE
   "ironclad-unsafe" :OPERATION "keygen" :UNIT "ops/s" :VALUE
-  0.26041490344075735d0)
+  0.2620528592063363d0)
  (:CATEGORY "public-key" :ALGORITHM "xmss-sha2-10-256" :SOURCE
   "C xmss-sha2_10_256" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  0.5099842236081608d0)
+  0.5675208876713915d0)
  (:CATEGORY "public-key" :ALGORITHM "xmss-sha2-10-256" :SOURCE
   "ironclad-unsafe" :OPERATION "sign" :UNIT "ops/s" :VALUE
-  0.25640854701994314d0)
+  0.26398980999333493d0)
  (:CATEGORY "public-key" :ALGORITHM "xmss-sha2-10-256" :SOURCE
   "C xmss-sha2_10_256" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  1025.7682983287352d0)
+  1121.4722574717955d0)
  (:CATEGORY "public-key" :ALGORITHM "xmss-sha2-10-256" :SOURCE
   "ironclad-unsafe" :OPERATION "verify" :UNIT "ops/s" :VALUE
-  504.99747501262414d0)
+  519.9974000129992d0)
  (:CATEGORY "public-key" :ALGORITHM "xmss-sha256-h10" :SOURCE "ironclad-unsafe"
-  :OPERATION "keygen" :UNIT "ops/s" :VALUE 0.26041490344075735d0)
+  :OPERATION "keygen" :UNIT "ops/s" :VALUE 0.2620528592063363d0)
  (:CATEGORY "public-key" :ALGORITHM "xmss-sha256-h10" :SOURCE "ironclad-unsafe"
-  :OPERATION "sign" :UNIT "ops/s" :VALUE 0.25640854701994314d0)
+  :OPERATION "sign" :UNIT "ops/s" :VALUE 0.26398980999333493d0)
  (:CATEGORY "public-key" :ALGORITHM "xmss-sha256-h10" :SOURCE "ironclad-unsafe"
-  :OPERATION "verify" :UNIT "ops/s" :VALUE 504.99747501262414d0))
+  :OPERATION "verify" :UNIT "ops/s" :VALUE 519.9974000129992d0))

@@ -1862,3 +1862,11 @@ were cheaper than the spills.  Reverted.
 Validation: whirlpool digest and incremental vector files pass under SBCL,
 CCL and ABCL (the portable path changed too), the published digests of ""
 and "abc" match, and the full SBCL suite is green.
+
+## Update (benchmark refresh after the Whirlpool table merge)
+
+  whirlpool   40.18 -> 77.91 MB/s   (gap 4.25 -> 2.20)
+
+123 measured rows, 44 ahead of the C reference and 80 within 2x, with the
+host at load ~4.6.  The headline movement is whirlpool; the rest is within
+the run-to-run noise of this host.
