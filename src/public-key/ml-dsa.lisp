@@ -813,6 +813,21 @@
     (dotimes (j l row)
       (setf (aref row j) (aref a i j)))))
 
+(defun ml-dsa-matrix-for-key (key rho k l)
+  "The expanded public matrix A for RHO, memoized on KEY.
+A depends only on the public seed, but verification re-samples it with
+SHAKE on every call and each signature attempt would do the same; the
+sampling is 32% of an ML-DSA-65 verification.  The cached RHO is
+compared so a mutated key cannot use a stale matrix; concurrent first
+callers may both compute it, which is harmless."
+  (let ((cache (and key (ml-dsa-key-matrix key))))
+    (if (and cache (equalp (car cache) rho))
+        (cdr cache)
+        (let ((matrix (ml-dsa-gen-matrix rho k l)))
+          (when key
+            (setf (ml-dsa-key-matrix key) (cons (copy-seq rho) matrix)))
+          matrix))))
+
 (defun ml-dsa-sample-eta-vec (v n seed start-nonce eta)
   (dotimes (i n)
     (setf (aref v i) (ml-dsa-sample-eta seed (+ start-nonce i) eta)))
@@ -972,7 +987,7 @@
       (ml-dsa-pack-sk sk rho key tr s1 s2 t0 k l (ml-dsa-params-etapacked dp))
       (values pk sk))))
 
-(defun ml-dsa-sign-with-rnd (msg sk rnd dp pre)
+(defun ml-dsa-sign-with-rnd (msg sk rnd dp pre &optional cache-key)
   "Deterministic signing of MSG with 32-byte RND and PRE prefix bytes."
   (let* ((k (ml-dsa-params-k dp))
          (l (ml-dsa-params-l dp))
@@ -1005,7 +1020,7 @@
            (rhoprime (ml-dsa-shake256 (concatenate '(simple-array (unsigned-byte 8) (*))
                                                   key rnd mu)
                                       64))
-           (amat (ml-dsa-gen-matrix rho k l)))
+           (amat (ml-dsa-matrix-for-key cache-key rho k l)))
       (ml-dsa-vec-ntt s1 l)
       (ml-dsa-vec-ntt s2 k)
       (ml-dsa-vec-ntt t0 k)
@@ -1054,7 +1069,7 @@
                    (ml-dsa-pack-sig sig cseed z h k l zpacked omega ctilde)
                    (return sig)))))))
 
-(defun ml-dsa-verify-internal (sig msg pk dp pre)
+(defun ml-dsa-verify-internal (sig msg pk dp pre &optional cache-key)
   "Returns T when SIG is a valid signature on MSG under PK."
   (let* ((k (ml-dsa-params-k dp))
          (l (ml-dsa-params-l dp))
@@ -1085,7 +1100,7 @@
              (mu (ml-dsa-shake256 (concatenate '(simple-array (unsigned-byte 8) (*))
                                                tr pre msg)
                                   64))
-             (mat (ml-dsa-gen-matrix rho k l)))
+             (mat (ml-dsa-matrix-for-key cache-key rho k l)))
         (setf cp (ml-dsa-challenge cseed ctilde tau))
         (ml-dsa-vec-ntt z l)
         (dotimes (i k)
@@ -1113,7 +1128,10 @@
 
 (defclass ml-dsa-key ()
   ((kind :initarg :kind :reader ml-dsa-key-kind)
-   (bytes :initarg :bytes :reader ml-dsa-key-bytes)))
+   (bytes :initarg :bytes :reader ml-dsa-key-bytes)
+   ;; (RHO . EXPANDED-MATRIX) for this key's public seed; see
+   ;; ML-DSA-MATRIX-FOR-KEY.
+   (matrix :initform nil :accessor ml-dsa-key-matrix)))
 
 (defclass ml-dsa-public-key (ml-dsa-key)
   ())
@@ -1191,7 +1209,8 @@
                           (ml-dsa-key-bytes key)
                           (random-data 32)
                           (ml-dsa-params-for-kind (ml-dsa-key-kind key))
-                          (ml-dsa-pre-bytes ctx))))
+                          (ml-dsa-pre-bytes ctx)
+                          key)))
 
 (defmethod verify-signature ((key ml-dsa-public-key) message signature &key (start 0) end ctx &allow-other-keys)
   (let ((end (or end (length message))))
@@ -1200,4 +1219,5 @@
                                  (subseq message start end)
                                  (ml-dsa-key-bytes key)
                                  (ml-dsa-params-for-kind (ml-dsa-key-kind key))
-                                 (ml-dsa-pre-bytes ctx)))))
+                                 (ml-dsa-pre-bytes ctx)
+                                 key))))

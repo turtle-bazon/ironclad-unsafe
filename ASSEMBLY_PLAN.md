@@ -2687,3 +2687,38 @@ same long run, moves too (SLH 128f keygen C: 333 -> 213 ops/s between
 two runs), so the "rows ahead/within 2x" counts move by several rows
 without any code change.  The isolated interleaved builds are the
 measurement of record for these rows; the table is a snapshot.
+
+## ML-DSA: memoize the public matrix A on the key (verify 1.47x)
+
+Each verification expand
+s the KxL public matrix A from the 32-byte public seed RHO with
+SHAKE128 and rejection sampling, and each signature does the same once
+per call.  A depends only on RHO, yet `ml-dsa-gen-matrix` measured
+120 us of a 373 us ML-DSA-65 verification (32%), and `rej-uniform` was
+another 4.7% of the profile.
+
+The key classes now carry a `(rho . matrix)` cache and
+`ml-dsa-matrix-for-key` returns it when the stored RHO still matches;
+the internal sign/verify functions take the key object as an optional
+last argument (a `T`-named local was the first thing the compiler
+rejected -- and the sign function already had a local *byte vector*
+named `key`, so the parameter is `cache-key`).  A concurrent first use
+may compute the matrix twice; both results are identical.  The matrix
+is read-only at every use site (pointwise accumulation), so sharing it
+is safe.
+
+Isolated timings, ML-DSA (before -> after, verify):
+
+  ml-dsa-44   251 -> 173 us
+  ml-dsa-65   373 -> 253 us   (1.47x)
+  ml-dsa-87    ~500 -> 347 us
+
+Signing also reuses the cache (one matrix per signature instead of
+building it inside the rejection loop's setup): 44 960 us, 65 1440 us,
+87 1640 us.  Against the table's C references that puts 65 verify at
+~1.4 and 87 verify at ~1.2 instead of 2.0 and 1.9.
+
+Cost: the matrix is K*L 256-fixnum polynomials, i.e. 61 KB for ML-DSA-65
+and 115 KB for ML-DSA-87, per key object that is actually used.  The
+cached RHO is compared on every lookup (32 bytes) so a mutated key
+cannot read a stale matrix.  ML-DSA KATs and the full SBCL suite pass.
