@@ -2911,3 +2911,21 @@ keep the portable LDB version.  Verified against the portable function
 on 200 random blocks (0 mismatches), the Whirlpool vector file passes,
 and the full suite is green.  Digest level this is ~93 MB/s; against the
 202 MB/s reference the gap moves 2.27 -> ~2.0.
+
+## Ed448: allocation-free field exponentiation (~4% of verify)
+
+`goldilocks-fe-expt` raised to power by binary square-and-multiply
+through `goldilocks-fe-mul`, which allocates a sixteen-limb result for
+every multiply -- an inversion is about 650 of them -- and routes every
+product through the shared global `*goldilocks-mul-prod*`.  The
+exponentiation now ping-pongs two private field elements through
+`goldilocks-fe-mul-buf` with its own product buffer:
+
+  inversion (q-2)   80 -> 66.7 us   (1.2x)
+
+An Ed448 verification performs two such inversions, so this is about
+4% of the operation (verify 680 -> ~648 us isolated; sign ~464 ->
+440 us).  It also removes the shared buffer from this path.  Ed448
+vectors and the full suite pass; the remaining 3x gap is the field
+multiply itself (69% of verify) and needs ADX scheduling in the
+goldilocks VOPs.

@@ -287,16 +287,27 @@ one sixteen-limb product buffer."
 (defun goldilocks-fe-expt (base e)
   "BASE raised to the power E, in the limb field.
 The exponent is public, so the time of the exponentiation may
-depend on it."
+depend on it.  The squarings and products write into a private
+ping-pong pair with GOLDILOCKS-FE-MUL-BUF: GOLDILOCKS-FE-MUL allocates
+a sixteen-limb result for every multiply, and an inversion is ~650 of
+them.  This also keeps the shared *GOLDILOCKS-MUL-PROD* out of the
+loop."
   (declare (type goldilocks-fe base)
            (type integer e)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((result (goldilocks-fe-one))
-        (b base))
+        (b (goldilocks-fe-zero))
+        (tmp (goldilocks-fe-zero))
+        (buf (make-array 16 :element-type '(unsigned-byte 64) :initial-element 0)))
+    (declare (type goldilocks-fe result b tmp)
+             (type goldilocks-product buf))
+    (dotimes (i 8) (setf (aref b i) (aref base i)))
     (loop while (plusp e) do
       (when (logbitp 0 e)
-        (setf result (goldilocks-fe-mul result b)))
-      (setf b (goldilocks-fe-mul b b))
+        (goldilocks-fe-mul-buf tmp result b buf)
+        (rotatef result tmp))
+      (goldilocks-fe-mul-buf tmp b b buf)
+      (rotatef b tmp)
       (setf e (ash e -1)))
     result))
 
