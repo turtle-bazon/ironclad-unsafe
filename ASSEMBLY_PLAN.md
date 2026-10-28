@@ -2599,3 +2599,22 @@ both orders.  C reference 163.1 -> gap 2.00 to ~1.3.  Camellia vectors
 (16/24/32-byte keys) pass and the full SBCL suite is green.  Chacha,
 SM4, ARIA, CAST5 and Blowfish already use the register-resident macro
 shape, so this was the only cipher with the defect.
+
+## Whirlpool: compute the eight output words into locals (75 -> 85 MB/s)
+
+Each half-round ran `lookup-in-c`, which wrote its eight results into the
+`l` row of the register array, and the caller then copied `l` into `k`
+(or XORed it into `state`).  That is 8 stores plus 8 loads and 8 stores
+per half-round, 20 times per block, for no semantic reason: the lookup's
+eight results are a pure function of the old row, so they can be bound to
+locals and written straight to the destination.  The macro now takes an
+optional XOR source (and an optional round constant for element 0), so
+the state round folds the K addition in as well, and `l` is unused.
+
+  whirlpool block  840 -> 760 ns  (1.10x)
+  whirlpool 8 KB    75 -> 85.3 MB/s in the same harness
+
+Vector file passes and the full SBCL suite is green.  C reference is
+198.8 MB/s, so the gap moves 2.65 -> ~2.33.  Whirlpool remains a
+table-lookup bound digest (1280 lookups per block); this removes the
+bookkeeping around them, not the lookups.

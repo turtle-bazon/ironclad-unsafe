@@ -178,7 +178,7 @@ lookups per output word, and the split form needs 16."
         (multiple-value-bind (terms1 terms2) (split terms)
           `(logxor ,(generate-xor terms1) ,(generate-xor terms2)))))
   
-  (defun one-slice (to from i c)
+  (defun one-slice (from i c)
     ;; C is the caller's local name for the table.  Naming it locally is
     ;; worth a large factor: it is a DEFCONSTANT array, so a direct
     ;; reference reloads the array pointer from the symbol value cell on
@@ -187,15 +187,27 @@ lookups per output word, and the split form needs 16."
       `(let (,@(loop for index in indices
                      for j below 8
                      collect `(,index ,(extract-byte from (mod (- i j) 8) j))))
-        (setf (,to ,i)
-              ,(generate-xor (loop for index in indices
-                                   for j below 8
-                                   collect `(aref ,c ,j ,index)))))))
+        ,(generate-xor (loop for index in indices
+                             for j below 8
+                             collect `(aref ,c ,j ,index))))))
 ) ; EVAL-WHEN
 
-(defmacro lookup-in-c (to from c)
-  `(progn
-    ,@(loop for i below 8 collect (one-slice to from i c))))
+(defmacro lookup-in-c (to from c &optional xor-src rc)
+  "Write the eight table-transformed words of FROM into TO.  All eight
+results are computed into locals first, so FROM and TO may be the same
+state row; this avoids the old write-to-L-then-copy-back round trip.
+XOR-SRC and RC are XORed into the result (RC only into element 0)."
+  (let ((results (loop for i below 8 collect (gensym))))
+    `(let (,@(loop for i below 8
+                   for res in results
+                   collect `(,res ,(one-slice from i c))))
+       (declare (type (unsigned-byte 64) ,@results))
+       ,@(loop for i below 8
+               for res in results
+               collect `(setf (,to ,i)
+                              (logxor ,res
+                                      ,(if xor-src `(,xor-src ,i) 0)
+                                      ,(if (and rc (zerop i)) rc 0)))))))
 
 (defun update-whirlpool-block (regs block)
   "this is the core part of the whirlpool algorithm. it takes a complete 8
@@ -208,9 +220,7 @@ word block of input, and updates the working state in the regs."
              (k (i)
                `(aref regs (+ ,i +whirlpool-regs-k-offset+)))
              (state (i)
-               `(aref regs (+ ,i +whirlpool-regs-state-offset+)))
-             (l (i)
-               `(aref regs (+ ,i +whirlpool-regs-l-offset+))))
+               `(aref regs (+ ,i +whirlpool-regs-state-offset+))))
     (let ((c +c+))
       (declare (type (simple-array (unsigned-byte 64) (8 256)) c))
       ;; Compute and apply K^0 to the cipher state
@@ -219,17 +229,9 @@ word block of input, and updates the working state in the regs."
       ;; Iterate over all rounds
       (loop for r of-type (integer 1 11) from 1 to +whirlpool-rounds+
             do (progn
-                 ;; Compute K^r from K^{r-1}
-                 (lookup-in-c l k c)
-                 (setf (l 0) (logxor (l 0) (aref +rc+ r)))
-                 (loop for i below 8
-                       do (setf (k i) (l i)))
-                 ;; Apply the r-th round transformation
-                 (lookup-in-c l state c)
-                 (loop for i below 8
-                       do (setf (l i) (logxor (l i) (k i))))
-                 (loop for i below 8
-                       do (setf (state i) (l i)))))
+                 ;; Compute K^r from K^{r-1}, then apply it to the state.
+                 (lookup-in-c k k c nil (aref +rc+ r))
+                 (lookup-in-c state state c k nil)))
       ;; Apply the Miyaguchi-Preneel compression function
       (loop for i below 8
             do (setf (hash i)
