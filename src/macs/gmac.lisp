@@ -32,7 +32,7 @@
                   :type (integer 0 16))
    (powers :accessor gmac-powers
            :initform nil
-           :type (or null (simple-array (unsigned-byte 8) (64))))))
+           :type (or null (simple-array (unsigned-byte 8) (128))))))
 
 (defconst +gmac-reverse-mask+
   (make-array 16 :element-type '(unsigned-byte 8)
@@ -42,6 +42,9 @@
 
 (defvar *gmac-4x-enabled* t
   "Set to NIL to force one-block GHASH steps (validation only).")
+
+(defvar *gmac-8x-enabled* t
+  "Set to NIL to force four-block GHASH steps (validation only).")
 
 (defun make-gmac (key cipher-name initialization-vector)
   (unless (member (length key) (key-lengths cipher-name))
@@ -142,19 +145,17 @@
           (setf (gmac-j0 mac) j0)
           (replace iv j0))
         (encrypt-in-place cipher iv)
-        ;; H^1 through H^4, for the four-way aggregated GHASH steps.
-        (let ((powers (make-array 64 :element-type '(unsigned-byte 8)))
+        ;; H^1 through H^8, for the four- and eight-way aggregated
+        ;; GHASH steps.
+        (let ((powers (make-array 128 :element-type '(unsigned-byte 8)))
               (p (make-array 16 :element-type '(unsigned-byte 8))))
-          (declare (type (simple-array (unsigned-byte 8) (64)) powers)
+          (declare (type (simple-array (unsigned-byte 8) (128)) powers)
                    (type (simple-array (unsigned-byte 8) (16)) p))
           (replace p hkey)
           (replace powers p :start1 0 :end1 16)
-          (gmac-mul p hkey)
-          (replace powers p :start1 16 :end1 32)
-          (gmac-mul p hkey)
-          (replace powers p :start1 32 :end1 48)
-          (gmac-mul p hkey)
-          (replace powers p :start1 48 :end1 64)
+          (dotimes (i 7)
+            (gmac-mul p hkey)
+            (replace powers p :start1 (* 16 (1+ i)) :end1 (* 16 (+ i 2))))
           (setf (gmac-powers mac) powers))
         mac)
       (let ((table (make-array '(128 2 2) :element-type '(unsigned-byte 64)
@@ -256,6 +257,14 @@
     (if #+(and sbcl x86-64 ironclad-unsafe-assembly) (pclmulqdq-supported-p)
         #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
         (progn
+          #+(and sbcl x86-64 ironclad-unsafe-assembly)
+          (when (and *gmac-8x-enabled* (gmac-powers mac))
+            (loop while (>= remaining 128) do
+              (gmac-mul-8-fast accumulator data start (gmac-powers mac)
+                               +gmac-reverse-mask+)
+              (incf total-length 128)
+              (incf start 128)
+              (decf remaining 128)))
           #+(and sbcl x86-64 ironclad-unsafe-assembly)
           (when (and *gmac-4x-enabled* (gmac-powers mac))
             (loop while (>= remaining 64) do

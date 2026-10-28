@@ -2361,3 +2361,26 @@ Together with the earlier Camellia S-box binding (also slower) this says
 SBCL's array accesses with constant indices are as good as hand-hoisted
 locals for these table-driven rounds, and the remaining Whirlpool gap is
 the same codegen difference as the other scalar digests.
+
+## Update (GHASH: eight blocks per reduction)
+
+The four-block GHASH VOP sums four carryless products and reduces once.
+Since the reduction and the call are fixed costs, doing eight blocks per
+call amortizes them further: `gmac-mul-8-fast` is the same code with
+H^1..H^8 in the powers table (extended to 128 bytes) and one reduction
+per 128 octets.
+
+  gmac   3938 -> 4800 MB/s   (1.22x)
+  gcm     900 -> 940 MB/s    (1.04x; GHASH is only ~a third of GCM)
+
+GCM gains little because its time is CTR plus per-message setup; the MAC
+itself is now 1.7 us for 8 KB.  Validation: gcm, gcm-incremental,
+gcm-siv and gmac vector files pass, and a differential of 400 random
+message lengths (0-599) between the eight-block and four-block paths
+shows zero mismatches, so the 64/128 boundary is right.
+
+NB the measurement lesson: `get-internal-real-time` on this host only
+ticks every few milliseconds, so any benchmark whose total run is under
+~10 ms is quantized garbage.  The eight-block difference is invisible
+until the loop runs 20k-50k iterations; the same root cause explains
+several suspiciously round micro-benchmarks earlier in this file.
