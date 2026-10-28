@@ -2849,3 +2849,30 @@ the fully unrolled functions make ml-dsa.lisp memory-hungry to compile;
 a 1 GB SBCL heap compiles the system but ran out while compiling a
 second copy of the experiment in one image (`--dynamic-space-size 4096`
 is a safe choice).
+
+## Falcon: type the sampler arithmetic (keygen 90 -> ~69 ms)
+
+The keygen profile showed GENERIC-+, GENERIC-*, GENERIC-- and
+%DOUBLE-FLOAT together near 10%, i.e. boxed/generic arithmetic in
+code that handles doubles and big integers.  `falcon-samplerz`,
+`falcon-berexp` and `falcon-approxexp` had no type declarations, so
+`(- z r)`, `(/ sigmin sigma)`, `(* x (ash 1 63))` and friends went
+through the generic arithmetic dispatch and boxed their results.
+
+Declaring MU/SIGMA/SIGMIN/X/CCS as DOUBLE-FLOAT and the integer
+intermediates as INTEGER removes that: `%DOUBLE-FLOAT` falls from 2.6%
+to 0.2% of the profile and `falcon-approxexp`'s total from 12.7% to
+8.6%.  Keygen, best of five:
+
+  before  90.4 ms
+  after   61.6 / 81.6 / 68.8 ms   (spread is the NTRU solve's random
+                                   retries, not the sampler)
+
+Signing (4.4 ms) and verification (62-64 us) are unchanged.  The
+remaining GENERIC-+/< entries are big-integer additions and comparisons
+inside `falcon-basesampler`, which are bignums by construction.  Falcon
+KATs and the full suite pass.
+
+Cumulative for the table: falcon-512 keygen 9.8x -> ~7.5x.  The rest of
+that row is the NTRU solve, which needs the reference's double-precision
+NTT/NTRU path rather than bignum Karatsuba.

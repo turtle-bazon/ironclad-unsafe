@@ -948,8 +948,11 @@ so results are bit-identical to the reference."
           (incf z0))))))
 
 (defun falcon-approxexp (x ccs)
+  (declare (type double-float x ccs)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((y (aref +falcon-sampler-c+ 0))
         (z (truncate (* x (ash 1 63)))))
+    (declare (type integer y z))
     (dotimes (i (1- (length +falcon-sampler-c+)))
       (setf y (- (aref +falcon-sampler-c+ (+ i 1)) (ash (* z y) -63))))
     (setf z (ash (truncate (* ccs (ash 1 63))) 1))
@@ -957,8 +960,11 @@ so results are bit-identical to the reference."
 
 (defun falcon-berexp (x ccs randbytes)
   ;; int() in the reference truncates toward zero (x may be negative).
+  (declare (type double-float x ccs)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((s (truncate (* x +falcon-iln2+)))
          (r (- x (* s +falcon-ln2+))))
+    (declare (type integer s) (type double-float r))
     (setf s (min s 63))
     (let ((z (ash (- (falcon-approxexp r ccs) 1) (- s))))
       (loop for i = 56 then (- i 8)
@@ -969,15 +975,19 @@ so results are bit-identical to the reference."
             finally (return nil)))))
 
 (defun falcon-samplerz (mu sigma sigmin randbytes)
+  (declare (type double-float mu sigma sigmin)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((s (floor mu))
         (r (- mu (floor mu)))
         (dss (/ 1d0 (* 2d0 sigma sigma)))
         (ccs (/ sigmin sigma)))
+    (declare (type integer s) (type double-float r dss ccs))
     (loop
       (let* ((z0 (falcon-basesampler randbytes))
              (b (ldb (byte 1 0) (aref (funcall randbytes 1) 0)))
              (z (+ b (* (- (* 2 b) 1) z0)))
              (x (- (* (- z r) (- z r) dss) (* z0 z0 +falcon-inv-2sigma2+))))
+        (declare (type fixnum z0 b z) (type double-float x))
         (when (falcon-berexp x ccs randbytes)
           (return (+ z s)))))))
 
