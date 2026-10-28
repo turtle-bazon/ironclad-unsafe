@@ -2451,3 +2451,30 @@ from the same place: SBCL's portable round spends instructions on tagged
 fixnum conversions, while the round itself is a few xors, three adds and
 a rotate.  SM3 (2.16) and Whirlpool (2.57) are the remaining digest rows
 in that class.
+
+## Negative result (SM3: rounds VOP is only 1.06x)
+
+Built the same kind of VOP for SM3 -- the 64 rounds with the eight state
+words in registers, the schedule in a buffer (state at 0..7, W at 8..75,
+and W[j]^W[j+4] precomputed at 76..139 so the round needs one memory
+operand for TT1).  It is correct: 0 mismatches against `sm3-hash` at 2,
+3, 4, 5, 8, 16, 17, 32 and 64 rounds (the bisect also caught a real bug
+in my first attempt -- FF's two terms must be `(a&b)` and `((a^b)&c)`,
+disjoint so they can be added; `(a|b)&c` overlaps and needs a real OR).
+
+It is not worth landing:
+
+  sm3   480 -> 453 ns/block   (1.06x)
+
+The round VOP itself is ~1.5x, but the schedule expansion stays in Lisp
+(52 words of P1 plus the 64 W xor-s, ~40% of the block) and the eight
+state words plus three temporaries still spill.  Unlike MD5/RIPEMD-160,
+whose rounds keep only 5-10 values live, SM3's round needs all eight
+state words and its schedule exceeds what the portable code can express
+in registers either way.  Reverted; no code change.
+
+Summary of the digest-VOP recipe across five attempts: md5 2.1x,
+ripemd-160 2.25x (wins), sm3 1.06x, sha512 0.83x (losses).  The win
+condition is a round with few live values and a simple schedule; SM3 and
+SHA-512 both need their message schedule too, and that plus the register
+pressure cancels the advantage.
