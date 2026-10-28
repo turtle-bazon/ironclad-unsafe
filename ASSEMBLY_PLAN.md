@@ -1805,3 +1805,31 @@ Complete picture under ABCL 1.9.0 at this revision:
 Practical way to check ABCL quickly, given the cost of the full suite: run
 the per-area vector files (mceliece/hqc/bike/gcm-siv/chacha-poly/ml-dsa/
 slh-dsa-128f) rather than `asdf:test-system`.
+
+## Update (P-256 field multiply: CIOS tried, slower, reverted)
+
+The secp256r1 verify profile is 63% in secp256r1-fe-mont-mul-asm with
+another 12% in the point-doubling wrapper, so the field multiply is the
+only useful lever left on that row.  Before attempting the register-
+resident ADX form, I tried the cheap thing: instantiate the already
+validated generic CIOS VOP at n=4 and call it with P-256's limbs.  It is
+correct (300k random and adversarial differential trials against the
+existing VOP, zero mismatches) but slower:
+
+  secp256r1-fe-mont-mul-asm (SOS, fixed modulus)   32 ns
+  mont-mul-4-cios (generic CIOS, n=4)              38 ns
+
+The reason is specific to this modulus: P[0] = 2^64-1 makes the reduction
+word cancel with no multiply at all, and P[2] = 0 makes that step a plain
+carry propagation, so the fixed-modulus SOS performs 16 product and only 8
+reduction multiplies.  The generic CIOS performs 16+16.  CIOS saves memory
+traffic, but at n=4 the arithmetic is what matters, so the special cases
+win.  A CIOS form could special-case the modulus too, but then it has the
+same 24 multiplies as the current code and would only be trading memory
+traffic -- not worth the risk.  Reverted.
+
+That leaves the register-resident MULX/ADCX/ADOX form as the only way to
+move this row: it has to keep the 5-word accumulator and the modulus limbs
+in registers at once, which is the shape an earlier attempt here ran out of
+registers on.  With MULX freeing RAX/RDX it is probably feasible, but it is
+a careful hand-allocation job, not a rearrangement.
