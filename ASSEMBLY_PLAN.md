@@ -2035,3 +2035,15 @@ The table's own keygen rows are dominated by how many retries a single
 sample happens to need, and the C column moved by more than the change;
 123 measured rows, 45 ahead of the C reference and 99 within 2x, but
 those counts are not comparable with the previous run (load ~7.8).
+
+## Update (benchmark refresh after the CTR counter-block change)
+
+  gcm   631.9 -> 867.1 MB/s  (gap 2.40 -> 1.73)
+  ccm   328.3 -> 295.7 -> 395.7 MB/s  (gap 2.41 -> 2.02)
+  eax   302 MB/s, etm 443 MB/s, gcm-siv 174 MB/s (no C reference)
+
+CCM moves less because its CBC-MAC is a serial AES chain and dominates;
+GCM is now roughly one third CTR, one third GHASH and one third setup.
+123 measured rows, 47 ahead of the C reference and 102 within 2x at load
+~3.9 (the previous run had 45 and 99 at load ~7.8, so the counts are
+moving in the right direction but the C column is still noisy).
