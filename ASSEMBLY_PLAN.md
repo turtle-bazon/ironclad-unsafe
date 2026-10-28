@@ -2722,3 +2722,9 @@ Cost: the matrix is K*L 256-fixnum polynomials, i.e. 61 KB for ML-DSA-65
 and 115 KB for ML-DSA-87, per key object that is actually used.  The
 cached RHO is compared on every lookup (32 bytes) so a mutated key
 cannot read a stale matrix.  ML-DSA KATs and the full SBCL suite pass.
+
+The same applies to the C side of ML-DSA: the `ml-dsa-65 verify`
+reference moved from 5633 to 8025 ops/s between two runs (openssl
+speed only gets a handful of samples), even though our absolute rate
+rose 2760 -> 3700 ops/s.  Treat the ahead/within-2x counts as ±7 rows;
+use the absolute columns.
