@@ -2317,3 +2317,29 @@ self-consistent emission of a wrong formula looks perfect in review.
 : dword VOP with the state in registers and the block as memory
 operands) should apply to SM3, RIPEMD-160 and SHA-512, which is where
 the remaining digest rows sit.
+
+## Negative result (SHA-512 VOP)
+
+Tried the MD5 recipe on SHA-512: an 80-round VOP with the eight state
+words in registers, the expanded schedule as memory operands, and the
+round constant folded into the schedule by the Lisp wrapper.  It is
+correct -- 0 mismatches against `update-sha512-block` over 200 random
+states/schedules, 0 mismatches end-to-end over 300 random messages for
+all four variants -- and it is *slower*:
+
+  sha512   410 MB/s portable  ->  341 MB/s with the VOP
+
+Two reasons: the round needs ~44 instructions against the Lisp's ~35
+(the S0/maj accumulation needs two adds plus a separate xor for S0, and
+the six state moves are emitted even though Zen 2 renames them away),
+and folding K into the schedule costs a 80-iteration Lisp loop per
+block.  Keeping K as a third argument instead does not fit the register
+file (8 state + 2 temps + 3 args is already at the edge; the 8+2+2
+version only packs because two of the state words die early).
+
+So the MD5 result does not generalise: MD5 won because its round is a
+single 4-instruction F plus three adds and a rotate, with the block as
+memory operands, and its portable version was spending instructions on
+tagged fixnum conversions.  SHA-512's portable round is already close to
+what a VOP can express in SBCL, and the 2x headroom against C is
+scheduling/codegen, not a Lisp-level defect.  Reverted; no code change.
