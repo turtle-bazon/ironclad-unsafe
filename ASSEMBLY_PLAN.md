@@ -2141,3 +2141,32 @@ Validation: the xmss.testvec file and the whole SBCL suite pass, the new
 on 2000 random values (widths 1-32, starts anywhere in the buffer, plus
 every address word) on SBCL and ABCL, and a full keygen/sign/verify
 roundtrip passes under CCL.
+
+## Update (XMSS: hash the short messages without the digest-object tax)
+
+With the address serialization fixed, the profile flattened and showed
+the real second problem: about a million SHA-256 calls per operation,
+each paying for a generic `make-digest` (a symbol lookup and an
+allocation), then `update-digest`, then a `produce-digest` that
+*allocates a second digest* so it can finalize a copy.  The compression
+itself was 10% of the time; the digest objects were most of the rest.
+
+`define-digest-finalizer` now also defines its finalizer as a top-level
+`finalize-<digest>-state`, and `produce-digest` still calls it with a
+copy, so every existing caller keeps the non-destructive semantics.
+XMSS, which owns a fresh state and does not need it afterwards, calls
+`(%make-sha256-digest)`, `update-digest`, and `finalize-sha256-state`
+directly -- one allocation and one finalize instead of two allocations
+and a copy.
+
+Cumulative XMSS-SHA2_10_256 (min of three, same machine):
+
+                       before   after   C reference
+  keygen               3846 ms  1496 ms  ~1950 ms
+  sign                 3840 ms  1480 ms  ~1945 ms
+  verify               2200 us   800 us  ~1030 us
+
+so the three XMSS rows go from ~2x behind C to ~0.8x, i.e. about 25%
+ahead.  Validation: every digest vector file passes on SBCL, CCL and
+ABCL (the macro is shared by all the finalizers), the xmss.testvec file
+passes, and the full SBCL suite is green.

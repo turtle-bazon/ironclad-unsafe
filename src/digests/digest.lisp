@@ -179,31 +179,38 @@
          (inner-fun-name (symbolicate '#:finalize- (caar specs) '#:-state)))
     (destructuring-bind (maybe-doc-string &rest rest) body
       (let ((primary-digest (caar specs)))
-        `(defmethod produce-digest ((state ,primary-digest)
-                                    &key digest (digest-start 0))
-           ,@(when (stringp maybe-doc-string)
-               `(,maybe-doc-string))
-           (flet ((,inner-fun-name (state digest digest-start)
-                    ;; CCL requires special treatment to not introduce
-                    ;; array indexing errors.
-                    ,(cond
-                       ((member :ccl *features*)
-                        '(declare (optimize (speed 0))))
-                       (t (hold-me-back)))
-                    (macrolet ((finalize-registers (state regs)
-                                 (declare (ignorable state))
-                                 (let ((clauses
-                                         (loop for (digest-name digest-length) in ',specs
-                                               collect `(,digest-name
-                                                         (,(symbolicate digest-name '#:-regs-digest)
-                                                          ,regs digest digest-start)))))
-                                   (if ,single-digest-p
-                                       (second (first clauses))
-                                       (list* 'etypecase state
-                                              (reverse clauses))))))
-                      ,@(if (stringp maybe-doc-string)
-                            rest
-                            body))))
+        `(progn
+           ;; The finalizer mutates STATE: it writes the padding into the
+           ;; state's buffer and compresses the last block.  PRODUCE-DIGEST
+           ;; therefore hands it a copy.  A caller that owns a fresh state
+           ;; and does not need the digest afterwards (XMSS hashes about a
+           ;; million short messages per operation) can call this directly
+           ;; and skip the copy and the per-call allocation it implies.
+           (defun ,inner-fun-name (state digest digest-start)
+             ,@(when (stringp maybe-doc-string)
+                 `(,maybe-doc-string))
+             ,(cond
+                ((member :ccl *features*)
+                 '(declare (optimize (speed 0))))
+                (t (hold-me-back)))
+             (macrolet ((finalize-registers (state regs)
+                          (declare (ignorable state))
+                          (let ((clauses
+                                  (loop for (digest-name digest-length) in ',specs
+                                        collect `(,digest-name
+                                                  (,(symbolicate digest-name '#:-regs-digest)
+                                                   ,regs digest digest-start)))))
+                            (if ,single-digest-p
+                                (second (first clauses))
+                                (list* 'etypecase state
+                                       (reverse clauses))))))
+               ,@(if (stringp maybe-doc-string)
+                     rest
+                     body)))
+           (defmethod produce-digest ((state ,primary-digest)
+                                      &key digest (digest-start 0))
+             ,@(when (stringp maybe-doc-string)
+                 `(,maybe-doc-string))
              (let ((digest-size ,(if single-digest-p
                                      (second (first specs))
                                      `(etypecase state
@@ -222,7 +229,7 @@
                                    (make-array digest-size
                                                :element-type '(unsigned-byte 8))
                                    0))))))))))
-
+
 ;;; common superclass (superstructure?) for MD5-style digest functions
 
 (defstruct (mdx

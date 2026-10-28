@@ -68,9 +68,17 @@ a store, instead of eight shifts and eight bounds-checked stores."
     acc))
 
 (defun xmss-sha256-octets (octets)
-  (let ((d (make-digest :sha256)))
+  "The SHA-256 of OCTETS, as a fresh 32-octet vector.
+This is called about a million times per XMSS operation, so it uses the
+concrete SHA-256 state and the finalizer directly instead of the generic
+MAKE-DIGEST/PRODUCE-DIGEST pair; the finalizer may consume the state
+because it is fresh here."
+  (declare (type (simple-array (unsigned-byte 8) (*)) octets))
+  (let ((d (%make-sha256-digest))
+        (out (xmss-bytes 32)))
     (update-digest d octets)
-    (produce-digest d)))
+    (finalize-sha256-state d out 0)
+    out))
 
 ;; Address helpers.
 (defun xmss-alloc-addr () (make-array 8 :element-type 'integer :initial-element 0))
