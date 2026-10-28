@@ -1902,3 +1902,14 @@ So the SHAKE rows cannot move much further without a SIMD Keccak.
 Validation: the whole slh-dsa.testvec file (all twelve parameter sets)
 passes, the SHAKE and SHA-2 128f roundtrips pass under CCL, and the full
 SBCL suite is green.
+
+## Update (benchmark refresh after the SLH-DSA SHAKE template)
+
+  slh-dsa-shake-128s verify  5.2 -> 2.9 ms   (gap 3.34 -> 1.87)
+  slh-dsa-shake-128s keygen  436 -> 392 ms   (gap 2.06)
+  slh-dsa-shake-128f verify  9.3 -> 8.5 ms   (gap 2.01)
+  slh-dsa-shake-128f keygen  7.0 -> 6.2 ms   (gap 2.09)
+
+All the SLH-DSA SHAKE rows now sit at ~1.9-2.1 and are Keccak-bound.  123
+measured rows, 41 ahead of the C reference and 78 within 2x at load ~4.5;
+the counts are within the usual host noise of the previous run.
