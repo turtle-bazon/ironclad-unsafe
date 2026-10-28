@@ -2343,3 +2343,21 @@ memory operands, and its portable version was spending instructions on
 tagged fixnum conversions.  SHA-512's portable round is already close to
 what a VOP can express in SBCL, and the 2x headroom against C is
 scheduling/codegen, not a Lisp-level defect.  Reverted; no code change.
+
+## Negative result (Whirlpool: hoisting the register file into locals)
+
+Whirlpool re-reads its eight source words from the register-file array for
+every one of the eight lookups per output word (64 loads per pass, two
+passes per round).  Hoisting the eight K and eight state words into local
+variables removes about a hundred loads per round, and was expected to be
+worth 15-20%.
+
+It is slower: 78.8 -> 66.1 MB/s (interleaved A/B, rebuild per side).  The
+sixteen live 64-bit locals push SBCL into spilling them to the stack, and
+a spilled local costs the same as the array load it was meant to replace,
+plus the store traffic.  Reverted; no code change.
+
+Together with the earlier Camellia S-box binding (also slower) this says
+SBCL's array accesses with constant indices are as good as hand-hoisted
+locals for these table-driven rounds, and the remaining Whirlpool gap is
+the same codegen difference as the other scalar digests.
