@@ -2170,3 +2170,16 @@ so the three XMSS rows go from ~2x behind C to ~0.8x, i.e. about 25%
 ahead.  Validation: every digest vector file passes on SBCL, CCL and
 ABCL (the macro is shared by all the finalizers), the xmss.testvec file
 passes, and the full SBCL suite is green.
+
+## Update (benchmark refresh after the XMSS fixes)
+
+  xmss-sha2-10-256 keygen  gap 2.01 -> 0.95   (0.256 -> 0.601/s)
+  xmss-sha2-10-256 sign    gap 2.02 -> 0.99   (0.255 -> 0.579/s)
+  xmss-sha2-10-256 verify  gap 1.97 -> 0.99   (495 -> 1120/s)
+
+All three XMSS rows are now at parity with the C reference.  This run was
+about 10% slower for our own code across the board (gcm 867 -> 744 MB/s,
+sha256 1.53 -> 1.34 GB/s, aes 7.99 -> 7.27 GB/s) while the C column
+stayed put, so the run's counts (44 ahead, 77 within 2x) are not
+comparable with the previous refresh; the XMSS change is far larger than
+that drift, as the direct A/B above shows.
