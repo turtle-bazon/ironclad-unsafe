@@ -2499,3 +2499,22 @@ and XMSS digest reuse, McEliece elimination, AES-CTR counters, MD5 and
 RIPEMD-160 rounds) removed *work*; the ones that failed (Camellia tables
 twice, Whirlpool locals, SHA-512 rounds, SM3 rounds, merged CIOS) tried to
 make the same work cheaper in Lisp.  What is left needs new primitives.
+
+## Negative result (GCM: an allocate-instance fast path for GMAC)
+
+GCM's one-shot cost is 45% mode construction, and `make-instance` of the
+GMAC is 1.7 us against 20 ns for `allocate-instance`, so the CLOS init
+protocol looked like the fat.  It is not: replacing `make-instance 'gmac`
+with `allocate-instance` plus explicit slot writes and a shared
+`%gmac-initialize` function changed nothing.
+
+  make-mac :gmac   1920 -> 2000 ns
+  mode gcm         3920 -> 3920 ns
+
+The ~1.7 us is the work -- one cipher (0.56 us), five small arrays, H and
+the eight powers, j0 -- plus nine generic accessor calls, not the init
+protocol.  Reverted; no code change.  Cutting GCM's setup further would
+mean not creating the GMAC object and its cipher at all, i.e. folding the
+GHASH state into the GCM mode, which duplicates ~80 lines of the MAC's
+update/digest logic (or refactors it into shared functions) for ~1.2x on
+one row.  Not done.
