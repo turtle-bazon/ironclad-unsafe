@@ -2576,3 +2576,26 @@ Three contained ideas measured after the lane-store win, all rejected:
   algorithm.  Poly1305 is otherwise already at 1.19 GB/s, roughly half
   of chacha-poly's 555 MB/s budget, so closing that row needs AVX2
   four-block Poly1305 (powers of r) more than scalar tuning.
+
+## Camellia: four Feistel words in registers (81.9 -> ~125 MB/s)
+
+Camellia's two-round Feistel was a DEFUN taking `(data data-start ...)`
+and declared INLINE, with the block encryptor passing a four-element
+stack-allocated array.  Inlining does not help when the callee has to
+read and write an array: every two-round pair cost four loads and four
+stores, and the block makes nine such calls.  SM4, ARIA and Blowfish
+already write their rounds as macros over words; Camellia was the only
+one left.
+
+The Feistel is now a macro whose four arguments are places, and the
+block encryptor/decryptor keep `v0..v3` as (unsigned-byte 32) locals.
+The key schedule passes `(aref data 8)`-style places and is unchanged
+otherwise.
+
+  camellia 8 KB   81.9 -> 128.0 / 120.5 MB/s  (two runs, 1.47-1.56x)
+
+Interleaved with a rebuild on each side, the old code measured 81.9 in
+both orders.  C reference 163.1 -> gap 2.00 to ~1.3.  Camellia vectors
+(16/24/32-byte keys) pass and the full SBCL suite is green.  Chacha,
+SM4, ARIA, CAST5 and Blowfish already use the register-resident macro
+shape, so this was the only cipher with the defect.
