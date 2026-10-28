@@ -2980,3 +2980,7 @@ The ML-DSA unrolled NTT, the SBCL-only Whirlpool SAP path and the
 Falcon/Goldilocks declaration changes were checked on Clozure 1.13:
 the system loads, and the ML-DSA, Falcon, Ed448, ML-KEM, X-WING,
 Whirlpool and SHA3-256 vector files all pass.
+
+ECL also builds the current tree (the unrolled ML-DSA functions become
+very large C functions but compile; the load takes on the order of
+fifteen minutes on this host).
