@@ -181,6 +181,14 @@
   :overwrite-fndb-silently t)
 
 #+x86-64
+(defknown ironclad-unsafe::md5-block-asm
+  ((simple-array (unsigned-byte 32) (4))
+   (simple-array (unsigned-byte 32) (16)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
 (defknown ironclad-unsafe::aes-ni-mac-block
   ((simple-array (unsigned-byte 8) (*))
    (simple-array (unsigned-byte 8) (*))

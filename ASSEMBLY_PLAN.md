@@ -2280,3 +2280,28 @@ mode per message in the benchmark costs about 2 us of the 14.7 us).
 123 measured rows, 41 ahead of the C reference and 81 within 2x at load
 ~4.2 (the counts move with host load and with the C column, so compare
 the individual rows, not the totals).
+
+## Update (MD5: a 64-round VOP, 2.1x)
+
+Follow-up to the "fast but wrong" note above: the bug was the F
+function.  MD5's F(b,c,d) is `d ^ (b & (c ^ d))`, and the macro was
+emitting `d ^ (d & (b ^ c))` -- the AND operands were swapped.  Nothing
+else was wrong; the earlier round-by-round disassembly check had compared
+the emitted operands against the *same* (wrong) macro, so it confirmed
+self-consistency, not correctness.  A bisect over the round count against
+a Lisp model (1, 2, 4, 8, 16, 64 rounds) found it in one run, and the
+model then matched update-md5-block at every count.
+
+The VOP is `:dword` adds/rotates/xors with the four state words in
+registers and the block read as memory operands:
+
+  md5 hash 8192-byte block   273 -> 585 MB/s   (2.14x)
+
+so the md5 row should go from ~2.5x behind C to ~1.2x.  Validation: the
+md5 and md5-incremental vector files pass on SBCL, CCL and ABCL, the
+"abc" digest is byte-identical on all three, and the full SBCL suite is
+green.
+
+Lesson for the next 32-bit digest VOP: compare against a Lisp model of
+the intended formulas first, and only then against the emission; a
+self-consistent emission of a wrong formula looks perfect in review.

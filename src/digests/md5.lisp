@@ -61,6 +61,10 @@
 
 ;;; Section 3.4:  Operation on 16-Word Blocks
 
+#+x86-64
+(defvar *md5-block-asm-enabled* t
+  "Set to NIL to force the portable round loop (validation only).")
+
 (defun update-md5-block (regs block)
   "This is the core part of the MD5 algorithm.  It takes a complete 16
 word block of input, and updates the working state in A, B, C, and D
@@ -68,6 +72,10 @@ accordingly."
   (declare (type md5-regs regs)
            (type (simple-array (unsigned-byte 32) (16)) block)
            #.(burn-baby-burn))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (when *md5-block-asm-enabled*
+    (md5-block-asm regs block)
+    (return-from update-md5-block regs))
   (let ((a (md5-regs-a regs)) (b (md5-regs-b regs))
         (c (md5-regs-c regs)) (d (md5-regs-d regs)))
     (declare (type (unsigned-byte 32) a b c d))
