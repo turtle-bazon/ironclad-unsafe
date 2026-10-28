@@ -2305,3 +2305,15 @@ green.
 Lesson for the next 32-bit digest VOP: compare against a Lisp model of
 the intended formulas first, and only then against the emission; a
 self-consistent emission of a wrong formula looks perfect in review.
+
+## Update (benchmark refresh after the MD5 VOP)
+
+  md5   272.3 -> 558.7 MB/s   (gap 2.53 -> 1.25)
+  ccm   395.7 -> 555.3 MB/s   (gap 2.02 -> 1.34, from the fused MAC block)
+  sm3   133.9 MB/s (gap 2.16), ripemd-160 111.1 MB/s (gap 2.71)
+
+123 measured rows, 46 ahead of the C reference and 92 within 2x at load
+~6.1.  MD5 is now within 25% of the C reference; the same recipe (a
+: dword VOP with the state in registers and the block as memory
+operands) should apply to SM3, RIPEMD-160 and SHA-512, which is where
+the remaining digest rows sit.
