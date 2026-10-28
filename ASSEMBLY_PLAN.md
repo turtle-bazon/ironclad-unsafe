@@ -2436,3 +2436,18 @@ ripemd-160 and ripemd-160-incremental vector files pass, a differential
 of 300 random messages with the VOP on and off shows zero mismatches, the
 "abc" digest is byte-identical on SBCL, CCL and ABCL, and the full suite
 is green.
+
+## Update (benchmark refresh after the RIPEMD-160 VOP)
+
+  ripemd-160   111.1 -> 245.1 MB/s   (gap 2.71 -> 1.17)
+  md5          558.7 MB/s             (gap 1.18)
+  sha512       333.5 MB/s             (gap 1.45)
+  gcm          930.9 MB/s             (gap 1.63)
+  ccm          552.9 MB/s             (gap 1.44)
+
+123 measured rows, 44 ahead of the C reference and 92 within 2x at load
+~3.3.  The two 32-bit digest VOPs (md5 2.1x, ripemd-160 2.25x) both came
+from the same place: SBCL's portable round spends instructions on tagged
+fixnum conversions, while the round itself is a few xors, three adds and
+a rotate.  SM3 (2.16) and Whirlpool (2.57) are the remaining digest rows
+in that class.
