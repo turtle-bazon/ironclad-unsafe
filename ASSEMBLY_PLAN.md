@@ -2001,3 +2001,27 @@ the public and private keys are byte-identical to the previous build for
 ten whole keypairs (all five parameter sets, two seeds each), the testvec
 files and keygen roundtrips pass under SBCL, CCL and ABCL, and the full
 SBCL suite is green.
+
+## Update (AES-CTR: build the counter blocks with 64-bit words)
+
+The eight-wide AES-CTR path encrypted eight counter blocks per VOP call,
+but built those eight blocks in Lisp: for each block a generic REPLACE
+of sixteen octets out of the IV, then an INC-COUNTER-BLOCK VOP call to
+advance the IV.  Sixteen calls per 128 octets of plaintext is more work
+than the AES itself, and it capped CTR at 1.5 GB/s even though the
+underlying AES-NI core does 7.8 GB/s.
+
+The counter is big-endian, but its low 64 bits are enough unless they
+wrap, so FILL-CTR-BLOCKS-8 now writes the eight blocks with two 64-bit
+stores each and advances the IV's low word by eight.  When the low word
+is within eight of wrapping it falls back to the old byte-at-a-time
+increment, which keeps the carry into the high half right.
+
+  aes-256-ctr      1.5 -> 6.1 GB/s   (5.33 -> 1.33 us per 8 KB)
+  gcm encrypt      631 -> 1024 MB/s  (12.0 -> 8.0 us per 8 KB)
+
+The GCM number is now two thirds GHASH (1.4 GB/s), which is the next
+limit.  Validation: FILL-CTR-BLOCKS-8 matches the old increment exactly
+on 2000 random IVs, a third of them within 64 of a 64-bit wrap (counter
+blocks and final IV both compared), the ctr/gcm/ccm/eax/gcm-siv vector
+files pass, and the full SBCL suite is green.

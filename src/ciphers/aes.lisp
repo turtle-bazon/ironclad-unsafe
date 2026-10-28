@@ -1052,6 +1052,30 @@
 (defvar *aes-ctr-8x-enabled* t
   "Set to NIL to force the generic CTR loop (validation only).")
 
+#+(and sbcl x86-64 ironclad-unsafe-assembly)
+(defun fill-ctr-blocks-8 (iv blocks)
+  "Write the eight counter blocks that follow IV's value into BLOCKS,
+and advance IV by eight.  Both the counter and the blocks are
+big-endian; the low 64 bits are enough for the common case, and the
+byte-at-a-time increment is kept for the rare carry into the high
+half."
+  (declare (type (simple-array (unsigned-byte 8) (16)) iv)
+           (type (simple-array (unsigned-byte 8) (128)) blocks)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((hi (ub64ref/be iv 0))
+        (lo (ub64ref/be iv 8)))
+    (declare (type (unsigned-byte 64) hi lo))
+    (if (>= lo #xFFFFFFFFFFFFFFF8)
+        (dotimes (j 8)
+          (replace blocks iv :start1 (* j 16) :end1 (* (1+ j) 16))
+          (increment-counter-block-1 16 iv))
+        (progn
+          (dotimes (j 8)
+            (setf (ub64ref/be blocks (* j 16)) hi
+                  (ub64ref/be blocks (+ (* j 16) 8)) (+ lo j)))
+          (setf (ub64ref/be iv 8) (+ lo 8)))))
+  (values))
+
 #+x86-64
 (defmethod mode-crypt-functions ((cipher aes) (mode ctr-mode))
   #+(and sbcl ironclad-unsafe-assembly)
@@ -1094,9 +1118,7 @@
                          (truncate q 8)
                        (dotimes (i q8)
                          (declare (ignore i))
-                         (dotimes (j 8)
-                           (replace ctr-blocks iv :start1 (* j 16) :end1 (* (1+ j) 16))
-                           (increment-counter-block-1 16 iv))
+                         (fill-ctr-blocks-8 iv ctr-blocks)
                          (aes-ni-ctr-encrypt-8x ctr-blocks 0 in offset out out-start
                                                 round-keys n-rounds)
                          (incf offset 128)
