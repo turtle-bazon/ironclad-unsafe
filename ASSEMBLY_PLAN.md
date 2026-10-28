@@ -2894,3 +2894,20 @@ not move Falcon's 8x gap materially.
 
 Lesson for the log: keygen-like operations with rejection/retry loops
 need a distribution, not a single best-of-five number.
+
+## Whirlpool: raw byte loads and eight accumulators (720 -> 640 ns)
+
+The table transform read each source byte with a shift and a mask from a
+UINT64 word, then loaded the table entry and XORed it in.  On SBCL the
+byte can come straight out of the register vector with SAP-REF-8 (one
+MOVZX), and with the transform rewritten as eight accumulators over the
+sixty-four (table, byte) pairs, both the source byte and the table entry
+are single loads:
+
+  update-whirlpool-block   720 -> 640 ns per block (1.125x)
+
+The SBCL path is separate (`update-whirlpool-block-sap`), so other hosts
+keep the portable LDB version.  Verified against the portable function
+on 200 random blocks (0 mismatches), the Whirlpool vector file passes,
+and the full suite is green.  Digest level this is ~93 MB/s; against the
+202 MB/s reference the gap moves 2.27 -> ~2.0.
