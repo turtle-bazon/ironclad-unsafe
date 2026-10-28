@@ -2267,3 +2267,16 @@ NB while adding the VOP: `src/opt/sbcl/x86oid-vm.lisp` contains the whole
 byte (the second definition simply wins at load time).  That predates
 this work and is harmless, but it is a trap for anyone editing those
 VOPs with a single-occurrence replace.
+
+## Update (benchmark refresh after the fused CBC-MAC block)
+
+  ccm  395.7 -> 556.5 MB/s   (gap 2.02 -> 1.43)
+  gcm  867.1 -> 887.6 MB/s   (gap 1.73 -> 1.70, unchanged within noise)
+  eax  302 -> 315 MB/s, etm 443 -> 454 MB/s (no C reference)
+
+CCM is now within 1.4x of the C reference; what is left there is the
+serial AES latency of the CBC-MAC chain plus the mode setup (a fresh
+mode per message in the benchmark costs about 2 us of the 14.7 us).
+123 measured rows, 41 ahead of the C reference and 81 within 2x at load
+~4.2 (the counts move with host load and with the C column, so compare
+the individual rows, not the totals).
