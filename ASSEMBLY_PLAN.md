@@ -1870,3 +1870,35 @@ and "abc" match, and the full SBCL suite is green.
 123 measured rows, 44 ahead of the C reference and 80 within 2x, with the
 host at load ~4.6.  The headline movement is whirlpool; the rest is within
 the run-to-run noise of this host.
+
+## Update (SLH-DSA: the SHAKE family was rebuilding its digest per hash)
+
+The SHA-2 SLH-DSA families were already using the reference's
+"state_seeded" trick -- a digest with the public seed absorbed once, then
+COPY-DIGEST per hash call.  The SHAKE families were not: every thash and
+every prf_addr did a fresh MAKE-DIGEST, allocating a 200-byte Keccak state
+and a buffer, hundreds of thousands of times per operation.  That is the
+same alloca-per-call shape as XMSS, and it is why the SHAKE rows carried
+the 2-3.3x gaps while the SHA-2 rows were near 2x and some were ahead.
+
+Copying a prefix-absorbed SHAKE256 digest works exactly like the SHA-2
+case -- the sha3 COPY-DIGEST method replaces the state, buffer, bit rate
+and buffer index -- so the SHAKE branches of slh-thash and slh-prf-addr now
+use the same template/work pair (one template, since both start with
+pub_seed).
+
+Interleaved A/B in one session:
+
+  shake-128s verify   3.60 -> 2.80 ms   (1.29x)
+  shake-128s keygen   433  -> 391 ms    (1.11x)
+  shake-128f verify   9.60 -> 8.80 ms   (1.09x)
+  shake-128f keygen   6.67 -> 5.33 ms   (1.25x)
+
+What is left on these rows is the Keccak permutation itself: a thash
+absorbs ~128 bytes and squeezes n, which is one finalize and one squeeze
+permutation, and the Lisp permutation is already within ~1.25x of plain C.
+So the SHAKE rows cannot move much further without a SIMD Keccak.
+
+Validation: the whole slh-dsa.testvec file (all twelve parameter sets)
+passes, the SHAKE and SHA-2 128f roundtrips pass under CCL, and the full
+SBCL suite is green.

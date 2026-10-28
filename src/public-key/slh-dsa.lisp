@@ -183,8 +183,8 @@ cached seeded prefix (no per-call prefix absorb or consing)."
          (family (slh-params-family *slh-params*))
          (scratch (slh-ctx-out64 ctx)))
     (cond ((eq family :shake)
-           (let ((d (make-digest :shake256 :output-length n)))
-             (update-digest d (slh-ctx-pub-seed ctx))
+           (let ((d (slh-ctx-work-shake ctx)))
+             (copy-digest (slh-ctx-template-shake ctx) d)
              (update-digest d addr)
              (update-digest d data)
              (slh-shake-squeeze d scratch)
@@ -211,8 +211,8 @@ sk_seed. SHA2 families: SHA-256 continuing from the cached prefix."
   (let* ((n (slh-n))
          (out (make-array n :element-type '(unsigned-byte 8))))
     (if (eq (slh-params-family *slh-params*) :shake)
-        (let ((d (make-digest :shake256 :output-length n)))
-          (update-digest d (slh-ctx-pub-seed ctx))
+        (let ((d (slh-ctx-work-shake ctx)))
+          (copy-digest (slh-ctx-template-shake ctx) d)
           (update-digest d addr)
           (update-digest d (slh-ctx-sk-seed ctx))
           (slh-shake-squeeze d out))
@@ -300,7 +300,7 @@ sk_seed. SHA2 families: SHA-256 continuing from the cached prefix."
   ;; Performance: prefix-absorbed digest templates (like the reference
   ;; state_seeded) plus reusable working objects and scratch space, all
   ;; lazily initialized so direct low-level use keeps working.
-  (t256 nil) (t512 nil)
+  (t256 nil) (t512 nil) (tshake nil)
   (w256 nil) (w512 nil) (wshake nil)
   (out64 (make-array 64 :element-type '(unsigned-byte 8) :initial-element 0)
          :type (simple-array (unsigned-byte 8) (*)))
@@ -313,6 +313,21 @@ sk_seed. SHA2 families: SHA-256 continuing from the cached prefix."
                                        :initial-element 0)))
     (replace block (slh-ctx-pub-seed ctx))
     block))
+
+(defun slh-ctx-template-shake (ctx)
+  "SHAKE256 with PUB-SEED already absorbed.  Both thash and prf_addr
+start with it, so one copy-digest replaces a fresh MAKE-DIGEST (and its
+state allocation) on every hash call."
+  (or (slh-ctx-tshake ctx)
+      (setf (slh-ctx-tshake ctx)
+            (let ((d (make-digest :shake256 :output-length (slh-n))))
+              (update-digest d (slh-ctx-pub-seed ctx))
+              d))))
+
+(defun slh-ctx-work-shake (ctx)
+  (or (slh-ctx-wshake ctx)
+      (setf (slh-ctx-wshake ctx)
+            (make-digest :shake256 :output-length (slh-n)))))
 
 (defun slh-ctx-template-256 (ctx)
   (or (slh-ctx-t256 ctx)
