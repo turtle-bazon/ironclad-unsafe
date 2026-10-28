@@ -2929,3 +2929,30 @@ An Ed448 verification performs two such inversions, so this is about
 vectors and the full suite pass; the remaining 3x gap is the field
 multiply itself (69% of verify) and needs ADX scheduling in the
 goldilocks VOPs.
+
+## Dead end: building bignums through SB-BIGNUM internals
+
+`octets-to-integer` costs 3.3 us for a 256-byte RSA signature (11% of a
+30 us verify): it builds the value with 32 `(ash chunk 64)` +
+`logior` steps, each copying the growing bignum.  A direct construction
+from 64-bit digits would be ~120 ns:
+
+    (%allocate-bignum nd) + (setf (%bignum-ref b d) chunk) +
+    (%normalize-bignum b (* 2 nd))
+
+It computes the right values (checked against the portable function on
+hundreds of thousands of random ranges), but the resulting objects are
+not safe: `=` and `eql` intermittently return NIL for two of them while
+`(- a b)` is 0, i.e. the header (length/sign word) can be left in an
+inconsistent state.  One-digit bignums whose digit has bit 63 set even
+normalize as negative.  Adding a zero top digit reduces but does not
+remove the anomalies.  Not shipped: a malformed bignum is worse than a
+slow conversion.  Circumstantial evidence also points at `%allocate-
+bignum` not initialising the sign/length header the way
+`%normalize-bignum` expects; using it correctly would mean tracking
+SBCL's internal header encoding, which is too fragile for a public
+crypto path.
+
+Left in place: the portable 64-bit-chunk loop.  The little-endian
+branch is still per-byte (curve25519/ed25519/ed448 scalars, 32-56
+bytes), but those are 0.4-2 us against operations of 50-650 us.
