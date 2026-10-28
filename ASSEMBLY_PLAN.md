@@ -2384,3 +2384,37 @@ ticks every few milliseconds, so any benchmark whose total run is under
 ~10 ms is quantized garbage.  The eight-block difference is invisible
 until the loop runs 20k-50k iterations; the same root cause explains
 several suspiciously round micro-benchmarks earlier in this file.
+
+## Measurement note (the clock only ticks every few milliseconds)
+
+`get-internal-real-time` on this host updates in steps of several
+milliseconds, so any timing whose *total* run is under ~10 ms is
+quantized to one or two ticks and is useless.  That explains a string of
+suspiciously round micro-benchmarks earlier in this file (exactly 1024
+MB/s, exactly 4.00 us, several 0.000 us results, and the AEAD setup
+numbers that moved 2.7-4.4 us between runs).  Everything measured since
+the Whirlpool A/B used totals of 100 ms or more and is reliable; the
+older sub-10 ms numbers should be re-taken before being trusted.
+
+Re-measured properly (50k-100k iterations), GCM's composition is:
+
+  fresh GCM mode            3.92 us
+  8 KB output allocation    1.00 us
+  CTR + GHASH + finalize    3.60 us
+  one-shot encrypt-message  8.60 us
+
+so setup is 45% of the one-shot API and the crypto itself is close to the
+C reference.  Of the setup, the GMAC is 1.92 us (0.56 of it its own ECB
+cipher) and the GCM object ~1.4 us; both are CLOS construction cost, and
+sharing the GMAC's cipher with the CTR cipher would only recover ~6% of
+the operation, so it was not done.
+
+## Update (benchmark refresh after the eight-block GHASH)
+
+  gcm   890 -> 930 MB/s   (gap 1.70 -> 1.62)
+  gmac  3938 -> 4684 MB/s
+  ccm   555 -> 553 MB/s   (gap 1.45, unchanged)
+
+123 measured rows, 41 ahead of the C reference and 88 within 2x at load
+~4.2.  GCM is now 1.62x from C with 45% of its one-shot time in mode
+construction, so the remaining gap is setup rather than cryptography.
