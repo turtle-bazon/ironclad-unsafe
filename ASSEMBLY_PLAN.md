@@ -2087,3 +2087,24 @@ plus reduce VOP plus an eight-limb copy) measures ~208 cycles; with
 form costs 64 products of two 56-bit limbs and a serial add/adc carry
 chain; MULX with two independent ADCX/ADOX accumulators is the same
 opening as the Montgomery case.
+
+## Negative result (merged multiply-and-reduce CIOS)
+
+Tried the OpenSSL-style merged CIOS: instead of a multiply row and a
+reduction row of n limb-pairs each, one row of n iterations that does
+both products, so the loop overhead and the number of memory accesses
+halve.  It needs `mulx` (verified: SBCL emits the right VEX encoding) to
+free RAX/RDX, and the result is byte-identical on 300 random moduli
+including zero/huge operands.
+
+It is not faster: 1.20 us both for the old 32-limb CIOS and the merged
+one (min of four, 20000 iterations each).  The old code is already at
+2.46 cycles per limb-pair, which is its own carry-chain floor (the chain
+is add/adc/add/adc through the carry word), and merging the rows puts
+the reduction product *after* the multiply product in the same chain, so
+the chain gets longer while the loop count halves.  A real gain needs the
+two independent ADCX/ADOX chains, which needs more live registers than
+the six argument arrays plus the accumulators leave on x86-64 -- the
+merged VOP already could not allocate without moving `n0` and `mred`
+into the scratch buffer.  Reverted (scratch only); the CIOS VOP is
+unchanged.
