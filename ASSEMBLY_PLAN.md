@@ -2108,3 +2108,36 @@ the six argument arrays plus the accumulators leave on x86-64 -- the
 merged VOP already could not allocate without moving `n0` and `mred`
 into the scratch buffer.  Reverted (scratch only); the CIOS VOP is
 unchanged.
+
+## Update (XMSS: the tree hash was byte-at-a-time serialization)
+
+Profiling a 4.4-second XMSS-SHA2_10_256 key generation put 85% of the
+time in `xmss-thash`, and inside that the SHA-256 compression was 4%.
+The time was going into the *inputs*: every hash serializes a 32-byte
+padding block and an 8-word address, and the code did that one byte at a
+time with `(ash value -8)` and a bounds-checked `aref`.  A key
+generation runs about a million of these (1024 leaves, 67 WOTS chains of
+15 hashes, plus the tree), so a few hundred nanoseconds per
+serialization is seconds.
+
+Two changes, both local:
+
+* `xmss-ull-to-bytes` writes four bytes at a time through UB32REF/BE (a
+  byte swap and a store on SBCL) instead of eight shifts and eight
+  stores, and its callers now declare the vector simple, outlen and
+  start bounded, and value non-negative.
+* the file carries a `(declaim (optimize (speed 3) (safety 0)))`, like
+  the other hot algorithm files, so the remaining byte loops lose their
+  bounds checks.  `xmss-addr-to-bytes` declares its two arguments.
+
+Interleaved A/B, min of three:
+
+  xmss keygen   3846 -> 2068 ms   (1.86x)
+  xmss sign     3840 -> 2076 ms   (1.85x)
+  xmss verify   2200 -> 1200 us   (1.83x)
+
+Validation: the xmss.testvec file and the whole SBCL suite pass, the new
+`xmss-ull-to-bytes`/`xmss-addr-to-bytes` match the old code byte for byte
+on 2000 random values (widths 1-32, starts anywhere in the buffer, plus
+every address word) on SBCL and ABCL, and a full keygen/sign/verify
+roundtrip passes under CCL.

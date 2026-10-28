@@ -3,6 +3,12 @@
 
 (in-package :crypto-unsafe)
 
+;;; The tree hash serializes an 8-word address and a 32-byte padding block
+;;; before every hash, and a key generation does about a million hashes;
+;;; at the default safety the byte-at-a-time stores carry bounds checks
+;;; and dominate the profile (the SHA-256 compression itself was 4%).
+(declaim (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+
 (defconstant +xmss-n+ 32)
 (defconstant +xmss-padding-len+ 32)
 (defconstant +xmss-full-height+ 10)
@@ -35,9 +41,24 @@
               :displaced-index-offset offset))
 
 (defun xmss-ull-to-bytes (v start outlen value)
-  (loop for i from (1- outlen) downto 0
-        do (setf (aref v (+ start i)) (logand value #xFF))
-           (setf value (ash value -8)))
+  "Write the low OUTLEN bytes of VALUE at V[START..] in big-endian order.
+Four bytes go out at a time through UB32REF/BE, which is a byte swap and
+a store, instead of eight shifts and eight bounds-checked stores."
+  (declare (type (simple-array (unsigned-byte 8) (*)) v)
+           (type index start)
+           (type (integer 0 64) outlen)
+           (type unsigned-byte value))
+  (let ((i (+ start outlen)))
+    (declare (type index i))
+    (loop while (>= outlen 4)
+          do (decf i 4)
+             (setf (ub32ref/be v i) (logand value #xFFFFFFFF))
+             (setf value (ash value -32))
+             (decf outlen 4))
+    (loop repeat outlen
+          do (decf i)
+             (setf (aref v i) (logand value #xFF))
+             (setf value (ash value -8))))
   (values))
 
 (defun xmss-bytes-to-ull (v start outlen)
@@ -70,6 +91,9 @@
 (defun xmss-set-tree-height (a v) (setf (aref a 5) v))
 (defun xmss-set-tree-index (a v) (setf (aref a 6) v))
 (defun xmss-addr-to-bytes (addr buf start)
+  (declare (type simple-vector addr)
+           (type (simple-array (unsigned-byte 8) (*)) buf)
+           (type index start))
   (dotimes (i 8)
     (xmss-ull-to-bytes buf (+ start (* i 4)) 4 (aref addr i))))
 
