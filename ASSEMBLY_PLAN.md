@@ -1976,3 +1976,28 @@ Validation: the new VOP is bit-identical to the old one on 15 whole
 keypairs (all five parameter sets, three seeds each), the McEliece
 testvec files and keygen roundtrips pass under CCL and ABCL, and the full
 SBCL suite is green.
+
+## Update (McEliece: the pivot loop was adding rows that could not help)
+
+`mce-pk-gen` eliminates one column at a time.  For the pivot column it
+first makes sure the pivot row has a one: if it does not, it adds in a row
+below that does.  The loop that looked for that row tested every row below
+-- and kept adding rows whose pivot bit was *zero* after RBIT had already
+become one.  Adding a row with a zero in the pivot column cannot change
+the pivot bit; it only churns the columns to the right, and because the
+reduced row echelon form is unique, it cannot change the answer either.
+It was, in other words, about half of the elimination's row-xor traffic
+spent producing a bit-identical public key.
+
+The loop now stops at the first row with a one, and only runs at all when
+the pivot row's bit is zero.  Interleaved A/B on fixed seeds (min of
+three):
+
+  mceliece348864   150.7 -> 118.7 ms   (1.27x)
+  mceliece460896   390.7 -> 302.0 ms   (1.29x)
+
+Together with the AVX2 row xor above this is ~1.3x on keygen.  Validation:
+the public and private keys are byte-identical to the previous build for
+ten whole keypairs (all five parameter sets, two seeds each), the testvec
+files and keygen roundtrips pass under SBCL, CCL and ABCL, and the full
+SBCL suite is green.

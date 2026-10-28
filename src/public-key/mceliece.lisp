@@ -1161,13 +1161,22 @@ PIV is permutation-sized scratch/output. Returns T on success, NIL on failure."
                               (type (simple-array (unsigned-byte 64) (*)) rr))
                      (let ((rbit (if (zerop (logand (aref rr w) mask)) 0 1)))
                        (declare (type bit rbit))
-                       (loop for k from (1+ row) below (mce-pk-nrows)
-                             do (let ((rk (aref wordrows k)))
-                                  (declare (type (simple-array (unsigned-byte 64) (*)) rk))
-                                  (when (/= rbit (if (zerop (logand (aref rk w) mask))
-                                                      0 1))
-                                    (mce-row-xor! rr rk w wordlen)
-                                    (setf rbit 1))))
+                       ;; If the pivot row has a zero in the pivot column,
+                       ;; add one row below that has a one.  That is the
+                       ;; only row operation needed here: adding a row with
+                       ;; a zero in this column leaves the pivot bit
+                       ;; unchanged and only churns the columns to the
+                       ;; right.  The loop used to keep adding such rows
+                       ;; after RBIT became one, which was pure work (the
+                       ;; reduced row echelon form is unique).
+                       (when (zerop rbit)
+                         (loop for k from (1+ row) below (mce-pk-nrows)
+                               do (let ((rk (aref wordrows k)))
+                                    (declare (type (simple-array (unsigned-byte 64) (*)) rk))
+                                    (when (not (zerop (logand (aref rk w) mask)))
+                                      (mce-row-xor! rr rk w wordlen)
+                                      (setf rbit 1)
+                                      (return)))))
                        (when (zerop rbit)
                          (return-from mce-pk-gen nil)))
                      (dotimes (k (mce-pk-nrows))
