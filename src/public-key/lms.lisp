@@ -73,10 +73,16 @@
           (aref v (+ off 3))))
 
 (defun lms-sha256 (parts)
-  (let ((d (make-digest :sha256)))
+  "The SHA-256 of the concatenation of PARTS, as a fresh 32-octet vector.
+This runs once per chain step, millions of times per key generation, so
+it uses the concrete state and the finalizer directly; PRODUCE-DIGEST
+would allocate a second state just to finalize a copy."
+  (let ((d (%make-sha256-digest))
+        (out (lms-bytes 32)))
     (dolist (p parts)
       (update-digest d p))
-    (produce-digest d)))
+    (finalize-sha256-state d out 0)
+    out))
 
 
 ;;;

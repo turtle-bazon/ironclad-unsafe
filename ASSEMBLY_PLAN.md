@@ -2219,3 +2219,21 @@ rounds themselves (checked by parsing the disassembly).  Something in
 how SBCL expands/inlines a generator body of this size is miscompiling
 it, and chasing that was not worth more time; the scratch work is not in
 the tree.
+
+## Update (LMS: the same per-hash digest tax as XMSS)
+
+`lms-sha256` -- the hash at the bottom of every LM-OTS chain step, tens
+of millions of calls per key generation -- built a fresh SHA-256 with
+`make-digest` and then called `produce-digest`, which allocates a second
+state to finalize a copy.  It now constructs the concrete state and calls
+`finalize-sha256-state` directly, as XMSS does.
+
+  lms h10w4 keygen   420 -> 244 ms   (1.72x)
+
+Sign is under a millisecond and the timer here cannot separate the two.
+LMS is not in the benchmark table, so this does not move a row; it is the
+same one-line shape as the XMSS change and the two LMS vector files pass.
+(The `hss-2xh5w8` vector file fails inside `hss-verify-sig` with a type
+error in both the old and the new code -- it is not part of the suite and
+was already broken -- so HSS is validated only by the state-exhaustion
+test.)
