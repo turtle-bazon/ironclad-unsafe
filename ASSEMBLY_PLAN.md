@@ -3287,3 +3287,17 @@ only measures encryption, and a round trip exercises both.
 
 Correctness: the GB/T 32907-2016 block vector and its million-iteration
 vector, 200 random encrypt/decrypt round trips, and the full suite.
+
+## Measurement notes (rev 1173)
+
+Three full benchmark runs were made after the Poly1305/SHA-512/SM4
+changes and the numbers swing more than the changes themselves in some
+rows: sha512 read 400, 358 and 398 MB/s, falcon keygen 12.9, 10 and 15
+ops/s, and the OpenSSL reference for the same row moves with them
+(sha512 C: 673, 663, 619 MB/s).  The host has background glusterfs
+daemons and leftover multi-day SBCL processes were still resident;
+those were killed before the last run, which is the one committed.
+Anything within 10% of the previous table is noise, not a regression.
+The committed figures are: poly1305 1.689 GB/s (gap 3.79 -> 3.18 on
+chacha-poly), sha512 398 MB/s (1.82 -> 1.55), sm4 110 MB/s
+(1.81 -> 1.27), with 50 rows ahead of C, 63 within 2x and 10 beyond.
