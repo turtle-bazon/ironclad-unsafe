@@ -168,26 +168,42 @@
               (aref r 3) (aref mont 3))
         r))))
 
+#+(and sbcl x86-64 ironclad-unsafe-assembly)
+(declaim (inline secp256r1-mulx-ok-p))
+
+#+(and sbcl x86-64 ironclad-unsafe-assembly)
+(defun secp256r1-mulx-ok-p ()
+  "True when the CPU has BMI2 and ADX, i.e. MULX/ADCX/ADOX."
+  (and *ironclad-unsafe-bmi2-p* *ironclad-unsafe-adx-p*))
+
+(defun secp256r1-fe-mont-mul-portable (r a b)
+  "The bignum fallback for machines without BMI2/ADX."
+  (declare (type secp256r1-fe r a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((v (mod (* (secp256r1-fe-to-int a)
+                   (secp256r1-fe-to-int b)
+                   +secp256r1-r-mod-p+)
+                +secp256r1-p+)))
+    (setf (aref r 0) (ldb (byte 64 0) v)
+          (aref r 1) (ldb (byte 64 64) v)
+          (aref r 2) (ldb (byte 64 128) v)
+          (aref r 3) (ldb (byte 64 192) v))
+    r))
+
 (defun secp256r1-fe-mont-mul (r a b)
   "R := A * B * R^-1 mod P.  The native path keeps the whole
-accumulator in registers and needs no scratch."
+accumulator in registers and needs no scratch; machines without BMI2
+or ADX take the bignum fallback."
   (declare (type secp256r1-fe r a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
-  (progn
-    (secp256r1-fe-mont-mul-asm r a b)
-    r)
+  (if (secp256r1-mulx-ok-p)
+      (progn
+        (secp256r1-fe-mont-mul-asm r a b)
+        r)
+      (secp256r1-fe-mont-mul-portable r a b))
   #-(and sbcl x86-64 ironclad-unsafe-assembly)
-  (progn
-    (let ((v (mod (* (secp256r1-fe-to-int a)
-                     (secp256r1-fe-to-int b)
-                     +secp256r1-r-mod-p+)
-                  +secp256r1-p+)))
-      (setf (aref r 0) (ldb (byte 64 0) v)
-            (aref r 1) (ldb (byte 64 64) v)
-            (aref r 2) (ldb (byte 64 128) v)
-            (aref r 3) (ldb (byte 64 192) v))
-      r)))
+  (secp256r1-fe-mont-mul-portable r a b))
 
 (defun secp256r1-fe-mul (r a b)
   "R := A * B in Montgomery form."
@@ -736,10 +752,13 @@ reusing scratch pool S. DST must differ from P."
 #+(and sbcl x86-64 ironclad-unsafe-assembly)
 (defun secp256r1-scalar-inv (n)
   "N^-1 mod L by a fixed four-bit window.  The control flow depends
-only on the public exponent L-2."
+only on the public exponent L-2.  Machines without BMI2/ADX fall back
+to the bignum inverse."
   (declare (type integer n)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((x (mod n +secp256r1-l+)))
+  (if (not (secp256r1-mulx-ok-p))
+      (if (zerop n) 0 (modular-inverse n +secp256r1-l+))
+      (let ((x (mod n +secp256r1-l+)))
     (if (zerop x)
         0
         (let* ((ar (make-array 4 :element-type '(unsigned-byte 64)
@@ -793,7 +812,7 @@ only on the public exponent L-2."
                            (ash (aref tmp 1) 64)
                            (ash (aref tmp 2) 128)
                            (ash (aref tmp 3) 192))))
-            (mod v +secp256r1-l+))))))
+            (mod v +secp256r1-l+)))))))
 
 #-(and sbcl x86-64 ironclad-unsafe-assembly)
 (defun secp256r1-scalar-inv (n)

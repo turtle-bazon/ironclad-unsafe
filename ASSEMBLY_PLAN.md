@@ -3738,3 +3738,14 @@ Ed448 sign is now ahead of the C reference.  P-224 verify reads 2.18 in
 this run; the direct measurement was 194 us (~5.2k, 1.97), so the row
 is borderline and the difference is host noise.  Aggregate: 55 rows
 ahead, 59 within 2x, 9 beyond (down from 11).
+
+## Correctness: gate the MULX/ADCX/ADOX paths on the CPU cache
+
+The register CIOS field multiply and the scalar inverse emit BMI2/ADX
+instructions unconditionally under IRONCLAD-UNSAFE-ASSEMBLY, which the
+package enables on every SBCL x86-64 build regardless of the CPU.  A
+machine without those extensions would take SIGILL.  Both entry points
+now check the cached *IRONCLAD-UNSAFE-BMI2-P* / *...-ADX-P* flags and
+fall back to the bignum multiply or the Euclid inverse.  The two loads
+per field multiply cost nothing measurable: sign 33.7 us and verify
+128.2 us, inside the run-to-run spread.
