@@ -10873,3 +10873,89 @@ into O0..O7."
         ;; store-words ciphertext ciphertext-start right left
         (inst mov t0 right) (dword-inst bswap t0) (inst mov :dword (cd 0) t0)
         (inst mov t0 left)  (dword-inst bswap t0) (inst mov :dword (cd 4) t0)))))
+
+;;; CAST5: one 8-byte block, the sixteen rounds of the 16-byte-key
+;;; variant (the key schedule picks 12 rounds for keys of ten octets or
+;;; less, which stays on the portable path).  The portable block is 870
+;;; instructions because every byte index and S-box word is a tagged
+;;; fixnum; here the halves and the F intermediate are plain 32-bit
+;;; values and the rotate count is loaded straight into CL.
+#+x86-64
+(define-vop (cast5-encrypt-block)
+  (:translate ironclad-unsafe::cast5-encrypt-block-asm)
+  (:policy :fast-safe)
+  (:args (keys :scs (descriptor-reg))
+         (plaintext :scs (descriptor-reg))
+         (plaintext-start :scs (unsigned-reg))
+         (ciphertext :scs (descriptor-reg))
+         (ciphertext-start :scs (unsigned-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-8
+              unsigned-num
+              simple-array-unsigned-byte-8
+              unsigned-num)
+  (:temporary (:sc unsigned-reg) l r t0 t1 t2)
+  (:temporary (:sc unsigned-reg :offset rcx-offset) count)
+  (:generator 1000
+    (let ((disp (- (* n-word-bytes vector-data-offset) other-pointer-lowtag)))
+      (flet ((d (i) (ea (+ disp i) plaintext plaintext-start))
+             (cd (i) (ea (+ disp i) ciphertext ciphertext-start))
+             (mask (i) (ea (+ disp (* 4 (+ 1024 i))) keys))
+             (rot (i) (ea (+ disp (* 4 (+ 1040 i))) keys))
+             (sb (box idx) (ea (+ disp (* 1024 box)) keys idx 4)))
+        (inst mov :dword l (d 0)) (dword-inst bswap l)
+        (inst mov :dword r (d 4)) (dword-inst bswap r)
+        (macrolet ((cast5-step (i kind l r)
+                     `(progn
+                        ;; v = rotate(transform(r, mask), count)
+                        (inst mov :dword t0 ,r)
+                        ,@(ecase kind
+                            (:f1 `((inst add :dword t0 (mask ,i))))
+                            (:f2 `((inst xor :dword t0 (mask ,i))))
+                            (:f3 `((inst mov :dword t0 (mask ,i))
+                                   (inst sub :dword t0 ,r))))
+                        (inst mov :dword count (rot ,i))
+                        (inst rol :dword t0 :cl)
+                        ;; F1 = S3[b0] + ((S1[b2] ^ S0[b3]) - S2[b1])
+                        ;; F2 = S3[b0] ^ (S2[b1] + (S0[b3] - S1[b2]))
+                        ;; F3 = (S2[b1] ^ (S1[b2] + S0[b3])) - S3[b0]
+                        ,@(ecase kind
+                            (:f1
+                             `((inst mov t2 t0) (inst shr t2 16) (inst and t2 #xff)
+                               (inst mov :dword t1 (sb 1 t2))
+                               (inst mov t2 t0) (inst shr t2 24)
+                               (inst xor :dword t1 (sb 0 t2))
+                               (inst mov t2 t0) (inst shr t2 8) (inst and t2 #xff)
+                               (inst sub :dword t1 (sb 2 t2))
+                               (inst mov t2 t0) (inst and t2 #xff)
+                               (inst add :dword t1 (sb 3 t2))))
+                            (:f2
+                             `((inst mov t2 t0) (inst shr t2 24)
+                               (inst mov :dword t1 (sb 0 t2))
+                               (inst mov t2 t0) (inst shr t2 16) (inst and t2 #xff)
+                               (inst sub :dword t1 (sb 1 t2))
+                               (inst mov t2 t0) (inst shr t2 8) (inst and t2 #xff)
+                               (inst add :dword t1 (sb 2 t2))
+                               (inst mov t2 t0) (inst and t2 #xff)
+                               (inst xor :dword t1 (sb 3 t2))))
+                            (:f3
+                             `((inst mov t2 t0) (inst shr t2 16) (inst and t2 #xff)
+                               (inst mov :dword t1 (sb 1 t2))
+                               (inst mov t2 t0) (inst shr t2 24)
+                               (inst add :dword t1 (sb 0 t2))
+                               (inst mov t2 t0) (inst shr t2 8) (inst and t2 #xff)
+                               (inst xor :dword t1 (sb 2 t2))
+                               (inst mov t2 t0) (inst and t2 #xff)
+                               (inst sub :dword t1 (sb 3 t2)))))
+                        (inst xor :dword ,l t1))))
+          #.(let ((forms '())
+                  (l 'l) (r 'r))
+              (dotimes (i 16)
+                (let ((kind (cond ((member i '(0 3 6 9 12 15)) :f1)
+                                  ((member i '(1 4 7 10 13)) :f2)
+                                  (t :f3))))
+                  (push `(cast5-step ,i ,kind ,l ,r) forms)
+                  (rotatef l r)))
+              `(progn ,@(nreverse forms))))
+        (inst mov t0 r) (dword-inst bswap t0) (inst mov :dword (cd 0) t0)
+        (inst mov t0 l) (dword-inst bswap t0) (inst mov :dword (cd 4) t0)))))

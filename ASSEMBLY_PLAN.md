@@ -3334,3 +3334,35 @@ fresh mode per message; the local-C falcon reference also drifted
 (74.8 -> 101.7 ops/s) and the borderline public-key rows (ml-dsa-87
 keygen, slh-dsa-shake-256s) flip across the 2.0 line between runs.
 Treat changes of one or two rows at the 2x boundary as noise.
+
+## CAST5: x86-64 block VOP for the 16-round form (1.60x, gap 1.86 -> 1.17)
+
+The portable block is 870 instructions (~54 per round): every byte
+index and S-box word is a tagged fixnum, and the variable rotate drags
+the tag through as well.
+
+The VOP keeps the two halves in 32-bit registers, reads the mask and
+the rotate count from a per-key array (the four round S-boxes are
+copied in front of them, so the whole thing is one array argument),
+and uses `rol r32, cl` for the variable rotate.  The three F variants
+(add, xor and reverse-subtract mask transforms) are unrolled with the
+same register-renaming trick as Blowfish.  Only the 16-round form
+(keys longer than ten octets, which includes the 16-octet key the
+benchmark uses) takes the VOP; the 12-round form stays portable.
+
+| | before | after |
+|---|---|---|
+| CAST5 ECB 8 KB | 88 MB/s | 141 MB/s (1.60x) |
+| block instructions | 870 | 382 |
+| C/Lisp gap | 1.86 | 1.17 |
+
+Assembler note for the future: a variable rotate has to be written
+`(inst rol :dword dst :cl)`.  Passing the RCX temporary as an operand
+is accepted when the VOP is defined, but at assembly time the emitter
+tries to encode it as an immediate byte and fails with "REG is not of
+type (INTEGER -128 255) when binding BYTE".
+
+Correctness: RFC 2144 vector (key 0123456712345678234567893456789A,
+block 0123456789ABCDEF -> 238B4FE5847E44B2), 300 random encrypt/decrypt
+round trips (decrypt stays portable), a 12-round key round trip, and
+the full suite.

@@ -288,11 +288,28 @@
 
 (deftype cast5-mask-vector () '(simple-array (unsigned-byte 32) (16)))
 (deftype cast5-rotate-vector () '(simple-array (unsigned-byte 8) (16)))
+(deftype cast5-vop-keys () '(simple-array (unsigned-byte 32) (1056)))
+
+;; The round function only ever uses S-boxes 0..3; slots 1024..1039 hold
+;; the masks and 1040..1055 the rotate counts of the current key.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconst +cast5-round-sboxes+
+    (let ((v (make-array 1024 :element-type '(unsigned-byte 32))))
+      (replace v +cast5-sbox0+)
+      (replace v +cast5-sbox1+ :start1 256)
+      (replace v +cast5-sbox2+ :start1 512)
+      (replace v +cast5-sbox3+ :start1 768)
+      v)))
 
 (defclass cast5 (cipher 8-byte-block-mixin)
   ((mask-vector :accessor mask-vector :type cast5-mask-vector)
    (rotate-vector :accessor rotate-vector :type cast5-rotate-vector)
-   (n-rounds :accessor n-rounds)))
+   (n-rounds :accessor n-rounds)
+   ;; The four round-function S-boxes followed by the sixteen masks and
+   ;; the sixteen rotate counts, for the x86-64 block VOP: one array
+   ;; argument keeps the VOP inside the register file.
+   (vop-keys :accessor vop-keys :initform nil
+             :type (or null (simple-array (unsigned-byte 32) (1056))))))
 
 (declaim (inline cast5-f1 cast5-f2 cast5-f3))
 
@@ -330,7 +347,12 @@
                             (cast5-s-box 0 (fourth-byte value))))
             (cast5-s-box 3 (first-byte value)))))
 
-(define-block-encryptor cast5 8
+(defun cast5-encrypt-block-lisp (context plaintext plaintext-start
+                                   ciphertext ciphertext-start)
+  (declare (type simple-octet-vector plaintext ciphertext)
+           (type (integer 0 #.(- array-dimension-limit 8))
+                 plaintext-start ciphertext-start)
+           (optimize (speed 3) (debug 0) (space 0)))
   (let ((mask-vector (mask-vector context))
         (rotate-vector (rotate-vector context))
         (n-rounds (n-rounds context)))
@@ -352,6 +374,18 @@
                                 (when (= n-rounds 16)
                                   ,@(subseq forms 12)))))
       (store-words ciphertext ciphertext-start r0 l0))))
+
+(define-block-encryptor cast5 8
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (if (and (= (n-rounds context) 16) (vop-keys context))
+      (cast5-encrypt-block-asm (vop-keys context)
+                               plaintext plaintext-start
+                               ciphertext ciphertext-start)
+      (cast5-encrypt-block-lisp context plaintext plaintext-start
+                                ciphertext ciphertext-start))
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
+  (cast5-encrypt-block-lisp context plaintext plaintext-start
+                            ciphertext ciphertext-start))
 
 (define-block-decryptor cast5 8
   (let ((mask-vector (mask-vector context))
@@ -473,6 +507,12 @@
         (setf (mask-vector cipher) mask-vector
               (rotate-vector cipher) rotate-vector
               (n-rounds cipher) n-rounds)
+        (let ((vop-keys (make-array 1056 :element-type '(unsigned-byte 32))))
+          (replace vop-keys +cast5-round-sboxes+)
+          (replace vop-keys mask-vector :start1 1024)
+          (loop for i below 16
+                do (setf (aref vop-keys (+ 1040 i)) (aref rotate-vector i)))
+          (setf (vop-keys cipher) vop-keys))
         cipher))))
 
 (defcipher cast5
