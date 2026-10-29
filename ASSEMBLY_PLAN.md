@@ -3805,3 +3805,17 @@ Measured on the real modulus and limbs:
 
 Direct sign 323 -> 304 us, verify 1389 -> 1212 us (verify is still
 field-bound: 520 doublings at ~1.2 us each).  Full suite passes.
+
+### Table refresh (rev 1203)
+
+| row | before | now | gap |
+|---|---|---|---|
+| secp521r1 verify | 725 | 800 | 3.37 -> 2.46 |
+| secp224r1 verify | 4.70k | 5.13k | 2.18 -> 1.77 |
+| dsa verify | 2.07k | 2.14k | 2.55 -> 2.31 |
+| secp256r1 verify | 7.13k | 7.72k | 2.58 -> 2.18 |
+
+Aggregate: 49 rows ahead, 66 within 2x, 8 beyond.  Two of the eight are
+ML-DSA keygen rows that moved from ~1.2-1.5 to ~2.0-2.1 without any
+change to their code, so the structural set is six: falcon keygen,
+chacha-poly, ed448 verify, and the secp521r1/dsa/secp256r1 verify rows.
