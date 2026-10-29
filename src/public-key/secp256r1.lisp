@@ -1272,7 +1272,9 @@ the fixed generator, whose affine multiples come from the byte table."
              (type simple-vector tg tq)
              (type secp256r1-point acc tmp)
              (type simple-vector s))
-    ;; Small multiples of Q; Q is public, so they stay projective.
+    ;; Small multiples of Q.  One batch inversion makes the table
+    ;; affine, so each of the ~64 additions in the main loop is a mixed
+    ;; addition (9 multiplies) instead of a full one (12).
     (setf (aref tq 0) +secp256r1-point-at-infinity+
           (aref tq 1) q)
     (loop for v of-type fixnum from 2 below 16 do
@@ -1282,6 +1284,7 @@ the fixed generator, whose affine multiples come from the byte table."
             (secp256r1-double! dst (aref tq (ash v -1)) s)
             (secp256r1-add! dst (aref tq (1- v)) q s))
         (setf (aref tq v) dst)))
+    (secp256r1-batch-affine! tq)
     (loop for w of-type fixnum downfrom (1- windows) to 0 do
       (unless (= w (1- windows))
         (loop repeat 4 do
@@ -1296,6 +1299,6 @@ the fixed generator, whose affine multiples come from the byte table."
           (secp256r1-mixed-add! tmp acc (aref (aref tg 0) ga) s)
           (secp256r1-point-copy! acc tmp))
         (unless (zerop gb)
-          (secp256r1-add! tmp acc (aref tq gb) s)
+          (secp256r1-mixed-add! tmp acc (aref tq gb) s)
           (secp256r1-point-copy! acc tmp))))
     acc))

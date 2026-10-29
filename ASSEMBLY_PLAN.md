@@ -3654,3 +3654,21 @@ remains noisy: McEliece-348864 and ML-DSA-87 keygen drifted above 2x in
 this snapshot without any change to their code, so the aggregate count
 (49 ahead, 63 within, 11 beyond) is not comparable to the previous one
 row for row.
+
+## P-256 verify: affine Q table in the joint multiplication
+
+Shamir's Q table stayed projective, so each of the ~64 Q additions in
+the main loop was a full Jacobian addition (z2 != 1).  One Montgomery
+batch inversion (~4 us) now makes the fifteen nonzero multiples affine,
+and the loop uses mixed additions.  Index 0 stays the point at
+infinity; MIXED-ADD already handles the infinity and equal-point cases,
+so no check moves into the hot loop.
+
+| | before | after |
+|---|---|---|
+| verify (direct) | 129.9 us | 124.6 us |
+
+The inversion is paid once per verification; with only ~64 additions the
+net saving is 5 us, about 4%.  The remaining verify cost is the 256
+point doublings (~67 us) plus the scalar inverse and the final affine
+conversion; only a faster field squaring can move those.
