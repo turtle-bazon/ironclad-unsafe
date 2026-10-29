@@ -3211,3 +3211,43 @@ Two things that did not work, recorded so they are not retried:
   instruction-throughput bound, not latency bound, so shortening the
   dependency chain does not help.  (The reordering is kept anyway: it
   is the same speed and slightly shorter.)
+
+## SHA-512: cheaper round body and expansion folded into the rounds
+
+Both changes are portable Lisp; no VOP was needed (see the negative
+result below).
+
+The round macro had three problems.  It computed Ch with `logandc1`
+and Maj with three separate `logand`s, and it buried the message and
+constant words inside a deep `mod64+` nest, so SBCL kept six or more
+values live per round and spilled about a dozen words per block.  It
+now uses explicit `let*` steps, Ch = g ^ (e & (f ^ g)) and the
+symmetric Maj, which drops the function from 4208 to 3433
+instructions (80 rounds, ~43 per round).
+
+The 64-word message expansion used to be a separate pass
+(SHA512-EXPAND-BLOCK, 127 ns of the 393 ns block).  It is now folded
+into the first 64 rounds exactly as the reference schedules it: round
+i computes W[i+16] before consuming W[i].  The standalone expansion
+function is gone.
+
+| | before | after |
+|---|---|---|
+| rounds only | 266 ns/block | - |
+| expansion pass | 127 ns/block | folded into the rounds |
+| whole block | 393 ns | 321 ns |
+| 8 KB digest (table shape) | 341 MB/s | 398 MB/s (1.17x) |
+| sha512 family gap | 1.82-1.85 | ~1.56 |
+
+What did not work: I expected folding the expansion to hide most of
+its cost, but it recovered only ~10% of the block time.  The round
+body is throughput-bound, not latency-bound: 80 rounds at ~11 cycles
+each with ~37 instructions per round, against ~8.75 cycles/round for
+the C reference.  A VOP would remove roughly one spill/reload per
+round (on the order of 7%), not the 30% that would be needed to reach
+the reference, so none was written.  The remaining headroom is in the
+six `mov` copies that precede the rotates; x86 `ror` is two-operand
+and SBCL cannot assemble the three-operand `rorx`.
+
+Everything (RFC 6234 vectors, the suite, and the CCL build) passes;
+the four SHA-512 variants produce the standard "abc" digests.

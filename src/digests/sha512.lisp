@@ -91,20 +91,40 @@
       #+ironclad-unsafe-fast-mod64-arithmetic
       (declare (inline rho))
       (macrolet ((sha512-round (i a b c d e f g h)
-                   `(let ((x (mod64+ (rho ,e 14 18 41)
-                                     (mod64+ (logxor (logand ,e ,f)
-                                                     (logandc1 ,e ,g))
-                                             (mod64+ (aref block ,i)
-                                                     (aref +sha512-round-constants+ ,i))))))
-                      (setf ,d (mod64+ ,d (mod64+ ,h x))
-                            ,h (mod64+ ,h
-                                       (mod64+ x (mod64+ (rho ,a 28 34 39)
-                                                         (logxor (logand ,a ,b)
-                                                                 (logand ,a ,c)
-                                                                 (logand ,b ,c)))))))))
+                   `(let* ((w (mod64+ (aref block ,i)
+                                      (aref +sha512-round-constants+ ,i)))
+                           (x (mod64+ (rho ,e 14 18 41)
+                                      (mod64+ ,h w)))
+                           ;; Ch(e,f,g) = g ^ (e & (f ^ g))
+                           (ch (logxor ,g (logand ,e (logxor ,f ,g))))
+                           (t1 (mod64+ x ch))
+                           (s0 (rho ,a 28 34 39))
+                           ;; Maj(a,b,c) = (a&b) ^ (a&c) ^ (b&c)
+                           (maj (logxor (logand ,a ,b)
+                                        (logand ,a ,c)
+                                        (logand ,b ,c))))
+                      (setf ,d (mod64+ ,d t1)
+                            ,h (mod64+ t1 (mod64+ s0 maj)))))
+                 ;; Extend the schedule in place during the first 64 rounds.
+                 ;; W[j] only depends on words at most fifteen places back,
+                 ;; so the extension can overlap the round it feeds and the
+                 ;; separate expansion pass (a third of the block time) goes
+                 ;; away.
+                 (sha512-expand (j)
+                   `(setf (aref block ,j)
+                          (mod64+ (logxor (ror64 (aref block (- ,j 2)) 19)
+                                          (ror64 (aref block (- ,j 2)) 61)
+                                          (ash (aref block (- ,j 2)) -6))
+                                  (mod64+ (aref block (- ,j 7))
+                                          (mod64+ (logxor (ror64 (aref block (- ,j 15)) 1)
+                                                          (ror64 (aref block (- ,j 15)) 8)
+                                                          (ash (aref block (- ,j 15)) -7))
+                                                  (aref block (- ,j 16))))))))
         #.(let ((xvars (make-circular-list 'a 'b 'c 'd 'e 'f 'g 'h)))
             (loop for i from 0 below 80
                   for vars on xvars by #'(lambda (x) (nthcdr 7 x))
+                  nconc (when (< i 64)
+                          (list `(sha512-expand ,(+ i 16)))) into forms
                  collect `(sha512-round ,i ,@(circular-list-subseq vars 0 8)) into forms
                  finally (return `(progn ,@forms))))
         #.(loop for slot in '(a b c d e f g h)
@@ -112,20 +132,6 @@
                           `(setf (,regs-accessor regs)
                             (mod64+ (,regs-accessor regs) ,slot))) into forms
                 finally (return `(progn ,@forms)))))))
-
-(defun sha512-expand-block (block)
-  (declare (type (simple-array (unsigned-byte 64) (80)) block)
-           #.(burn-baby-burn))
-  (flet ((sigma (x r1 r2 r3)
-           (logxor (ror64 x r1) (ror64 x r2) (ash x (- r3)))))
-    #+ironclad-unsafe-fast-mod64-arithmetic (declare (inline sigma))
-    (loop for i from 16 below 80 do
-         (setf (aref block i)
-               (mod64+ (sigma (aref block (- i 2)) 19 61 6)
-                       (mod64+ (aref block (- i 7))
-                               (mod64+ (sigma (aref block (- i 15)) 1 8 7)
-                                       (aref block (- i 16)))))))
-    (values)))
 
 
 ;;; mid-level
@@ -240,7 +246,6 @@
   (flet ((compress (state sequence offset)
            (let ((block (sha512-block state)))
              (fill-block-ub8-be/64 block sequence offset)
-             (sha512-expand-block block)
              (update-sha512-block (sha512-regs state) block))))
     (declare (dynamic-extent #'compress))
     (declare (notinline mdx-updater))
@@ -262,7 +267,6 @@
          from (1+ buffer-index) below 128
          do (setf (aref buffer index) #x00))
       (fill-block-ub8-be/64 block buffer 0)
-      (sha512-expand-block block)
       (update-sha512-block regs block)
       (loop for index of-type (integer 0 16)
          from 0 below 16
@@ -275,7 +279,6 @@
       (fill-block-ub8-be/64 block buffer 0))
     ;; fill in the remaining block data
     (setf (aref block 15) total-length)
-    (sha512-expand-block block)
     (update-sha512-block regs block)
     (finalize-registers state regs)))
 
@@ -299,8 +302,7 @@
            from (1+ buffer-index) below 128
            do (setf (aref buffer index) #x00))
         (fill-block-ub8-be/64 block buffer 0)
-        (sha512-expand-block block)
-        (update-sha512-block regs block)
+          (update-sha512-block regs block)
         (loop for index of-type (integer 0 16)
            from 0 below 16
            do (setf (aref block index) #x00000000)))
@@ -310,7 +312,6 @@
            do (setf (aref buffer index) #x00))
         (fill-block-ub8-be/64 block buffer 0))
       (setf (aref block 15) total-length)
-      (sha512-expand-block block)
       (update-sha512-block regs block)
       (let ((target (or digest (make-array 28 :element-type '(unsigned-byte 8))))
             (ds (if digest digest-start 0)))
