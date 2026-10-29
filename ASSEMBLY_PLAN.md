@@ -3749,3 +3749,24 @@ now check the cached *IRONCLAD-UNSAFE-BMI2-P* / *...-ADX-P* flags and
 fall back to the bignum multiply or the Euclid inverse.  The two loads
 per field multiply cost nothing measurable: sign 33.7 us and verify
 128.2 us, inside the run-to-run spread.
+
+## 2048-bit Montgomery CIOS: MULX and two carry chains
+
+The generic CIOS product phase loaded each limb into RAX and used MUL
+(RAX:RDX) with a single serial ADD/ADC carry chain.  A new 32-limb VOP
+keeps a two-word sliding window of the accumulator in registers and
+uses MULX with ADCX/ADOX: the low halves ride CF and the high halves OF.
+The reduction is only N products against N^2, so it keeps the serial
+form (and the final subtraction is unchanged).
+
+| exponent | serial | MULX |
+|---|---|---|
+| 65537 (RSA verify) | 51.1 us | 47.0 us |
+| random 256-bit | 459 us | 409 us |
+
+8-11%: the sliding window costs a load and a store per product, and the
+two carry chains are still serial per word, so the gain is bounded.
+Only the 32-limb case is instantiated; it covers RSA-2048 and DSA-2048,
+the sizes the benchmark measures.  The dispatch checks the cached
+BMI2/ADX flags on every multiplication, which is noise against 1.5 us.
+Full suite passes.

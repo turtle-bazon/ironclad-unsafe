@@ -7042,6 +7042,123 @@
 #+x86-64
 (define-mont-mul-cios-vop mont-mul-64-cios ironclad-unsafe::mont-mul-64-cios-asm 64)
 
+;;; The same CIOS operation with MULX and two carry chains.  Only the
+;;; N*N product-accumulation phase changes: the two-word sliding window
+;;; keeps T[j] and T[j+1] in registers and lets ADCX carry the low
+;;; halves while ADOX carries the high halves.  The reduction is only
+;;; N products, so it keeps the serial form.
+
+(defmacro define-mont-mul-cios-mulx-vop (vop-name fun-name n)
+  (let ((tmp-size (+ n 2)))
+    `(define-vop (,vop-name)
+       (:translate ,fun-name)
+       (:policy :fast-safe)
+       (:args (r :scs (descriptor-reg))
+              (a :scs (descriptor-reg))
+              (b :scs (descriptor-reg))
+              (m :scs (descriptor-reg))
+              (n0 :scs (unsigned-reg))
+              (tt :scs (descriptor-reg)))
+       (:arg-types simple-array-unsigned-byte-64
+                   simple-array-unsigned-byte-64
+                   simple-array-unsigned-byte-64
+                   simple-array-unsigned-byte-64
+                   unsigned-num
+                   simple-array-unsigned-byte-64)
+       (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+       (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
+       (:temporary (:sc unsigned-reg) tmp carry limb)
+       (:temporary (:sc unsigned-reg) tmp2)
+       (:generator 1000
+         (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                              other-pointer-lowtag))
+               (done (gen-label)))
+           (flet ((a64 (i) (ea (+ data-offset (* 8 i)) a))
+                  (b64 (i) (ea (+ data-offset (* 8 i)) b))
+                  (m64 (i) (ea (+ data-offset (* 8 i)) m))
+                  (r64 (i) (ea (+ data-offset (* 8 i)) r))
+                  (t64 (i) (ea (+ data-offset (* 8 i)) tt)))
+             (inst mov tmp 0)
+             (dotimes (k ,tmp-size)
+               (inst mov (t64 k) tmp))
+             (dotimes (i ,n)
+               ;; T += B[i] * A, low halves on CF, high halves on OF.
+               (inst mov rdx-tmp (b64 i))
+               (inst xor carry carry)
+               (inst mov limb (t64 0))
+               (inst mov tmp2 (t64 1))
+               (dotimes (j ,n)
+                 (inst mulx rax-tmp tmp (a64 j))
+                 (inst adcx limb tmp)
+                 (inst adox tmp2 rax-tmp)
+                 (unless (= j (1- ,n))
+                   (inst mov (t64 j) limb)
+                   (inst mov limb tmp2)
+                   (inst mov tmp2 (t64 (+ j 2)))))
+               (inst mov (t64 (1- ,n)) limb)
+               (inst mov carry 0)
+               (inst adcx tmp2 carry)
+               (inst mov rax-tmp 0)
+               (inst adox rax-tmp carry)
+               (inst adc rax-tmp 0)
+               (inst mov (t64 ,n) tmp2)
+               (inst mov (t64 (1+ ,n)) rax-tmp)
+               ;; MRED := T[0] * N0 mod 2^64; T[0] cancels.
+               (inst mov limb (t64 0))
+               (inst imul limb n0)
+               (inst mov rdx-tmp limb)
+               (inst mulx rax-tmp tmp (m64 0))
+               (inst add tmp (t64 0))
+               (inst adc rax-tmp 0)
+               (inst mov carry rax-tmp)
+               (dotimes (j (1- ,n))
+                 (let ((j (1+ j)))
+                   (inst mulx rax-tmp tmp (m64 j))
+                   (inst add tmp (t64 j))
+                   (inst adc rax-tmp 0)
+                   (inst add tmp carry)
+                   (inst adc rax-tmp 0)
+                   (inst mov (t64 (1- j)) tmp)
+                   (inst mov carry rax-tmp)))
+               (inst mov tmp (t64 ,n))
+               (inst add tmp carry)
+               (inst mov (t64 (1- ,n)) tmp)
+               (inst mov carry 0)
+               (inst adc carry 0)
+               (inst mov rax-tmp (t64 (1+ ,n)))
+               (inst add rax-tmp carry)
+               (inst mov (t64 ,n) rax-tmp))
+             (inst mov limb 0)
+             (dotimes (i ,n)
+               (inst mov rax-tmp (t64 i))
+               (inst mov tmp (m64 i))
+               (inst sub rax-tmp tmp)
+               (inst mov tmp2 0)
+               (inst adc tmp2 0)
+               (inst sub rax-tmp limb)
+               (inst adc tmp2 0)
+               (inst mov (r64 i) rax-tmp)
+               (inst mov limb tmp2))
+             (inst mov tmp (t64 ,n))
+             (inst sub tmp limb)
+             (inst jmp :nc done)
+             (inst mov carry 0)
+             (dotimes (i ,n)
+               (inst mov rax-tmp (r64 i))
+               (inst mov tmp (m64 i))
+               (inst add rax-tmp tmp)
+               (inst mov tmp2 0)
+               (inst adc tmp2 0)
+               (inst add rax-tmp carry)
+               (inst adc tmp2 0)
+               (inst mov (r64 i) rax-tmp)
+               (inst mov carry tmp2))
+             (emit-label done)))))))
+
+#+x86-64
+(define-mont-mul-cios-mulx-vop mont-mul-32-cios-mulx
+    ironclad-unsafe::mont-mul-32-cios-mulx-asm 32)
+
 ;;; Fixed-modulus add/sub VOPs for the P-521 limb field (9 x 64-bit).
 ;;; R := (A + B) mod P resp. (A - B) mod P, fully unrolled.
 

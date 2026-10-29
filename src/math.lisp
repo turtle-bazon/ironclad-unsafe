@@ -117,6 +117,9 @@ denominator."
 (SOS) ones.  Both compute the same function; this exists for A/B
 measurement and as an escape hatch.")
 
+(defvar *mont-mulx-enabled* t
+  "Use the MULX/ADCX/ADOX CIOS variants when the CPU has BMI2 and ADX.")
+
 (declaim (inline mont-mul-limbs))
 (defun mont-mul-limbs (r a b m n0 tmp n)
   "Montgomery multiply of the N-limb residues A and B into R, reusing
@@ -128,7 +131,10 @@ the 2N+1-limb scratch TMP.  All arrays stay in Montgomery form."
   (if *mont-cios-enabled*
       (ecase n
         (16 (mont-mul-16-cios-asm r a b m n0 tmp))
-        (32 (mont-mul-32-cios-asm r a b m n0 tmp))
+        (32 (if (and *mont-mulx-enabled*
+                     (adx-supported-p) (bmi2-supported-p))
+                (mont-mul-32-cios-mulx-asm r a b m n0 tmp)
+                (mont-mul-32-cios-asm r a b m n0 tmp)))
         (48 (mont-mul-48-cios-asm r a b m n0 tmp))
         (64 (mont-mul-64-cios-asm r a b m n0 tmp)))
       (ecase n
