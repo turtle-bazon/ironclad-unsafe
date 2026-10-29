@@ -3440,3 +3440,41 @@ formulation.  The C reference's edge comes from register blocking
 needs a VOP; that is a much larger change than the cipher VOPs because
 the 25-lane state does not fit the register file.  Reverted; the
 keccak-rounds macros are unchanged.
+
+## Keccak: a register-blocked VOP is slower than the Lisp (reverted)
+
+After the array rewrite came out neutral I built the full Keccak-f
+VOP the analysis pointed to: all 24 rounds unrolled, one chi row in
+five registers, theta's D values in five registers, rho and pi fused
+with theta, and the chi scratch appended to the state array (the chi
+layer cannot be done in place: every output row reads one lane from
+every input row, so an in-place version corrupts the lanes later rows
+need).  The round constants are immediates because a second array
+argument does not fit the register file.
+
+It is correct (SHA3-256/SHA3-512 KATs pass) and has no spills: 297
+instructions per round, one stack reference in the whole function,
+against 370 instructions and 228 stack references for the Lisp body.
+
+It is also slower:
+
+| | Lisp | VOP |
+|---|---|---|
+| sha3 8 KB | 151.4 MB/s | 142.1 MB/s |
+| sha3/256 8 KB | 269.1 MB/s | 252.2 MB/s |
+| instructions per round | 370 | 297 |
+
+The unrolled function is about 7100 instructions.  The Lisp loop body
+fits Zen 2's op cache and retires well over four instructions per
+cycle; the unrolled VOP decodes from the instruction cache on every
+round and pays for it.  A looped VOP would need the round constants
+from a second array (thirteen allocatable words, minus the state
+pointer, five lanes, five D values and a temporary, leaves none), and
+moving the D values to memory to make room re-adds the loads the VOP
+was meant to remove.
+
+Both Keccak experiments were reverted; Keccak stays on the Lisp path.
+The remaining 1.5-1.6x gap to the C reference is a code-generation
+difference (three-operand rotates, `rorx`, and a loop layout that
+fits the op cache) that this backend cannot express within the
+register budget.
