@@ -3093,3 +3093,25 @@ direction because the C side moves too.
 This means several rows previously listed above 2x (sha512 family,
 whirlpool, mceliece, cast5) were measurement artifacts rather than
 performance gaps.
+
+## SM3: schedule and rounds VOPs (460 -> 240 ns; digest 146 -> 256 MB/s)
+
+The earlier round-only VOP gave just 1.06x because the message schedule
+(40% of the block) stayed in Lisp and dominated.  With a schedule VOP as
+well -- 52 W expansions of P1 (three rotates/XORs) plus the 64 W' words --
+both share one 140-word buffer (state 0..7, W 8..75, W' 76..139) that
+lives on the digest, so no per-block allocation:
+
+  block            460 -> 240 ns   (1.92x)
+  8 KB digest     146.3 -> 256.0 MB/s (1.75x)
+
+`sm3-hash` fills W[0..15] from the message bytes, runs the two VOPs, and
+copies the state back; the portable unrolled-Lisp path stays for other
+hosts.  500 random blocks match the portable function, the SM3 vector
+file passes, and the full suite is green.  C reference 293.7 MB/s, so
+the gap moves 2.17 -> ~1.15.
+
+This is the second lookup/rotation-heavy digest to fall to the
+"unroll-in-a-VOP with a shared scratch buffer" recipe (Whirlpool was the
+first); unlike the round-only attempts it works because the *whole*
+block, schedule included, is in the VOP.

@@ -867,3 +867,17 @@
   (values)
   (any)
   :overwrite-fndb-silently t)
+
+#+x86-64
+(defknown ironclad-unsafe::sm3-block-asm
+  ((simple-array (unsigned-byte 32) (140)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
+(defknown ironclad-unsafe::sm3-schedule-asm
+  ((simple-array (unsigned-byte 32) (140)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
