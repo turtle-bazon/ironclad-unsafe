@@ -3770,3 +3770,20 @@ Only the 32-limb case is instantiated; it covers RSA-2048 and DSA-2048,
 the sizes the benchmark measures.  The dispatch checks the cached
 BMI2/ADX flags on every multiplication, which is noise against 1.5 us.
 Full suite passes.
+
+### Table refresh (rev 1201)
+
+| row | before | now | gap |
+|---|---|---|---|
+| RSA verify | 35.9k | 38.42k | 2.02 -> 1.81 |
+| DSA sign | 2.59k | 2.87k | 2.05 -> 1.64 |
+| DSA verify | 1.92k | 2.07k | 2.74 -> 2.55 |
+| secp224r1 sign | 5.35k | 17.51k | 3.82 -> 1.27 |
+| secp224r1 verify | 3.84k | 4.70k | 2.61 -> 2.18 |
+| ed448 sign | 2.21k | 6.41k | 2.19 -> 0.81 |
+
+The MULX CIOS moved both RSA verify and DSA sign under 2x; DSA verify
+improved but remains above.  Aggregate: 54 rows ahead, 61 within 2x,
+8 beyond (from 11 at the start of the session).  The eight are falcon
+keygen, secp521r1/ed448/dsa/p256/p224 verify and chacha-poly, plus one
+McEliece keygen row that is noise.
