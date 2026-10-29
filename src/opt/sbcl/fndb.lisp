@@ -529,7 +529,6 @@
 (defknown ironclad-unsafe::secp256r1-fe-mont-mul-asm
   ((simple-array (unsigned-byte 64) (*))
    (simple-array (unsigned-byte 64) (*))
-   (simple-array (unsigned-byte 64) (*))
    (simple-array (unsigned-byte 64) (*)))
   (values)
   (any)

@@ -168,14 +168,14 @@
               (aref r 3) (aref mont 3))
         r))))
 
-(defun secp256r1-fe-mont-mul (r a b c)
-  "R := A * B * R^-1 mod P, with C a scratch of nine 64-bit words."
+(defun secp256r1-fe-mont-mul (r a b)
+  "R := A * B * R^-1 mod P.  The native path keeps the whole
+accumulator in registers and needs no scratch."
   (declare (type secp256r1-fe r a b)
-           (type (simple-array (unsigned-byte 64) (*)) c)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
-    (secp256r1-fe-mont-mul-asm r a b c)
+    (secp256r1-fe-mont-mul-asm r a b)
     r)
   #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
@@ -190,29 +190,24 @@
       r)))
 
 (defun secp256r1-fe-mul (r a b)
-  "R := A * B in Montgomery form, allocating the scratch."
+  "R := A * B in Montgomery form."
   (declare (type secp256r1-fe r a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((c (make-array 9 :element-type '(unsigned-byte 64)
-                         :initial-element 0)))
-    ;; NB: the scratch must stay in the heap; the VOP assumes the usual
-    ;; heap layout of a simple vector.
-    (secp256r1-fe-mont-mul r a b c))
+  (secp256r1-fe-mont-mul r a b)
   r)
 
 (defun secp256r1-fe-mul-buf (r a b c q)
-  "R := A * B in Montgomery form, using the scratch C and ignoring Q.
-C holds nine 64-bit words; the caller reuses it, so a multiply inside a
-point operation allocates nothing."
+  "R := A * B in Montgomery form, ignoring the old scratch C and Q."
   (declare (type secp256r1-fe r a b)
            (type (simple-array (unsigned-byte 64) (16)) c)
            (type secp256r1-fe q)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (secp256r1-fe-mont-mul r a b c)
+  (declare (ignore c q))
+  (secp256r1-fe-mont-mul r a b)
   r)
 
 (defun secp256r1-fe-sq (r a)
-  "R := A^2 in Montgomery form, allocating the scratch."
+  "R := A^2 in Montgomery form."
   (declare (type secp256r1-fe r a)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (secp256r1-fe-mul r a a))

@@ -3541,3 +3541,37 @@ been touched.
 They are now ordinary work: rewrite the existing field VOPs to use
 three-operand rotates and the two carry chains.  That is the highest
 value item left by a wide margin.
+
+## P-256: register-resident CIOS field multiply (1.6x on point ops)
+
+The 4-limb Montgomery multiply wrote every partial product through a
+nine-word heap scratch and used MUL (implicit RAX/RDX) with one serial
+carry chain.  It is now a coarsely integrated operand scan that keeps
+the accumulator T0..T5 in registers and uses MULX with the two carry
+chains: ADCX rides the low halves, ADOX the high halves, so the
+products do not serialise on one flags register.  The heap scratch
+argument is gone.  The special limbs of P (P[0] = -1, P[2] = 0) remove
+half of the sixteen reduction products: the first column is NEG/LEA,
+the third only propagates the two carries.
+
+Add and subtract were rewritten the same way: one ADD/ADC chain in
+registers, then a single masked conditional subtraction of P.  The old
+versions materialised each carry with MOV/ADC into memory.
+
+| | before | after |
+|---|---|---|
+| field multiply | 54 ns | 43 ns |
+| point double | 403 ns | 242 ns |
+| point add | 676 ns | 405 ns |
+| scalar ladder | 251 us | 149 us |
+| fixed-base multiply | 20.7 us | 13.3 us |
+| sign | 59.3 us | 47.8 us |
+| sign (table, ops/s) | 17.19k | 19.85k |
+| verify (table, ops/s) | 4.84k | 7.45k |
+
+Point operations improve by about 1.6x.  Sign improves less because
+RFC 6979 nonce generation (~4.9 us) and the scalar inverse (~18.6 us,
+bignum Euclid) sit outside the field code; the final affine conversion
+in EC-ENCODE-POINT is another fixed-window field inversion.  Those are
+the next targets.  The full SBCL suite passes (689 tests, including the
+ECDSA vectors and the field layer tests).

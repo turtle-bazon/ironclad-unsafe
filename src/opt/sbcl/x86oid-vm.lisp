@@ -6439,148 +6439,133 @@
 (define-vop (secp256r1-fe-mont-mul-asm)
   ;; R := A * B * R^-1 mod P for four 64-bit limbs in the Montgomery
   ;; representation, with R = 2^256.  The lowest limb of P is 2^64 - 1,
-  ;; so P' = -P^-1 mod 2^64 is one, and the reduction word is C[i].
+  ;; so P' = -P^-1 mod 2^64 is one, and the reduction word is T[0].
   ;;
-  ;; This is the separated operand scanning form: the eight words of
-  ;; the product are accumulated in the scratch buffer C, and the
-  ;; reduction updates them in place, so only the multiplier, a carry
-  ;; word and the reduction word are live besides RAX and RDX.  The
-  ;; earlier attempt kept the whole accumulator in registers and the
-  ;; register allocator had no room left for the arguments.
+  ;; Coarsely integrated operand scanning with the accumulator in
+  ;; registers.  Each MULX feeds two independent carry chains: ADCX
+  ;; carries the low halves and ADOX the high halves, so the
+  ;; twenty-four products no longer serialise on one flags register as
+  ;; the old MUL/ADC loop did.  T5 holds the carry that the shift
+  ;; would otherwise drop.
   (:translate ironclad-unsafe::secp256r1-fe-mont-mul-asm)
   (:policy :fast-safe)
   (:args (r :scs (descriptor-reg))
          (a :scs (descriptor-reg))
-         (b :scs (descriptor-reg))
-         (c :scs (descriptor-reg)))
+         (b :scs (descriptor-reg)))
   (:arg-types simple-array-unsigned-byte-64
               simple-array-unsigned-byte-64
-              simple-array-unsigned-byte-64
               simple-array-unsigned-byte-64)
-  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
-  (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
-  (:temporary (:sc unsigned-reg) tmp carry limb)
-  (:temporary (:sc unsigned-reg) tmp2)
+  (:temporary (:sc unsigned-reg) t0 t1 t2 t3 t4 t5 hi lo)
+  (:temporary (:sc unsigned-reg :offset rdx-offset) rd)
   (:generator 1000
     (let ((data-offset (- (* n-word-bytes vector-data-offset)
-                           other-pointer-lowtag))
-          (done (gen-label)))
+                           other-pointer-lowtag)))
       (flet ((a64 (i) (ea (+ data-offset (* 8 i)) a))
              (b64 (i) (ea (+ data-offset (* 8 i)) b))
-             (r64 (i) (ea (+ data-offset (* 8 i)) r))
-             (c64 (i) (ea (+ data-offset (* 8 i)) c))
-             (pw (i) (case i (0 #xffffffffffffffff)
-                          (1 #x00000000ffffffff)
-                          (2 0)
-                          (3 #xffffffff00000001))))
-        ;; C[0..8] := 0.
-        (inst mov tmp 0)
-        (dotimes (k 9)
-          (inst mov (c64 k) tmp))
-        ;; The product, eight words, in C[0..7].
-        (dotimes (i 4)
-          (inst mov limb (a64 i))
-          (inst mov carry 0)
-          (dotimes (j 4)
-            (inst mov rax-tmp limb)
-            (inst mov tmp (b64 j))
-            (inst mul tmp)
-            (inst add rax-tmp (c64 (+ i j)))
-            (inst adc rdx-tmp 0)
-            (inst add rax-tmp carry)
-            (inst adc rdx-tmp 0)
-            (inst mov (c64 (+ i j)) rax-tmp)
-            (inst mov carry rdx-tmp))
-          (inst mov (c64 (+ i 4)) carry))
-        ;; The reduction: C += C[i] * P * 2^(64 i), four times.  Two of
-        ;; the four limbs of P are special: P[0] = 2^64 - 1 makes the
-        ;; C[i] word cancel exactly (leaving M as the carry), and P[2] is
-        ;; zero so that step is a plain carry propagation.  Only the
-        ;; multiplications by P[1] and P[3] remain.
-        (dotimes (i 4)
-          (inst mov limb (c64 i))
-          (inst mov tmp2 0)
-          (inst mov (c64 i) tmp2)
-          (inst mov carry limb)
-          ;; j = 1, P[1] = 0x00000000ffffffff.
-          (inst mov rax-tmp limb)
-          (inst mov tmp (pw 1))
-          (inst mul tmp)
-          (inst add rax-tmp (c64 (+ i 1)))
-          (inst adc rdx-tmp 0)
-          (inst add rax-tmp carry)
-          (inst adc rdx-tmp 0)
-          (inst mov (c64 (+ i 1)) rax-tmp)
-          (inst mov carry rdx-tmp)
-          ;; j = 2, P[2] = 0: propagate the carry.
-          (inst mov rax-tmp (c64 (+ i 2)))
-          (inst add rax-tmp carry)
-          (inst mov (c64 (+ i 2)) rax-tmp)
-          (inst mov carry 0)
-          (inst adc carry 0)
-          ;; j = 3, P[3] = 0xffffffff00000001.
-          (inst mov rax-tmp limb)
-          (inst mov tmp (pw 3))
-          (inst mul tmp)
-          (inst add rax-tmp (c64 (+ i 3)))
-          (inst adc rdx-tmp 0)
-          (inst add rax-tmp carry)
-          (inst adc rdx-tmp 0)
-          (inst mov (c64 (+ i 3)) rax-tmp)
-          (inst mov carry rdx-tmp)
-          ;; Propagate the final carry into C[i+4..8].
-          (inst mov tmp2 carry)
-          (loop for k from (+ i 4) to 8
-                do (inst mov rax-tmp (c64 k))
-                   (inst add rax-tmp tmp2)
-                   (inst mov (c64 k) rax-tmp)
-                   (inst mov tmp2 0)
-                   (inst adc tmp2 0)))
-        ;; R := C[4..7] - P, remembering the borrow.  The carry of the
-        ;; first subtraction is materialized before the borrow of the
-        ;; previous limb is subtracted, for chaining the two would lose
-        ;; it; LIMB is free again after the reduction.
-        (inst mov limb 0)
-        (dotimes (i 4)
-          (inst mov rax-tmp (c64 (+ i 4)))
-          (inst mov tmp (pw i))
-          (inst sub rax-tmp tmp)
-          (inst mov tmp2 0)
-          (inst adc tmp2 0)
-          (inst sub rax-tmp limb)
-          (inst adc tmp2 0)
-          (inst mov (r64 i) rax-tmp)
-          (inst mov limb tmp2))
-        ;; The ninth word is the overflow; the reduced value is below
-        ;; twice the prime, so one subtraction is enough, and it is
-        ;; undone when it borrowed with no overflow to spend.
-        (inst mov tmp (c64 8))
-        (inst sub tmp limb)
-        (inst jmp :nc done)
-        (inst mov limb 0)
-        (dotimes (i 4)
-          (inst mov rax-tmp (r64 i))
-          (inst mov tmp (pw i))
-          (inst add rax-tmp tmp)
-          (inst mov tmp2 0)
-          (inst adc tmp2 0)
-          (inst add rax-tmp limb)
-          (inst adc tmp2 0)
-          (inst mov (r64 i) rax-tmp)
-          (inst mov limb tmp2))
-        (emit-label done)))))
+             (r64 (i) (ea (+ data-offset (* 8 i)) r)))
+        (labels ((accum (src-fn immediate-p)
+                   ;; (T0..T5) += RD * (SRC0..SRC3).
+                   (inst xor hi hi)      ; CF = OF = 0
+                   (dotimes (j 4)
+                     (if immediate-p
+                         (progn
+                           (inst mov lo (funcall src-fn j))
+                           (inst mulx hi lo lo))
+                         (inst mulx hi lo (funcall src-fn j)))
+                     (case j
+                       (0 (inst adcx t0 lo) (inst adox t1 hi))
+                       (1 (inst adcx t1 lo) (inst adox t2 hi))
+                       (2 (inst adcx t2 lo) (inst adox t3 hi))
+                       (3 (inst adcx t3 lo) (inst adox t4 hi))))
+                   ;; CF out of T3 joins T4; OF out of T4 joins T5.
+                   (inst mov rd 0)
+                   (inst adcx t4 rd)
+                   (inst adox t5 rd)
+                   (inst adcx t5 rd))
+                 (reduce-step ()
+                   ;; T += T[0] * P, P' = 1.  P[0] is -1, so the first
+                   ;; product needs no MULX: the low half is -T[0] and
+                   ;; the high half is T[0] - 1.  P[2] is zero, so that
+                   ;; column only propagates the two carries.  Eight of
+                   ;; the sixteen reduction products disappear.
+                   (inst mov lo rd)
+                   (inst neg lo)
+                   (inst lea hi (ea -1 rd))
+                   (inst xor t5 t5)      ; CF = OF = 0
+                   (inst adcx t0 lo)
+                   (inst adox t1 hi)
+                   (inst mov lo #x00000000ffffffff)
+                   (inst mulx hi lo lo)
+                   (inst adcx t1 lo)
+                   (inst adox t2 hi)
+                   (inst adcx t2 t5)
+                   (inst adox t3 t5)
+                   (inst mov lo #xffffffff00000001)
+                   (inst mulx hi lo lo)
+                   (inst adcx t3 lo)
+                   (inst adox t4 hi)
+                   (inst mov rd 0)
+                   (inst adcx t4 rd)
+                   (inst adox t5 rd)
+                   (inst adcx t5 rd)))
+          (inst mov t0 0)
+          (inst mov t1 0)
+          (inst mov t2 0)
+          (inst mov t3 0)
+          (inst mov t4 0)
+          (inst mov t5 0)
+          (dotimes (i 4)
+            ;; T += A[i] * B.
+            (inst mov rd (a64 i))
+            (accum #'b64 nil)
+            ;; T += T[0] * P; T[0] cancels.
+            (inst mov rd t0)
+            (reduce-step)
+            ;; T := T / 2^64.
+            (inst mov t0 t1)
+            (inst mov t1 t2)
+            (inst mov t2 t3)
+            (inst mov t3 t4)
+            (inst mov t4 t5)
+            (inst mov t5 0))
+          ;; The result is below twice P, so one conditional subtraction
+          ;; of P over five words finishes it.  The add-back is masked
+          ;; so that no branch depends on the secret limbs.
+          (inst mov hi -1)
+          (inst sub t0 hi)
+          (inst mov hi #x00000000ffffffff)
+          (inst sbb t1 hi)
+          (inst mov hi 0)
+          (inst sbb t2 hi)
+          (inst mov hi #xffffffff00000001)
+          (inst sbb t3 hi)
+          (inst sbb t4 0)
+          (inst sbb rd rd)
+          (inst mov hi -1)
+          (inst and hi rd)
+          (inst mov lo #x00000000ffffffff)
+          (inst and lo rd)
+          (inst mov t5 #xffffffff00000001)
+          (inst and t5 rd)
+          (inst add t0 hi)
+          (inst adc t1 lo)
+          (inst adc t2 0)
+          (inst adc t3 t5)
+          (inst adc t4 0)
+          (inst mov (r64 0) t0)
+          (inst mov (r64 1) t1)
+          (inst mov (r64 2) t2)
+          (inst mov (r64 3) t3))))))
+
 
 
 #+x86-64
 (define-vop (secp256r1-fe-add64-asm)
-  ;; R := (A + B) mod P for four 64-bit limbs.
-  ;;
-  ;; A three-operand add is done as ADD then ADC into a second word, so
-  ;; that the carry of A[i] + B[i] is not lost when the carry of the
-  ;; previous limb turns the low word over.  The prime is subtracted
-  ;; from the sum: a borrow means the sum was below the prime and the
-  ;; prime is added back, unless the sum was above 2^256, for then the
-  ;; wrapped difference is already right.
+  ;; R := (A + B) mod P for four 64-bit limbs.  The sum is formed with a
+  ;; single ADD/ADC chain in registers, then P is subtracted over five
+  ;; words and added back through a mask when that borrowed.  The old
+  ;; version materialised every carry with MOV/ADC into memory and cost
+  ;; about four times as much.
   (:translate ironclad-unsafe::secp256r1-fe-add64-asm)
   (:policy :fast-safe)
   (:args (r :scs (descriptor-reg))
@@ -6589,66 +6574,55 @@
   (:arg-types simple-array-unsigned-byte-64
               simple-array-unsigned-byte-64
               simple-array-unsigned-byte-64)
-  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
-  (:temporary (:sc unsigned-reg) tmp carry borrow limb)
+  (:temporary (:sc unsigned-reg) t0 t1 t2 t3 t4 hi lo z)
   (:generator 1000
     (let ((data-offset (- (* n-word-bytes vector-data-offset)
-                           other-pointer-lowtag))
-          (done (gen-label)))
+                           other-pointer-lowtag)))
       (flet ((a64 (i) (ea (+ data-offset (* 8 i)) a))
              (b64 (i) (ea (+ data-offset (* 8 i)) b))
-             (r64 (i) (ea (+ data-offset (* 8 i)) r))
-             (pw (i) (case i (0 #xffffffffffffffff)
-                          (1 #x00000000ffffffff)
-                          (2 0)
-                          (3 #xffffffff00000001))))
-        ;; The sum.
-        (inst mov carry 0)
-        (dotimes (i 4)
-          (inst mov rax-tmp (a64 i))
-          (inst add rax-tmp (b64 i))
-          (inst mov tmp 0)
-          (inst adc tmp 0)
-          (inst add rax-tmp carry)
-          (inst adc tmp 0)
-          (inst mov (r64 i) rax-tmp)
-          (inst mov carry tmp))
-        ;; The difference between the sum and the prime.
-        (inst mov borrow 0)
-        (dotimes (i 4)
-          (inst mov rax-tmp (r64 i))
-          (inst mov limb (pw i))
-          (inst sub rax-tmp limb)
-          (inst mov tmp 0)
-          (inst adc tmp 0)
-          (inst sub rax-tmp borrow)
-          (inst adc tmp 0)
-          (inst mov (r64 i) rax-tmp)
-          (inst mov borrow tmp))
-        (inst test borrow borrow)
-        (inst jmp :z done)
-        (inst test carry carry)
-        (inst jmp :nz done)
-        ;; Put the prime back.
-        (inst mov carry 0)
-        (dotimes (i 4)
-          (inst mov rax-tmp (r64 i))
-          (inst mov limb (pw i))
-          (inst add rax-tmp limb)
-          (inst mov tmp 0)
-          (inst adc tmp 0)
-          (inst add rax-tmp carry)
-          (inst adc tmp 0)
-          (inst mov (r64 i) rax-tmp)
-          (inst mov carry tmp))
-        (emit-label done)))))
+             (r64 (i) (ea (+ data-offset (* 8 i)) r)))
+        (inst mov t0 (a64 0))
+        (inst add t0 (b64 0))
+        (inst mov t1 (a64 1))
+        (inst adc t1 (b64 1))
+        (inst mov t2 (a64 2))
+        (inst adc t2 (b64 2))
+        (inst mov t3 (a64 3))
+        (inst adc t3 (b64 3))
+        (inst mov t4 0)
+        (inst adc t4 0)
+        ;; The difference between the sum and P.
+        (inst mov hi -1)
+        (inst sub t0 hi)
+        (inst mov hi #x00000000ffffffff)
+        (inst sbb t1 hi)
+        (inst mov hi 0)
+        (inst sbb t2 hi)
+        (inst mov hi #xffffffff00000001)
+        (inst sbb t3 hi)
+        (inst sbb t4 0)
+        ;; A borrow means the sum was below P; add P back.  P[0] is
+        ;; all ones, so its masked form is the mask itself.
+        (inst sbb z z)
+        (inst mov lo #x00000000ffffffff)
+        (inst and lo z)
+        (inst mov hi #xffffffff00000001)
+        (inst and hi z)
+        (inst add t0 z)
+        (inst adc t1 lo)
+        (inst adc t2 0)
+        (inst adc t3 hi)
+        (inst adc t4 0)
+        (inst mov (r64 0) t0)
+        (inst mov (r64 1) t1)
+        (inst mov (r64 2) t2)
+        (inst mov (r64 3) t3)))))
 
 
 #+x86-64
 (define-vop (secp256r1-fe-sub64-asm)
-  ;; R := (A - B) mod P for four 64-bit limbs, by the same pattern as
-  ;; the addition, with the prime added back when the difference
-  ;; borrowed.
+  ;; R := (A - B) mod P for four 64-bit limbs.  The difference is formed
+  ;; in registers; when it borrowed, P is added back through a mask.
   (:translate ironclad-unsafe::secp256r1-fe-sub64-asm)
   (:policy :fast-safe)
   (:args (r :scs (descriptor-reg))
@@ -6657,45 +6631,34 @@
   (:arg-types simple-array-unsigned-byte-64
               simple-array-unsigned-byte-64
               simple-array-unsigned-byte-64)
-  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
-  (:temporary (:sc unsigned-reg) tmp carry borrow limb)
+  (:temporary (:sc unsigned-reg) t0 t1 t2 t3 hi lo z)
   (:generator 1000
     (let ((data-offset (- (* n-word-bytes vector-data-offset)
-                           other-pointer-lowtag))
-          (done (gen-label)))
+                           other-pointer-lowtag)))
       (flet ((a64 (i) (ea (+ data-offset (* 8 i)) a))
              (b64 (i) (ea (+ data-offset (* 8 i)) b))
-             (r64 (i) (ea (+ data-offset (* 8 i)) r))
-             (pw (i) (case i (0 #xffffffffffffffff)
-                          (1 #x00000000ffffffff)
-                          (2 0)
-                          (3 #xffffffff00000001))))
-        ;; The difference.
-        (inst mov borrow 0)
-        (dotimes (i 4)
-          (inst mov rax-tmp (a64 i))
-          (inst sub rax-tmp (b64 i))
-          (inst mov tmp 0)
-          (inst adc tmp 0)
-          (inst sub rax-tmp borrow)
-          (inst adc tmp 0)
-          (inst mov (r64 i) rax-tmp)
-          (inst mov borrow tmp))
-        (inst test borrow borrow)
-        (inst jmp :z done)
-        ;; Put the prime back.
-        (inst mov carry 0)
-        (dotimes (i 4)
-          (inst mov rax-tmp (r64 i))
-          (inst mov limb (pw i))
-          (inst add rax-tmp limb)
-          (inst mov tmp 0)
-          (inst adc tmp 0)
-          (inst add rax-tmp carry)
-          (inst adc tmp 0)
-          (inst mov (r64 i) rax-tmp)
-          (inst mov carry tmp))
-        (emit-label done)))))
+             (r64 (i) (ea (+ data-offset (* 8 i)) r)))
+        (inst mov t0 (a64 0))
+        (inst sub t0 (b64 0))
+        (inst mov t1 (a64 1))
+        (inst sbb t1 (b64 1))
+        (inst mov t2 (a64 2))
+        (inst sbb t2 (b64 2))
+        (inst mov t3 (a64 3))
+        (inst sbb t3 (b64 3))
+        (inst sbb z z)
+        (inst mov lo #x00000000ffffffff)
+        (inst and lo z)
+        (inst mov hi #xffffffff00000001)
+        (inst and hi z)
+        (inst add t0 z)
+        (inst adc t1 lo)
+        (inst adc t2 0)
+        (inst adc t3 hi)
+        (inst mov (r64 0) t0)
+        (inst mov (r64 1) t1)
+        (inst mov (r64 2) t2)
+        (inst mov (r64 3) t3)))))
 
 ;;; Variable-modulus Montgomery multiply VOPs (CIOS form).
 ;;;
