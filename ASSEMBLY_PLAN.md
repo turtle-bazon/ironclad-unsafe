@@ -3672,3 +3672,13 @@ The inversion is paid once per verification; with only ~64 additions the
 net saving is 5 us, about 4%.  The remaining verify cost is the 256
 point doublings (~67 us) plus the scalar inverse and the final affine
 conversion; only a faster field squaring can move those.
+
+### P-256 table refresh (rev 1195)
+
+| row | rev 1193 | now | C | gap |
+|---|---|---|---|---|
+| secp256r1 sign | 27.61k | 29.75k | 53.06k | 1.93 -> 1.78 |
+| secp256r1 verify | 7.47k | 7.81k | 18.75k | 2.51 -> 2.40 |
+
+The quiet run also pulled the two keygen rows that had drifted over 2x
+back below it.  Aggregate: 52 rows ahead, 60 within 2x, 11 beyond.
