@@ -3366,3 +3366,24 @@ Correctness: RFC 2144 vector (key 0123456712345678234567893456789A,
 block 0123456789ABCDEF -> 238B4FE5847E44B2), 300 random encrypt/decrypt
 round trips (decrypt stays portable), a 12-round key round trip, and
 the full suite.
+
+## ARIA: hoisting the S-box tables is neutral (reverted)
+
+The portable ARIA block expands to 3199 instructions and runs at
+~4.6 IPC, so it is instruction-throughput bound.  A sixth of those
+instructions are reloads of the four S-box table pointers: every one of
+the 256 lookups per block (four tables x four words x sixteen
+S-box layers) re-reads the symbol value that holds the table.
+
+Binding the four tables in local variables and using them in the
+S-box macros does not help: SBCL's register allocator is already at
+its limit with four state words, the round temporaries and the key
+pointer, so it reloads the local bindings exactly as it reloaded the
+globals.  The disassembly is byte-for-byte the same length (3199
+instructions, 256 RIP-relative loads) and the measured difference was
+within noise (81.3 vs 78.6-79.1 MB/s for the 32-byte-key row).  The
+change was reverted.
+
+Moving this row needs a block VOP like the SM4/Blowfish/CAST5 ones,
+with one combined 1024-entry table so the lookups share a base
+register; there is no useful Lisp-level headroom left.
