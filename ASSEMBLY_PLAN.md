@@ -3495,3 +3495,25 @@ Only 11%: the MAC loop is latency-bound on the serial AES chain
 (10-14 dependent AES-NI rounds, ~52 cycles per block), so removing
 the per-call overhead cannot recover much.  The remaining CCM gap to
 C is about that serial AES latency plus the per-message mode setup.
+
+## Correction: the assembler accepts ADCX/ADOX/RORX/SHLX
+
+Earlier entries say the SBCL backend cannot encode the ADX/BMI2
+instructions, which is why the field arithmetic is stuck at its current
+speed.  That is wrong for four of them.  A probe VOP whose generator
+emitted
+
+    rorx u b 7 ; adcx r u ; adox r b ; shlx u b a
+
+compiled without complaint (it only failed to *load* because the probe
+had no defknown, which is unrelated).  So RORX, ADCX, ADOX and SHLX can
+be emitted by this backend today.
+
+What this means: the field VOPs for secp256r1/secp224r1/secp521r1,
+ed448 and dsa could be rewritten with three-operand rotates and
+dual carry chains.  That is the largest remaining opportunity
+(5 rows at 2.2-4.3x).  MULX is still suspect -- the earlier note says
+it is mis-encoded as VEX -- and needs its own probe before use.
+
+Not attempted here: the rewrite is a multi-hour piece of assembly work
+per curve and needs a fresh session.
