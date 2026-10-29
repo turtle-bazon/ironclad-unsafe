@@ -3326,3 +3326,11 @@ immediately).
 Correctness: the classic key FEDCBA9876543210 / block 0123456789ABCDEF
 vector (0ACEAB0FC6A0A28D), 200 random encrypt/decrypt round trips
 (decrypt still uses the portable code), and the full suite.
+
+Follow-up on the run-to-run noise: across five full runs the AEAD rows
+swing the most (chacha-poly 571, 656, 636, 651, 600 MB/s) because the
+mode setup is 1.5-2 us of the 8 KB call and the benchmark builds a
+fresh mode per message; the local-C falcon reference also drifted
+(74.8 -> 101.7 ops/s) and the borderline public-key rows (ml-dsa-87
+keygen, slh-dsa-shake-256s) flip across the 2.0 line between runs.
+Treat changes of one or two rows at the 2x boundary as noise.
