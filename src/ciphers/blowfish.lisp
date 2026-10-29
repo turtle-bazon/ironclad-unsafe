@@ -265,10 +265,15 @@
 (declaim (notinline blowfish-encrypt-block*))
 
 (define-block-encryptor blowfish 8
-  (declare (inline blowfish-encrypt-block*))
-  (blowfish-encrypt-block* (p-array context) (s-boxes context)
-                           plaintext plaintext-start
-                           ciphertext ciphertext-start))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (blowfish-encrypt-block-asm (p-array context) (s-boxes context)
+                              plaintext plaintext-start
+                              ciphertext ciphertext-start)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
+  (locally (declare (inline blowfish-encrypt-block*))
+    (blowfish-encrypt-block* (p-array context) (s-boxes context)
+                             plaintext plaintext-start
+                             ciphertext ciphertext-start)))
 
 (declaim (inline blowfish-decrypt-block*))
 (defun blowfish-decrypt-block* (p-array s-boxes ciphertext ciphertext-start

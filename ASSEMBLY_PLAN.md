@@ -3301,3 +3301,28 @@ Anything within 10% of the previous table is noise, not a regression.
 The committed figures are: poly1305 1.689 GB/s (gap 3.79 -> 3.18 on
 chacha-poly), sha512 398 MB/s (1.82 -> 1.55), sm4 110 MB/s
 (1.81 -> 1.27), with 50 rows ahead of C, 63 within 2x and 10 beyond.
+
+## Blowfish: x86-64 block VOP (1.57x, gap 1.73 -> 1.10)
+
+Same pathology as SM4: the portable block is a chain of tagged
+fixnums, so each of the 68 S-box lookups per block pays a shift to
+untag the byte index, a shift to tag the loaded word, and an untag
+before the add/xor it feeds.  The block runs at ~16.6 cycles per round.
+
+The VOP keeps the two halves in 32-bit registers, extracts the four
+byte indices with shift/mask only, and reads the S-box words straight
+into the accumulating register.  The P-array xor is applied to the
+half that F consumes (not the destination half: getting that backwards
+was the first version, and the known-answer test caught it
+immediately).
+
+| | before | after |
+|---|---|---|
+| Blowfish ECB 8 KB | 102 MB/s | 160 MB/s (1.57x) |
+| block | 78 ns | 50 ns |
+| instructions per block | - | 326 (~20 per round) |
+| C/Lisp gap | 1.73 | 1.10 |
+
+Correctness: the classic key FEDCBA9876543210 / block 0123456789ABCDEF
+vector (0ACEAB0FC6A0A28D), 200 random encrypt/decrypt round trips
+(decrypt still uses the portable code), and the full suite.

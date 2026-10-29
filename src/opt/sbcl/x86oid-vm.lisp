@@ -10812,3 +10812,64 @@ into O0..O7."
         (inst mov t0 w2) (dword-inst bswap t0) (inst mov :dword (cd 4) t0)
         (inst mov t0 w1) (dword-inst bswap t0) (inst mov :dword (cd 8) t0)
         (inst mov t0 w0) (dword-inst bswap t0) (inst mov :dword (cd 12) t0)))))
+
+;;; Blowfish: one 8-byte block, all sixteen rounds.  The portable body
+;;; executes 33 cycles per round because each of the 68 S-box lookups is
+;;; a tagged fixnum: the byte index is shifted, masked and untagged and
+;;; the loaded word is tagged again.  Here the two halves are plain
+;;; 32-bit registers and the index extraction is shift/mask only.
+#+x86-64
+(define-vop (blowfish-encrypt-block)
+  (:translate ironclad-unsafe::blowfish-encrypt-block-asm)
+  (:policy :fast-safe)
+  (:args (p-array :scs (descriptor-reg))
+         (s-boxes :scs (descriptor-reg))
+         (plaintext :scs (descriptor-reg))
+         (plaintext-start :scs (unsigned-reg))
+         (ciphertext :scs (descriptor-reg))
+         (ciphertext-start :scs (unsigned-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-8
+              unsigned-num
+              simple-array-unsigned-byte-8
+              unsigned-num)
+  (:temporary (:sc unsigned-reg) left right t0 t1 t2)
+  (:generator 1000
+    (let ((disp (- (* n-word-bytes vector-data-offset) other-pointer-lowtag)))
+      (flet ((pd (i) (ea (+ disp i) plaintext plaintext-start))
+             (cd (i) (ea (+ disp i) ciphertext ciphertext-start))
+             (p (i) (ea (+ disp (* 4 i)) p-array))
+             (s (i idx) (ea (+ disp (* 4 i)) s-boxes idx 4)))
+        (inst mov :dword left (pd 0))  (dword-inst bswap left)
+        (inst mov :dword right (pd 4)) (dword-inst bswap right)
+        (macrolet ((bf-f (src other i)
+                     `(progn
+                        (inst xor :dword ,src (p ,i))
+                        (inst mov t0 ,src)
+                        ;; F = S3[b3] + (S2[b2] ^ (S1[b1] + S0[b0]))
+                        (inst mov t2 t0)
+                        (inst shr t2 24)
+                        (inst mov :dword t1 (s 0 t2))
+                        (inst mov t2 t0)
+                        (inst shr t2 16)
+                        (inst and t2 #xff)
+                        (inst add :dword t1 (s 256 t2))
+                        (inst mov t2 t0)
+                        (inst shr t2 8)
+                        (inst and t2 #xff)
+                        (inst xor :dword t1 (s 512 t2))
+                        (inst and t0 #xff)
+                        (inst add :dword t1 (s 768 t0))
+                        (inst xor :dword ,other t1))))
+          #.(let ((forms '()))
+              (dotimes (i 16)
+                (if (evenp i)
+                    (push `(bf-f left right ,i) forms)
+                    (push `(bf-f right left ,i) forms)))
+              `(progn ,@(nreverse forms))))
+        (inst xor :dword left (p 16))
+        (inst xor :dword right (p 17))
+        ;; store-words ciphertext ciphertext-start right left
+        (inst mov t0 right) (dword-inst bswap t0) (inst mov :dword (cd 0) t0)
+        (inst mov t0 left)  (dword-inst bswap t0) (inst mov :dword (cd 4) t0)))))
