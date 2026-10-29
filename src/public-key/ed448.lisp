@@ -376,6 +376,119 @@ input points use bignum coordinates; the result is an ed448-point."
                    :z (goldilocks-fe-to-int az))))
 
 
+(defvar *ed448-base-table-positional* nil
+  "T[J][V] = V * 256^J * G, in limbs, as a 57-row 16x16 matrix.")
+
+(defun ed448-build-base-table-positional ()
+  "Build the positional table T[J][V] = V * 256^J * G."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((rows (make-array 57))
+        (s (goldilocks-make-scratch))
+        (bx (goldilocks-fe-from-int (slot-value +ed448-b+ 'x)))
+        (by (goldilocks-fe-from-int (slot-value +ed448-b+ 'y)))
+        (bz (goldilocks-fe-from-int 1)))
+    (declare (type simple-vector rows)
+             (type simple-vector s)
+             (type goldilocks-fe bx by bz))
+    (flet ((cp (a)
+             (let ((c (goldilocks-fe-zero)))
+               (replace c a)
+               c)))
+      (dotimes (j 57 (progn (setf *ed448-base-table-positional* rows) rows))
+        (declare (type fixnum j))
+        (let ((flat (make-array 256)))
+          (declare (type simple-vector flat))
+          (setf (aref flat 0)
+                (vector (goldilocks-fe-from-int 0)
+                        (goldilocks-fe-from-int 1)
+                        (goldilocks-fe-from-int 1)))
+          (setf (aref flat 1)
+                (vector (cp bx) (cp by) (cp bz)))
+          (loop for v of-type fixnum from 2 below 256 do
+            (let ((x (goldilocks-fe-zero))
+                  (y (goldilocks-fe-zero))
+                  (z (goldilocks-fe-zero)))
+              (if (evenp v)
+                  (let ((src (aref flat (ash v -1))))
+                    (ed448-point-double-limbs!
+                     x y z (aref src 0) (aref src 1) (aref src 2) s))
+                  (let ((src (aref flat (1- v)))
+                        (one (aref flat 1)))
+                    (ed448-point-add-limbs!
+                     x y z
+                     (aref src 0) (aref src 1) (aref src 2)
+                     (aref one 0) (aref one 1) (aref one 2) s)))
+              (setf (aref flat v) (vector x y z))))
+          (let ((subs (make-array 16)))
+            (dotimes (h 16)
+              (let ((sub (make-array 16)))
+                (dotimes (l 16)
+                  (setf (aref sub l) (aref flat (+ (* 16 h) l))))
+                (setf (aref subs h) sub)))
+            (setf (aref rows j) subs))
+          ;; base := 256 * base
+          (dotimes (i 8)
+            (declare (ignore i))
+            (let ((x (goldilocks-fe-zero))
+                  (y (goldilocks-fe-zero))
+                  (z (goldilocks-fe-zero)))
+              (ed448-point-double-limbs! x y z bx by bz s)
+              (setf bx x by y bz z))))))))
+
+(declaim (inline ed448-select-base-positional))
+(defun ed448-select-base-positional (row v ax ay az)
+  "Copy TABLE[V] into AX AY AZ with two linear sixteen-entry scans."
+  (declare (type simple-vector row)
+           (type (unsigned-byte 8) v)
+           (type goldilocks-fe ax ay az)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((hi (ash v -4))
+         (lo (logand v 15))
+         (sub (aref row 0)))
+    (declare (type (unsigned-byte 4) hi lo)
+             (type simple-vector sub))
+    (loop for i of-type fixnum from 1 below 16
+          do (when (= i hi) (setf sub (aref row i))))
+    (let ((sel (aref sub 0)))
+      (loop for i of-type fixnum from 1 below 16
+            do (when (= i lo) (setf sel (aref sub i))))
+      (replace ax (aref sel 0))
+      (replace ay (aref sel 1))
+      (replace az (aref sel 2))))
+  (values ax ay az))
+
+(defun ed448-base-mult-positional (k)
+  "K*G from the positional byte table: fifty-seven additions and no
+doublings."
+  (declare (type integer k)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((table (or *ed448-base-table-positional*
+                   (setf *ed448-base-table-positional*
+                         (ed448-build-base-table-positional))))
+        (ax (goldilocks-fe-from-int 0))
+        (ay (goldilocks-fe-from-int 1))
+        (az (goldilocks-fe-from-int 1))
+        (tx (goldilocks-fe-zero))
+        (ty (goldilocks-fe-zero))
+        (tz (goldilocks-fe-zero))
+        (sx (goldilocks-fe-zero))
+        (sy (goldilocks-fe-zero))
+        (sz (goldilocks-fe-zero))
+        (s (goldilocks-make-scratch)))
+    (declare (type simple-vector table s)
+             (type goldilocks-fe ax ay az tx ty tz sx sy sz))
+    (loop for j of-type fixnum from 56 downto 0 do
+      (let ((v (ldb (byte 8 (* j 8)) k)))
+        (declare (type (unsigned-byte 8) v))
+        (unless (zerop v)
+          (ed448-select-base-positional (aref table j) v sx sy sz)
+          (ed448-point-add-limbs! tx ty tz ax ay az sx sy sz s)
+          (rotatef ax tx) (rotatef ay ty) (rotatef az tz))))
+    (make-instance 'ed448-point
+                   :x (goldilocks-fe-to-int ax)
+                   :y (goldilocks-fe-to-int ay)
+                   :z (goldilocks-fe-to-int az))))
+
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun ed448-dom (x y)
     (declare (type (unsigned-byte 8) x)
@@ -560,10 +673,10 @@ input points use bignum coordinates; the result is an ed448-point."
         (setf sel (aref table i))))))
 
 (defun ed448-base-mult (k)
-  "Fixed-base 4-bit comb for G (secret scalar, fixed schedule)."
+  "Fixed-base multiplication by G (secret scalar, fixed schedule)."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer k))
-  (ed448-base-mult-limbs k))
+  (ed448-base-mult-positional k))
 
 (defmethod ec-scalar-mult ((p ed448-point) e)
   ;; Secret scalars use the fixed-schedule ladder, except for the fixed

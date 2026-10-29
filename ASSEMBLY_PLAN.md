@@ -3706,3 +3706,22 @@ that is not G.
 Both P-224 signature rows should cross 2x.  The table is built on first
 use (32 rows of 256 points) and costs a few milliseconds once.
 Full suite passes.
+
+## Ed448: positional base table
+
+Ed448's fixed-base multiplication walked 57 bytes and did eight
+doublings per byte: 456 doublings plus 57 additions, 391 us of the
+499 us signature.  It now uses a lazily built 57x256 positional table
+T[J][V] = V*256^J*G (in the limb field) with the two-level sixteen-entry
+selection, so a signature needs 57 mixed additions and no doublings.
+
+| | before | after |
+|---|---|---|
+| fixed-base multiply | 390.6 us | 58.8 us |
+| sign (direct) | 498.8 us | 155.8 us |
+
+Verify is a five-bit *joint* multiplication, where the doublings are
+shared by both scalars and a positional table for G cannot be used; it
+stays at 664 us (about 3x the C reference).  The table costs a few
+tens of milliseconds to build on first use and uses a few megabytes.
+Full suite passes.
