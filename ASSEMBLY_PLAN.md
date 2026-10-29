@@ -3478,3 +3478,20 @@ The remaining 1.5-1.6x gap to the C reference is a code-generation
 difference (three-operand rotates, `rorx`, and a loop layout that
 fits the op cache) that this backend cannot express within the
 register budget.
+
+## CCM: fuse the CBC-MAC run into one VOP call (1.11x)
+
+CCM's CBC-MAC loop called the one-block AES-NI VOP once per 16-octet
+block, reloading and storing the chain through memory each time.  The
+new AES-NI-MAC-BLOCKS VOP keeps the chain in an xmm register for a
+whole run of blocks and loops internally.
+
+| | before | after |
+|---|---|---|
+| CCM encrypt-message, 8 KB | 770 MB/s | 858 MB/s |
+| MAC alone | 1049 MB/s | 1055 MB/s |
+
+Only 11%: the MAC loop is latency-bound on the serial AES chain
+(10-14 dependent AES-NI rounds, ~52 cycles per block), so removing
+the per-call overhead cannot recover much.  The remaining CCM gap to
+C is about that serial AES latency plus the per-message mode setup.
