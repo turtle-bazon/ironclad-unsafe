@@ -3414,3 +3414,29 @@ registers can hold.
 Correctness: the RFC 8439 zero-key/zero-nonce keystream block, a
 5000-byte round trip (which takes the four-block path), the
 chacha-poly AEAD round trip, the full suite, and CCL.
+
+## Keccak: array-based round rewrite is neutral (reverted)
+
+The current KECCAK-ROUNDS binds all 25 state lanes and all 25 scratch
+lanes as locals; the register allocator spills most of them, so the
+loop body contains 228 stack-slot references.  I rewrote the round to
+keep the state in its array and the scratch lanes in a stack-allocated
+25-word array, fused theta's application with rho/pi (the old code
+wrote all 25 lanes back after theta and read them again for rho), and
+read each chi row into five locals.  The result:
+
+| | old | rewritten |
+|---|---|---|
+| loop-body instructions | 367 | 370 |
+| stack-slot references in the body | 228 | 1 |
+| sha3 8 KB | 152.2 MB/s | 151.4 MB/s |
+| sha3/256 8 KB | 269.1 MB/s | 270.9 MB/s |
+
+Neutral.  The spilled locals and explicit array accesses cost the same
+in the body, and the permutation already runs at roughly four
+instructions per cycle, i.e. at the machine's throughput limit for this
+formulation.  The C reference's edge comes from register blocking
+(holding a row's five lanes plus the temporary row in registers), which
+needs a VOP; that is a much larger change than the cipher VOPs because
+the 25-lane state does not fit the register file.  Reverted; the
+keccak-rounds macros are unchanged.
