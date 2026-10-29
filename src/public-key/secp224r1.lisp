@@ -214,7 +214,7 @@ multiplications, all in the limb field."
   ;; assembly of the reference.
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (if (and (eq p +secp224r1-g+) (not (minusp e)))
-      (secp224r1-base-mult-limbs e)
+      (secp224r1-base-mult-positional e)
       (let ((px (slot-value p 'x))
             (py (slot-value p 'y))
             (pz (slot-value p 'z)))
@@ -1217,6 +1217,171 @@ leave the caller's variables alone."
                          (setf (aref table i) (vector nx ny nz))))
               table))))
 
+(defvar *secp224r1-base-table-positional* nil
+  "T[J][V] = V * 256^J * G, in limbs, as a 32-row 16x16 matrix.")
+
+(defun secp224r1-build-base-table-positional ()
+  "Build the positional table T[J][V] = V * 256^J * G."
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((rows (make-array 32))
+        (s (secp224r1-make-scratch))
+        (bx (secp224r1-fe-from-int (slot-value +secp224r1-g+ 'x)))
+        (by (secp224r1-fe-from-int (slot-value +secp224r1-g+ 'y)))
+        (bz (secp224r1-fe-from-int 1)))
+    (declare (type simple-vector rows)
+             (type simple-vector s)
+             (type secp224r1-fe bx by bz))
+    (flet ((cp (a)
+             (let ((c (secp224r1-fe-zero)))
+               (secp224r1-fe-copy! c a)
+               c)))
+      (dotimes (j 32 (progn (setf *secp224r1-base-table-positional* rows) rows))
+        (declare (type fixnum j))
+        (let ((flat (make-array 256)))
+          (declare (type simple-vector flat))
+          (setf (aref flat 0)
+                (vector (secp224r1-fe-from-int 1)
+                        (secp224r1-fe-from-int 1)
+                        (secp224r1-fe-from-int 0)))
+          (setf (aref flat 1)
+                (vector (cp bx) (cp by) (cp bz)))
+          (loop for v of-type fixnum from 2 below 256 do
+            (let ((x (secp224r1-fe-zero))
+                  (y (secp224r1-fe-zero))
+                  (z (secp224r1-fe-zero)))
+              (if (evenp v)
+                  (let ((src (aref flat (ash v -1))))
+                    (secp224r1-double! x y z
+                                       (aref src 0) (aref src 1) (aref src 2) s))
+                  (let ((src (aref flat (1- v)))
+                        (one (aref flat 1)))
+                    (secp224r1-add! x y z
+                                    (aref src 0) (aref src 1) (aref src 2)
+                                    (aref one 0) (aref one 1) (aref one 2) s)))
+              (setf (aref flat v) (vector x y z))))
+          ;; Sixteen sub-rows of sixteen, for a two-level constant-time
+          ;; selection.
+          (let ((subs (make-array 16)))
+            (dotimes (h 16)
+              (let ((sub (make-array 16)))
+                (dotimes (l 16)
+                  (setf (aref sub l) (aref flat (+ (* 16 h) l))))
+                (setf (aref subs h) sub)))
+            (setf (aref rows j) subs))
+          ;; base := 256 * base
+          (dotimes (i 8)
+            (declare (ignore i))
+            (let ((x (secp224r1-fe-zero))
+                  (y (secp224r1-fe-zero))
+                  (z (secp224r1-fe-zero)))
+              (secp224r1-double! x y z bx by bz s)
+              (setf bx x by y bz z))))))))
+
+(declaim (inline secp224r1-select-base-positional))
+(defun secp224r1-select-base-positional (row v)
+  "Select V from a 16x16 matrix of point triples by two linear scans."
+  (declare (type simple-vector row)
+           (type (unsigned-byte 8) v)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((hi (ash v -4))
+         (lo (logand v 15))
+         (sub (aref row 0)))
+    (declare (type (unsigned-byte 4) hi lo)
+             (type simple-vector sub))
+    (loop for i of-type fixnum from 1 below 16
+          do (when (= i hi) (setf sub (aref row i))))
+    (let ((sel (aref sub 0)))
+      (loop for i of-type fixnum from 1 below 16
+            do (when (= i lo) (setf sel (aref sub i))))
+      sel)))
+
+(defun secp224r1-base-mult-positional-limbs (k)
+  "K*G using the positional byte table: twenty-eight additions, no
+doublings.  Returns the three coordinates as multiple values."
+  (declare (type integer k)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((table (or *secp224r1-base-table-positional*
+                   (setf *secp224r1-base-table-positional*
+                         (secp224r1-build-base-table-positional))))
+        (s (secp224r1-make-scratch))
+        (ax (secp224r1-fe-from-int 1))
+        (ay (secp224r1-fe-from-int 1))
+        (az (secp224r1-fe-from-int 0))
+        (tx (secp224r1-fe-zero))
+        (ty (secp224r1-fe-zero))
+        (tz (secp224r1-fe-zero)))
+    (declare (type simple-vector table s)
+             (type secp224r1-fe ax ay az tx ty tz))
+    ;; K < L < 2^224, so bytes 0..27 are all that can be nonzero.
+    (loop for j of-type fixnum from 27 downto 0 do
+      (let ((v (ldb (byte 8 (* j 8)) k)))
+        (declare (type (unsigned-byte 8) v))
+        (unless (zerop v)
+          (let ((sel (secp224r1-select-base-positional (aref table j) v)))
+            (declare (type simple-vector sel))
+            (secp224r1-add! tx ty tz ax ay az
+                            (aref sel 0) (aref sel 1) (aref sel 2) s)
+            (secp224r1-swap3 ax ay az tx ty tz)))))
+    (values ax ay az)))
+
+(defun secp224r1-base-mult-positional (k)
+  "K*G as a point."
+  (multiple-value-bind (x y z) (secp224r1-base-mult-positional-limbs k)
+    (secp224r1-point-from-limbs x y z)))
+
+(defun secp224r1-window-mult-limbs (px py pz e)
+  "E times the limb point (PX : PY : PZ) with four-bit windows.
+Returns the three coordinates as multiple values."
+  (declare (type secp224r1-fe px py pz)
+           (type integer e)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((table (make-array 16))
+        (s (secp224r1-make-scratch))
+        (ax (secp224r1-fe-from-int 1))
+        (ay (secp224r1-fe-from-int 1))
+        (az (secp224r1-fe-from-int 0))
+        (tx (secp224r1-fe-zero))
+        (ty (secp224r1-fe-zero))
+        (tz (secp224r1-fe-zero)))
+    (declare (type simple-vector table s)
+             (type secp224r1-fe ax ay az tx ty tz))
+    (setf (aref table 0)
+          (vector (secp224r1-fe-from-int 1)
+                  (secp224r1-fe-from-int 1)
+                  (secp224r1-fe-from-int 0)))
+    (setf (aref table 1) (vector px py pz))
+    (loop for v of-type fixnum from 2 below 16 do
+      (let ((x (secp224r1-fe-zero))
+            (y (secp224r1-fe-zero))
+            (z (secp224r1-fe-zero)))
+        (if (evenp v)
+            (let ((src (aref table (ash v -1))))
+              (secp224r1-double! x y z
+                                 (aref src 0) (aref src 1) (aref src 2) s))
+            (let ((src (aref table (1- v)))
+                  (one (aref table 1)))
+              (secp224r1-add! x y z
+                              (aref src 0) (aref src 1) (aref src 2)
+                              (aref one 0) (aref one 1) (aref one 2) s)))
+        (setf (aref table v) (vector x y z))))
+    (let ((nibbles (ceiling (integer-length e) 4)))
+      (declare (type fixnum nibbles))
+      (loop for j of-type fixnum downfrom (1- nibbles) to 0 do
+        (unless (= j (1- nibbles))
+          (dotimes (i 4)
+            (declare (ignore i))
+            (secp224r1-double! tx ty tz ax ay az s)
+            (secp224r1-swap3 ax ay az tx ty tz)))
+        (let ((v (ldb (byte 4 (* j 4)) e)))
+          (declare (type (unsigned-byte 4) v))
+          (unless (zerop v)
+            (let ((sel (aref table v)))
+              (declare (type simple-vector sel))
+              (secp224r1-add! tx ty tz ax ay az
+                              (aref sel 0) (aref sel 1) (aref sel 2) s)
+              (secp224r1-swap3 ax ay az tx ty tz))))))
+    (values ax ay az)))
+
 (defun secp224r1-base-mult-limbs (k)
   "The fixed-base comb for G, in the limb field."
   (declare (type integer k)
@@ -1273,10 +1438,8 @@ X, Y and Z are bignums, and the result is a point."
                 (secp224r1-swap3 r0x r0y r0z ux uy uz))))
         (secp224r1-point-from-limbs r0x r0y r0z))))
 
-(defun secp224r1-shamir-mult-limbs (x1 y1 z1 x2 y2 z2 a b)
-  "A times (X1 : Y1 : Z1) plus B times (X2 : Y2 : Z2), in the limb
-field, after Shamir: one pass over the bits, doubling and adding the
-one point, the other, or their sum.  The result is a point."
+(defun secp224r1-binary-joint-mult-limbs (x1 y1 z1 x2 y2 z2 a b)
+  "A times (X1 : Y1 : Z1) plus B times (X2 : Y2 : Z2), bit by bit."
   (declare (type integer x1 y1 z1 x2 y2 z2 a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((s (secp224r1-make-scratch))
@@ -1307,6 +1470,34 @@ one point, the other, or their sum.  The result is a point."
         (when (or ai bi)
           (secp224r1-swap3 rx ry rz tx ty tz))))
     (secp224r1-point-from-limbs rx ry rz)))
+
+(defun secp224r1-shamir-mult-limbs (x1 y1 z1 x2 y2 z2 a b)
+  "A times G plus B times (X2 : Y2 : Z2).  When the first point is the
+generator, use the positional table for A*G and a four-bit window for
+B*Q, then add the two; otherwise fall back to the bit-by-bit joint
+multiplication."
+  (declare (type integer x1 y1 z1 x2 y2 z2 a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((gx (slot-value +secp224r1-g+ 'x))
+        (gy (slot-value +secp224r1-g+ 'y))
+        (gz (slot-value +secp224r1-g+ 'z)))
+    (if (and (= x1 gx) (= y1 gy) (= z1 gz))
+        (multiple-value-bind (px py pz) (secp224r1-base-mult-positional-limbs a)
+          (multiple-value-bind (qx qy qz)
+              (secp224r1-window-mult-limbs
+               (secp224r1-fe-from-int x2)
+               (secp224r1-fe-from-int y2)
+               (secp224r1-fe-from-int z2)
+               b)
+            (let ((s (secp224r1-make-scratch))
+                  (rx (secp224r1-fe-zero))
+                  (ry (secp224r1-fe-zero))
+                  (rz (secp224r1-fe-zero)))
+              (declare (type simple-vector s)
+                       (type secp224r1-fe rx ry rz))
+              (secp224r1-add! rx ry rz px py pz qx qy qz s)
+              (secp224r1-point-from-limbs rx ry rz))))
+        (secp224r1-binary-joint-mult-limbs x1 y1 z1 x2 y2 z2 a b))))
 
 (defun secp224r1-fe-mul (a b)
   "The product of the field elements A and B, reduced."

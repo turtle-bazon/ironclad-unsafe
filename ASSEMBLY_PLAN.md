@@ -3682,3 +3682,27 @@ conversion; only a faster field squaring can move those.
 
 The quiet run also pulled the two keygen rows that had drifted over 2x
 back below it.  Aggregate: 52 rows ahead, 60 within 2x, 11 beyond.
+
+## P-224: positional base table and windowed joint multiplication
+
+P-224's sign spent 123 us of 166 us in the fixed-base comb, which did
+224 doublings and 56 additions per multiplication.  It now uses the
+same 32x256 positional byte table as P-256: T[J][V] = V*256^J*G, built
+lazily and selected by a 16+16 two-level scan, so a signature needs 28
+additions and no doublings at all.
+
+Verify used a *bit-by-bit* joint multiplication: 224 doublings and up
+to 224 additions.  It now computes A*G from the positional table and
+B*Q with a four-bit window (224 doublings, 56 additions), then adds the
+two; the bit-by-bit routine remains as the fallback for a first point
+that is not G.
+
+| | before | after |
+|---|---|---|
+| fixed-base multiply | 123 us | 18 us |
+| sign (direct) | 165.7 us | 51.8 us |
+| verify (direct) | 241.8 us | 194.2 us |
+
+Both P-224 signature rows should cross 2x.  The table is built on first
+use (32 rows of 256 points) and costs a few milliseconds once.
+Full suite passes.
