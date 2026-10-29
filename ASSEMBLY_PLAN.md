@@ -2984,3 +2984,29 @@ Whirlpool and SHA3-256 vector files all pass.
 ECL also builds the current tree (the unrolled ML-DSA functions become
 very large C functions but compile; the load takes on the order of
 fifteen minutes on this host).
+
+## Negative result: a Montgomery squaring VOP loses to the CIOS multiply
+
+Half of the modmuls in an exponentiation are squarings, and a square
+needs only N(N+1)/2 products instead of N^2.  I built a column-wise SOS
+square VOP (three-word accumulator per column, doubled off-diagonal
+products, shared with the SOS multiply's reduction) and checked it
+against the multiply VOP on 600 adversarial inputs for 16 and 32 limbs
+(random, all-ones, high-bit-only, alternating) -- all identical.
+
+It is still not worth using:
+
+  SOS multiply   1640 ns
+  SOS square     1400 ns   (halved products, 3-word carries)
+  CIOS multiply  1320 ns   (what the code uses)
+
+The column square is 15% faster than the SOS multiply but the
+interleaved (CIOS) multiply is faster than both, because it never
+materialises the 2N-word product and its reduction step runs while the
+multiplier and accumulator are already in registers.  Exploiting the
+symmetry requires column-wise accumulation, which is incompatible with
+CIOS's row-by-row reduction, and the extra carry bookkeeping of a
+three-word column accumulator eats most of the halved products.
+Reverted; no code change.  This closes the "dedicated squaring" idea
+for the Montgomery paths: the current VOP selection is already the best
+of the three shapes.
