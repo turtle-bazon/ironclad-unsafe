@@ -6490,7 +6490,11 @@
                    ;; the sixteen reduction products disappear.
                    (inst mov lo rd)
                    (inst neg lo)
-                   (inst lea hi (ea -1 rd))
+                   ;; The high half is RD - 1 for RD > 0 and zero for
+                   ;; RD = 0; the borrow of the subtraction adds it back.
+                   (inst mov hi rd)
+                   (inst sub hi 1)
+                   (inst adc hi 0)
                    (inst xor t5 t5)      ; CF = OF = 0
                    (inst adcx t0 lo)
                    (inst adox t1 hi)

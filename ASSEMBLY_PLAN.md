@@ -3593,3 +3593,13 @@ Verify gains the full 1.48x; sign gains less because the scalar inverse
 and RFC 6979 nonce generation are unchanged.  The table stands at 52
 rows ahead, 60 within 2x and 11 beyond; the eleventh is RSA verify at
 2.02, a borderline row that measured 1.94 in the previous snapshot.
+
+### Correction: zero multiplier in the P-256 reduction
+
+The first version of the register CIOS computed the high half of
+MRED*P[0] as RD-1 unconditionally.  That is right only for RD > 0; for a
+zero accumulator word it produced -1 and turned 0*x into a wrong value.
+Two thousand random pairs never hit it; an exhaustive boundary set
+{0, 1, 2, P-1, P-2, (P-1)/2, 2^255, 2^256-1} found it at once.  The high
+half is now RD-1 with the subtraction's borrow added back, so RD = 0
+gives zero.  Boundary and random tests pass again.
