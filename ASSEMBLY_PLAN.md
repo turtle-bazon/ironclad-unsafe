@@ -3575,3 +3575,21 @@ bignum Euclid) sit outside the field code; the final affine conversion
 in EC-ENCODE-POINT is another fixed-window field inversion.  Those are
 the next targets.  The full SBCL suite passes (689 tests, including the
 ECDSA vectors and the field layer tests).
+
+### P-256 table refresh (rev 1190)
+
+The full table was rerun three times after the field rewrite.  The host
+was noisy enough that unrelated rows moved 10-40% between runs (the
+same SHA-512 code measured 356.9M and 387.6M bytes/s in consecutive
+runs), so the numbers below are from the run whose digest and AEAD
+rates matched the previous snapshot.
+
+| row | before | after | C | gap |
+|---|---|---|---|---|
+| secp256r1 sign | 17.19k | 18.58k | 52.48k | 3.08 -> 2.82 |
+| secp256r1 verify | 4.84k | 7.17k | 18.40k | 3.84 -> 2.57 |
+
+Verify gains the full 1.48x; sign gains less because the scalar inverse
+and RFC 6979 nonce generation are unchanged.  The table stands at 52
+rows ahead, 60 within 2x and 11 beyond; the eleventh is RSA verify at
+2.02, a borderline row that measured 1.94 in the previous snapshot.
