@@ -79,10 +79,17 @@ for a quick run at the old speed; each extra trial costs up to
     best))
 
 (defun bytes-per-second (thunk)
-  (multiple-value-bind (count elapsed) (time-op thunk)
-    (if (zerop elapsed)
-        0.0d0
-        (/ (* count *size*) elapsed))))
+  "Bytes per second, best of *TRIALS* samples.  This used to take a single
+0.2 s sample, which made the digest/cipher/AEAD rows read 5-25% low
+whenever a scheduler or GC pause landed inside that one sample; the
+ops/s rows have always taken *TRIALS* samples.  Peak-of-samples is also
+what the microbenchmarks in ASSEMBLY_PLAN.md use."
+  (let ((best 0.0d0))
+    (dotimes (_ (max 1 *trials*))
+      (multiple-value-bind (count elapsed) (time-op thunk)
+        (when (plusp elapsed)
+          (setf best (max best (/ (* count *size*) elapsed))))))
+    best))
 
 (defun random-octets (n)
   (ironclad-unsafe:random-data n))

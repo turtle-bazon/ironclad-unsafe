@@ -3072,3 +3072,24 @@ assembler the symbol rather than the TN (all code generation must happen
 at macroexpansion time), and a `:qword` size prefix on MOV/XOR with EA
 operands confuses the instruction combiner (the operands reach it
 unevaluated).
+
+## Benchmark: throughput rows now take *TRIALS* samples
+
+`BYTES-PER-SECOND` took one 0.2 s sample while `ITEMS-PER-SECOND` used
+`IRONCLAD_BENCH_TRIALS` (documented as "the number of timing samples per
+operation").  A pause landing in that single sample depressed a digest
+or cipher row by 5-25%: whirlpool read 75-138 MB/s across runs against
+146 MB/s isolated, sm3 119-146 against 146, sha512 305-314 against 341.
+The throughput helper now does what the ops/s helper always did, best of
+*TRIALS* samples (the same peak-of-samples used by the A/B measurements
+in this document).  The C references remain OpenSSL averages, so the
+ratios stay approximate.
+
+Effect on one run: the digest rows move to their isolated values
+(sha512 314 -> 343 MB/s = 1.96x, sha384 343 = 1.97x, whirlpool 138 ->
+143.6 = 1.38x); the ahead/within-2x counts move by a few rows in either
+direction because the C side moves too.
+
+This means several rows previously listed above 2x (sha512 family,
+whirlpool, mceliece, cast5) were measurement artifacts rather than
+performance gaps.
