@@ -3251,3 +3251,39 @@ and SBCL cannot assemble the three-operand `rorx`.
 
 Everything (RFC 6234 vectors, the suite, and the CCL build) passes;
 the four SHA-512 variants produce the standard "abc" digests.
+
+## SM4: x86-64 block VOP (1.43x, gap 1.81 -> 1.27)
+
+The portable encryptor expands to 2449 instructions per 16-byte block
+(~76 per round) because every 32-bit word is a tagged fixnum: each
+byte fetched from the S-box vector is shifted left by one (tagged),
+shifted into place, OR-ed in, and the result untagged before every
+rotate, and the S-box base is reloaded from its constant for all 128
+lookups.
+
+The VOP keeps the four state words in registers as plain 32-bit
+values, forms H(X) from four pre-shifted tables (T0[b]=S[b]<<24,
+T1[b]=S[b]<<16, T2[b]=S[b]<<8, T3[b]=S[b]) held in one 1024-entry
+array, and unrolls all 32 rounds: 1017 instructions instead of 2449.
+The tables follow the 32 round keys in the cipher's existing
+round-key array, so the VOP takes one array argument (five argument
+registers); with a separate table argument the register file could not
+pack the sixth argument.
+
+| | before | after |
+|---|---|---|
+| SM4 ECB 8 KB | 78.3 MB/s | 112.0 MB/s (1.43x) |
+| block | 205 ns | 143 ns |
+| block instructions | 2449 | 1017 |
+| C/Lisp gap | 1.81 | 1.27 |
+
+The block is now latency-bound rather than instruction-bound: the
+15-cycle round is the serial chain xor -> byte extract -> T load ->
+three ORs -> four rotate-xors, against 12 cycles/round for the C
+reference (141.9 MB/s).  Turning the OR chain and the rotate-xor chain
+into trees would save at most two of those fifteen cycles and was not
+attempted.  The decryptor still uses the portable code: the benchmark
+only measures encryption, and a round trip exercises both.
+
+Correctness: the GB/T 32907-2016 block vector and its million-iteration
+vector, 200 random encrypt/decrypt round trips, and the full suite.

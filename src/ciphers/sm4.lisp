@@ -52,7 +52,22 @@
          #xc0c7ced5 #xdce3eaf1 #xf8ff060d #x141b2229
          #x30373e45 #x4c535a61 #x686f767d #x848b9299
          #xa0a7aeb5 #xbcc3cad1 #xd8dfe6ed #xf4fb0209
-         #x10171e25 #x2c333a41 #x484f565d #x646b7279)))
+         #x10171e25 #x2c333a41 #x484f565d #x646b7279))
+
+  ;; The four byte-position copies of the S-box, as 32-bit table entries:
+  ;; T0[b] = S[b]<<24, T1[b] = S[b]<<16, T2[b] = S[b]<<8, T3[b] = S[b].
+  ;; The x86-64 block VOP forms h(x) from four loads out of this one
+  ;; table, which avoids the shift-and-tag sequence the byte vector
+  ;; forces on the portable expression.
+  (defconst +sm4-t+
+    (let ((tbl (make-array 1024 :element-type '(unsigned-byte 32))))
+      (dotimes (b 256)
+        (let ((v (aref +sm4-s+ b)))
+          (setf (aref tbl b) (ash v 24)
+                (aref tbl (+ 256 b)) (ash v 16)
+                (aref tbl (+ 512 b)) (ash v 8)
+                (aref tbl (+ 768 b)) v)))
+      tbl)))
 
 
 ;;;
@@ -99,9 +114,12 @@
 ;;;
 
 (defclass sm4 (cipher 16-byte-block-mixin)
+  ;; The 32 round keys followed by the four 256-entry S-box tables; the
+  ;; x86-64 VOP reads both through this one array, which keeps its
+  ;; argument list inside the register file.
   ((round-keys :accessor sm4-round-keys
-               :initform (make-array 32 :element-type '(unsigned-byte 32))
-               :type (simple-array (unsigned-byte 32) (32)))))
+               :initform (make-array 1056 :element-type '(unsigned-byte 32))
+               :type (simple-array (unsigned-byte 32) (1056)))))
 
 (defmethod schedule-key ((cipher sm4) key)
   (let ((round-keys (sm4-round-keys cipher))
@@ -109,7 +127,7 @@
         (k1 (logxor (ub32ref/be key 4) #x56aa3350))
         (k2 (logxor (ub32ref/be key 8) #x677d9197))
         (k3 (logxor (ub32ref/be key 12) #xb27022dc)))
-    (declare (type (simple-array (unsigned-byte 32) (32)) round-keys)
+    (declare (type (simple-array (unsigned-byte 32) (1056)) round-keys)
              (type (unsigned-byte 32) k0 k1 k2 k3))
     (dotimes (i 8)
       (setf k0 (logxor k0 (sm4-g (logxor k1 k2 k3 (aref +sm4-ck+ (* 4 i)))))
@@ -120,6 +138,9 @@
             (aref round-keys (+ (* 4 i) 2)) k2
             k3 (logxor k3 (sm4-g (logxor k0 k1 k2 (aref +sm4-ck+ (+ (* 4 i) 3)))))
             (aref round-keys (+ (* 4 i) 3)) k3))
+    ;; Slot the pre-shifted S-box tables after the round keys so the
+    ;; block VOP needs only one array argument.
+    (replace round-keys +sm4-t+ :start1 32)
     cipher))
 
 
@@ -128,8 +149,13 @@
 ;;;
 
 (define-block-encryptor sm4 16
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (sm4-encrypt-block-asm (sm4-round-keys context)
+                         plaintext plaintext-start
+                         ciphertext ciphertext-start)
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (let ((round-keys (sm4-round-keys context)))
-    (declare (type (simple-array (unsigned-byte 32) (32)) round-keys))
+    (declare (type (simple-array (unsigned-byte 32) (1056)) round-keys))
     (with-words ((w0 w1 w2 w3) plaintext plaintext-start :size 4)
       (sm4-round w0 w1 w2 w3 round-keys 0 t)
       (sm4-round w0 w1 w2 w3 round-keys 4 t)
@@ -144,7 +170,7 @@
 
 (define-block-decryptor sm4 16
   (let ((round-keys (sm4-round-keys context)))
-    (declare (type (simple-array (unsigned-byte 32) (32)) round-keys))
+    (declare (type (simple-array (unsigned-byte 32) (1056)) round-keys))
     (with-words ((w0 w1 w2 w3) ciphertext ciphertext-start :size 4)
       (sm4-round w0 w1 w2 w3 round-keys 31 nil)
       (sm4-round w0 w1 w2 w3 round-keys 27 nil)

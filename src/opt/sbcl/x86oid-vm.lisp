@@ -10732,3 +10732,83 @@ into O0..O7."
         (inst mov :dword (a 2) h2)
         (inst mov :dword (a 3) h3)
         (inst mov :dword (a 4) h4)))))
+
+;;; SM4: one 16-byte block, all 32 rounds.  The portable body is 76
+;;; instructions per round because every 32-bit word is a tagged fixnum
+;;; (SHL/SAR around every shift, OR and ROL, and the S-box base is
+;;; reloaded for each of the 128 lookups).  Here the four words stay in
+;;; registers as plain 32-bit values and H(X) comes from four loads out
+;;; of the pre-shifted table +SM4-T+.
+#+x86-64
+(define-vop (sm4-encrypt-block)
+  (:translate ironclad-unsafe::sm4-encrypt-block-asm)
+  (:policy :fast-safe)
+  (:args (keys :scs (descriptor-reg))
+         (plaintext :scs (descriptor-reg))
+         (plaintext-start :scs (unsigned-reg))
+         (ciphertext :scs (descriptor-reg))
+         (ciphertext-start :scs (unsigned-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-8
+              unsigned-num
+              simple-array-unsigned-byte-8
+              unsigned-num)
+  (:temporary (:sc unsigned-reg) w0 w1 w2 w3 t0 t1 t2)
+  (:generator 1000
+    (let ((disp (- (* n-word-bytes vector-data-offset) other-pointer-lowtag)))
+      (flet ((d (i) (ea (+ disp i) plaintext plaintext-start))
+             (cd (i) (ea (+ disp i) ciphertext ciphertext-start))
+             (k (i) (ea (+ disp (* 4 i)) keys))
+             ;; the pre-shifted S-box tables start at element 32
+             (tt (off i) (ea (+ disp (* 4 32) off) keys i 4)))
+        (inst mov :dword w0 (d 0))  (dword-inst bswap w0)
+        (inst mov :dword w1 (d 4))  (dword-inst bswap w1)
+        (inst mov :dword w2 (d 8))  (dword-inst bswap w2)
+        (inst mov :dword w3 (d 12)) (dword-inst bswap w3)
+        (macrolet ((sm4-round-step (i target a b c)
+                     `(progn
+                        ;; t0 = a ^ b ^ c ^ rk[i]
+                        (inst mov :dword t0 ,a)
+                        (inst xor :dword t0 ,b)
+                        (inst xor :dword t0 ,c)
+                        (inst xor :dword t0 (k ,i))
+                        ;; t1 = T0[b0] | T1[b1] | T2[b2] | T3[b3]
+                        (inst mov t1 t0)
+                        (inst shr t1 24)
+                        (inst mov :dword t1 (tt 0 t1))
+                        (inst mov t2 t0)
+                        (inst shr t2 16)
+                        (inst and t2 #xff)
+                        (inst or :dword t1 (tt 1024 t2))
+                        (inst mov t2 t0)
+                        (inst shr t2 8)
+                        (inst and t2 #xff)
+                        (inst or :dword t1 (tt 2048 t2))
+                        (inst and t0 #xff)
+                        (inst or :dword t1 (tt 3072 t0))
+                        ;; t2 = t1 ^ rol(t1,2) ^ rol(t1,10) ^ rol(t1,18)
+                        ;;         ^ rol(t1,24)
+                        (inst mov t2 t1)
+                        (inst rol :dword t2 2)
+                        (inst xor t2 t1)
+                        (inst mov t0 t1)
+                        (inst rol :dword t0 10)
+                        (inst xor t2 t0)
+                        (inst mov t0 t1)
+                        (inst rol :dword t0 18)
+                        (inst xor t2 t0)
+                        (inst mov t0 t1)
+                        (inst rol :dword t0 24)
+                        (inst xor t2 t0)
+                        (inst xor :dword ,target t2))))
+          #.(let ((forms '()))
+              (dotimes (i 32)
+                (let* ((target (nth (mod i 4) '(w0 w1 w2 w3)))
+                       (others (remove target '(w0 w1 w2 w3))))
+                  (push `(sm4-round-step ,i ,target ,@others) forms)))
+              `(progn ,@(nreverse forms))))
+        ;; the output words are stored in reverse order, big-endian
+        (inst mov t0 w3) (dword-inst bswap t0) (inst mov :dword (cd 0) t0)
+        (inst mov t0 w2) (dword-inst bswap t0) (inst mov :dword (cd 4) t0)
+        (inst mov t0 w1) (dword-inst bswap t0) (inst mov :dword (cd 8) t0)
+        (inst mov t0 w0) (dword-inst bswap t0) (inst mov :dword (cd 12) t0)))))
