@@ -3603,3 +3603,40 @@ Two thousand random pairs never hit it; an exhaustive boundary set
 {0, 1, 2, P-1, P-2, (P-1)/2, 2^255, 2^256-1} found it at once.  The high
 half is now RD-1 with the subtraction's borrow added back, so RD = 0
 gives zero.  Boundary and random tests pass again.
+
+## P-256: fast scalar inverse and two-level base-table selection
+
+Two non-field costs dominated signing after the field rewrite.
+
+**Scalar inverse.** SIGN and VERIFY invert a scalar modulo the group order
+with bignum Euclid, measured at 17-18.6 us.  A second register CIOS VOP
+now does the same job for L (no special limbs; the reduction word is
+T[0]*N0 mod 2^64), and a fixed four-bit window over the public exponent
+L-2 drives it.  Control flow depends only on L-2 and the full sixteen
+entry table scan is linear, so the inverse is constant-time in the
+input; the previous Euclid inverse was variable-time and needed
+blinding.  Measured 7.8-7.9 us, 2.2x faster, and the blinding random
+draw disappears from the sign path.
+
+**Base-table selection.** The fixed-base positional table stored each of
+32 rows as 256 affine points, and selected a byte with a 256-entry scan
+(158 ns, 5.1 us of every base multiplication).  Each row is now a 16x16
+matrix: a 16-entry scan picks the sub-row, a second picks the point
+(53 ns).  The same points are shared, so the table size is unchanged.
+
+| | before | after |
+|---|---|---|
+| scalar inverse (256-bit) | 17.0 us | 7.9 us |
+| select-base | 158 ns | 53 ns |
+| fixed-base multiply | 13.3 us | 11.1 us |
+| sign (direct) | 42.2 us | 36.3 us |
+| verify (direct) | 133.8 us | 129.9 us |
+
+Sign is now about 1.9x the C reference in direct measurement; verify is
+still dominated by the ~100 us joint scalar multiplication.
+
+Gotcha recorded for later: with (SAFETY 0), extracting the four limbs of
+a bignum with `(ldb (byte 64 (* 64 i)) v)` in a `DOTIMES` returned the
+wrong words for a 224-bit value; the equivalent `LOGAND`/`ASH` loop is
+correct.  The boundary test caught it because the derived R constant came
+out as 68 bits instead of 224.

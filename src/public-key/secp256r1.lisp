@@ -696,6 +696,109 @@ reusing scratch pool S. DST must differ from P."
                           (ceiling (integer-length +secp256r1-l+) 8)
                           :digest (or parameters *ecdsa-rfc6979-digest*))))
 
+;;; Scalar inversion modulo the group order.
+;;;
+;;; Fermat inversion with the same register CIOS multiply as the field,
+;;; specialised to L.  The control flow depends only on the public
+;;; exponent L-2 (a fixed four-bit window and a full sixteen-entry table
+;;; scan), not on the secret scalar, so this replaces the variable-time
+;;; bignum Euclid inverse on the signing path.
+
+(declaim (ftype (function (integer)
+                          (simple-array (unsigned-byte 64) (4)))
+                secp256r1-scalar-from-int))
+
+(defun secp256r1-scalar-from-int (n)
+  "The four 64-bit limbs of N modulo the group order."
+  (declare (type integer n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((v (mod n +secp256r1-l+))
+        (r (make-array 4 :element-type '(unsigned-byte 64) :initial-element 0)))
+    (dotimes (i 4 r)
+      (setf (aref r i) (logand v #xffffffffffffffff)
+            v (ash v -64)))))
+
+(defparameter +secp256r1-scalar-r+
+  (secp256r1-scalar-from-int (ash 1 256)))
+(defparameter +secp256r1-scalar-r2+
+  (secp256r1-scalar-from-int (ash 1 512)))
+(declaim (type (simple-array (unsigned-byte 64) (4))
+               +secp256r1-scalar-r+ +secp256r1-scalar-r2+))
+
+#+(and sbcl x86-64 ironclad-unsafe-assembly)
+(defun secp256r1-scalar-mont-mul (r a b)
+  (secp256r1-scalar-mont-mul-asm r a b)
+  r)
+
+#+(and sbcl x86-64 ironclad-unsafe-assembly)
+(declaim (inline secp256r1-scalar-mont-mul))
+
+#+(and sbcl x86-64 ironclad-unsafe-assembly)
+(defun secp256r1-scalar-inv (n)
+  "N^-1 mod L by a fixed four-bit window.  The control flow depends
+only on the public exponent L-2."
+  (declare (type integer n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((x (mod n +secp256r1-l+)))
+    (if (zerop x)
+        0
+        (let* ((ar (make-array 4 :element-type '(unsigned-byte 64)
+                                 :initial-element 0))
+               (acc (make-array 4 :element-type '(unsigned-byte 64)
+                                  :initial-element 0))
+               (tmp (make-array 4 :element-type '(unsigned-byte 64)
+                                  :initial-element 0))
+               (one (make-array 4 :element-type '(unsigned-byte 64)
+                                  :initial-element 0))
+               (tab (make-array 16)))
+          (declare (type (simple-array (unsigned-byte 64) (4))
+                         ar acc tmp one)
+                   (type simple-vector tab))
+          (secp256r1-scalar-mont-mul ar (secp256r1-scalar-from-int x)
+                                     +secp256r1-scalar-r2+)
+          (replace acc +secp256r1-scalar-r+)
+          (setf (aref one 0) 1)
+          (setf (aref tab 0) one
+                (aref tab 1) (copy-seq ar))
+          (loop for i of-type fixnum from 2 below 16 do
+            (let ((next (make-array 4 :element-type '(unsigned-byte 64)
+                                      :initial-element 0)))
+              (secp256r1-scalar-mont-mul
+               next
+               (the (simple-array (unsigned-byte 64) (4)) (aref tab (1- i)))
+               ar)
+              (setf (aref tab i) next)))
+          (let ((e (- +secp256r1-l+ 2)))
+            (declare (type integer e))
+            (loop for wi of-type fixnum downfrom 63 to 0 do
+              (unless (= wi 63)
+                (dotimes (j 4)
+                  (declare (ignore j))
+                  (secp256r1-scalar-mont-mul acc acc acc)))
+              (let* ((shift (* wi 4))
+                     (v (ldb (byte 4 shift) e))
+                     (sel (the (simple-array (unsigned-byte 64) (4))
+                               (aref tab 0))))
+                (declare (type fixnum shift)
+                         (type (unsigned-byte 4) v))
+                (dotimes (i 16)
+                  (when (= i v)
+                    (setf sel (the (simple-array (unsigned-byte 64) (4))
+                                   (aref tab i)))))
+                (unless (zerop v)
+                  (secp256r1-scalar-mont-mul tmp acc sel)
+                  (replace acc tmp)))))
+          (secp256r1-scalar-mont-mul tmp acc one)
+          (let ((v (logior (aref tmp 0)
+                           (ash (aref tmp 1) 64)
+                           (ash (aref tmp 2) 128)
+                           (ash (aref tmp 3) 192))))
+            (mod v +secp256r1-l+))))))
+
+#-(and sbcl x86-64 ironclad-unsafe-assembly)
+(defun secp256r1-scalar-inv (n)
+  (if (zerop n) 0 (modular-inverse n +secp256r1-l+)))
+
 ;;; Note that hashing is not performed here.
 (defmethod sign-message ((key secp256r1-private-key) message &key (start 0) end (digest *ecdsa-rfc6979-digest*) &allow-other-keys)
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
@@ -703,7 +806,7 @@ reusing scratch pool S. DST must differ from P."
          (sk (ec-decode-scalar :secp256r1 (secp256r1-key-x key)))
          (h (subseq message start end))
          (k (generate-signature-nonce key h digest))
-         (invk (modular-inverse-with-blinding k +secp256r1-l+ :prime t))
+         (invk (secp256r1-scalar-inv k))
          (r (ec-scalar-mult +secp256r1-g+ k))
          (x (subseq (ec-encode-point r) 1 (1+ (/ +secp256r1-bits+ 8))))
          (r (ec-decode-scalar :secp256r1 x))
@@ -731,7 +834,7 @@ reusing scratch pool S. DST must differ from P."
       (return-from verify-signature nil))
     (let* ((h (subseq message start end))
          (e (ec-decode-scalar :secp256r1 h))
-         (w (modular-inverse s +secp256r1-l+))
+         (w (secp256r1-scalar-inv s))
          (u1 (mod (* e w) +secp256r1-l+))
          (u2 (mod (* r w) +secp256r1-l+))
          ;; Joint multiplication (Shamir's trick): one pass instead of two.
@@ -1094,7 +1197,15 @@ the point at infinity."
                 (secp256r1-add! dst (aref row (1- v)) base s))
             (setf (aref row v) dst)))
         (secp256r1-batch-affine! row)
-        (setf (aref rows j) row)
+        ;; Store the row as sixteen sub-rows of sixteen points, so the
+        ;; constant-time selection can scan 16+16 entries instead of 256.
+        (let ((subs (make-array 16)))
+          (dotimes (h 16)
+            (let ((sub (make-array 16)))
+              (dotimes (l 16)
+                (setf (aref sub l) (aref row (+ (* 16 h) l))))
+              (setf (aref subs h) sub)))
+          (setf (aref rows j) subs))
         ;; base := 256 * base = 256^(J+1) * G
         (loop repeat 8 do
           (secp256r1-double! tmp base s)
@@ -1102,15 +1213,24 @@ the point at infinity."
 
 (declaim (inline secp256r1-select-base))
 (defun secp256r1-select-base (row v)
-  "Select index V from the affine positional-table ROW.  The scan touches
-every entry in order, so the memory access pattern does not depend on V."
+  "Select index V from the affine positional-table ROW, a 16x16 matrix.
+The two scans touch every sub-row and every entry in order, so the
+memory access pattern does not depend on V; 16+16 comparisons replace
+the 256 of a flat scan."
   (declare (type simple-vector row)
            (type (unsigned-byte 8) v)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((sel (aref row 0)))
-    (loop for i of-type fixnum from 1 below 256
-          do (when (= i v) (setf sel (aref row i))))
-    sel))
+  (let* ((hi (ash v -4))
+         (lo (logand v 15))
+         (sub (aref row 0)))
+    (declare (type (unsigned-byte 4) hi lo)
+             (type simple-vector sub))
+    (loop for i of-type fixnum from 1 below 16
+          do (when (= i hi) (setf sub (aref row i))))
+    (let ((sel (aref sub 0)))
+      (loop for i of-type fixnum from 1 below 16
+            do (when (= i lo) (setf sel (aref sub i))))
+      sel)))
 
 (defun secp256r1-base-mult (k)
   "Fixed-base multiplication K*G using the positional byte table: 32
@@ -1173,7 +1293,7 @@ the fixed generator, whose affine multiples come from the byte table."
         (declare (type fixnum shift)
                  (type (unsigned-byte 4) ga gb))
         (unless (zerop ga)
-          (secp256r1-mixed-add! tmp acc (aref tg ga) s)
+          (secp256r1-mixed-add! tmp acc (aref (aref tg 0) ga) s)
           (secp256r1-point-copy! acc tmp))
         (unless (zerop gb)
           (secp256r1-add! tmp acc (aref tq gb) s)

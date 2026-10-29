@@ -6564,6 +6564,117 @@
 
 
 #+x86-64
+(define-vop (secp256r1-scalar-mont-mul-asm)
+  ;; R := A * B * R^-1 mod L, the P-256 group order, four 64-bit limbs.
+  ;; Same register CIOS and dual carry chains as the field multiply,
+  ;; except that L has no special limbs: the reduction word is
+  ;; T[0] * N0 mod 2^64 (N0 = -L^-1 mod 2^64), and all four reduction
+  ;; products are real.  Used only by the scalar inverse.
+  (:translate ironclad-unsafe::secp256r1-scalar-mont-mul-asm)
+  (:policy :fast-safe)
+  (:args (r :scs (descriptor-reg))
+         (a :scs (descriptor-reg))
+         (b :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg) t0 t1 t2 t3 t4 t5 hi lo)
+  (:temporary (:sc unsigned-reg :offset rdx-offset) rd)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (flet ((a64 (i) (ea (+ data-offset (* 8 i)) a))
+             (b64 (i) (ea (+ data-offset (* 8 i)) b))
+             (r64 (i) (ea (+ data-offset (* 8 i)) r)))
+        (labels ((accum-b ()
+                   (inst xor hi hi)      ; CF = OF = 0
+                   (dotimes (j 4)
+                     (inst mulx hi lo (b64 j))
+                     (case j
+                       (0 (inst adcx t0 lo) (inst adox t1 hi))
+                       (1 (inst adcx t1 lo) (inst adox t2 hi))
+                       (2 (inst adcx t2 lo) (inst adox t3 hi))
+                       (3 (inst adcx t3 lo) (inst adox t4 hi))))
+                   (inst mov rd 0)
+                   (inst adcx t4 rd)
+                   (inst adox t5 rd)
+                   (inst adcx t5 rd)))
+          (inst mov t0 0)
+          (inst mov t1 0)
+          (inst mov t2 0)
+          (inst mov t3 0)
+          (inst mov t4 0)
+          (inst mov t5 0)
+          (dotimes (i 4)
+            ;; T += A[i] * B.
+            (inst mov rd (a64 i))
+            (accum-b)
+            ;; MRED := T[0] * N0 mod 2^64.
+            (inst mov hi #xccd1c8aaee00bc4f)
+            (inst mov rd t0)
+            (inst imul rd hi)
+            ;; T += MRED * L; T[0] cancels.
+            (inst xor t5 t5)
+            (inst mov lo #xf3b9cac2fc632551)
+            (inst mulx hi lo lo)
+            (inst adcx t0 lo)
+            (inst adox t1 hi)
+            (inst mov lo #xbce6faada7179e84)
+            (inst mulx hi lo lo)
+            (inst adcx t1 lo)
+            (inst adox t2 hi)
+            (inst mov lo #xffffffffffffffff)
+            (inst mulx hi lo lo)
+            (inst adcx t2 lo)
+            (inst adox t3 hi)
+            (inst mov lo #xffffffff00000000)
+            (inst mulx hi lo lo)
+            (inst adcx t3 lo)
+            (inst adox t4 hi)
+            (inst mov rd 0)
+            (inst adcx t4 rd)
+            (inst adox t5 rd)
+            (inst adcx t5 rd)
+            ;; T := T / 2^64.
+            (inst mov t0 t1)
+            (inst mov t1 t2)
+            (inst mov t2 t3)
+            (inst mov t3 t4)
+            (inst mov t4 t5)
+            (inst mov t5 0))
+          ;; One conditional subtraction of L over five words.  L[2] is
+          ;; all ones, so its masked form is the mask; L[3] is
+          ;; #xffffffff00000000, so its masked form is the mask shifted
+          ;; up by 32 bits.
+          (inst mov hi #xf3b9cac2fc632551)
+          (inst sub t0 hi)
+          (inst mov hi #xbce6faada7179e84)
+          (inst sbb t1 hi)
+          (inst mov hi #xffffffffffffffff)
+          (inst sbb t2 hi)
+          (inst mov hi #xffffffff00000000)
+          (inst sbb t3 hi)
+          (inst sbb t4 0)
+          (inst sbb lo lo)             ; mask = 0 or -1
+          (inst mov hi #xf3b9cac2fc632551)
+          (inst and hi lo)
+          (inst mov t5 #xbce6faada7179e84)
+          (inst and t5 lo)
+          (inst mov rd lo)
+          (inst shl rd 32)
+          (inst add t0 hi)
+          (inst adc t1 t5)
+          (inst adc t2 lo)
+          (inst adc t3 rd)
+          (inst adc t4 0)
+          (inst mov (r64 0) t0)
+          (inst mov (r64 1) t1)
+          (inst mov (r64 2) t2)
+          (inst mov (r64 3) t3))))))
+
+
+
+#+x86-64
 (define-vop (secp256r1-fe-add64-asm)
   ;; R := (A + B) mod P for four 64-bit limbs.  The sum is formed with a
   ;; single ADD/ADC chain in registers, then P is subtracted over five
