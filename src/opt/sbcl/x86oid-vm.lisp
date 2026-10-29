@@ -10581,3 +10581,154 @@ into O0..O7."
       (sm3-schedule-body))))
 
 
+
+;;; Poly1305: the bulk-block loop of POLY1305-PROCESS-FULL-BLOCKS, using
+;;; the (5 x 32-bit) limb representation and the precomputed R/RR words.
+;;; The Lisp version spends about half of its instructions shuffling
+;;; tagged fixnums and reloading spilled temporaries; here the five
+;;; accumulator limbs and the two scratch/product registers stay in
+;;; general registers, and every partial product is a single IMUL whose
+;;; low half is all the algorithm needs.  The four 64-bit product
+;;; accumulators are parked in XMM registers: the x86-64 register file
+;;; (thirteen allocatable words) could not otherwise hold five limbs,
+;;; four accumulators, two scratch words, and the three live pointers.
+;;; R0..R3 and RR0..RR3 live in memory and are used directly as IMUL
+;;; operands.
+#+x86-64
+(define-vop (poly1305-blocks)
+  (:translate ironclad-unsafe::poly1305-blocks-asm)
+  (:policy :fast-safe)
+  (:args (acc :scs (descriptor-reg))
+         (rvec :scs (descriptor-reg))
+         (data :scs (descriptor-reg))
+         (offset :scs (unsigned-reg))
+         (nblocks :scs (unsigned-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-8
+              unsigned-num
+              unsigned-num)
+  (:temporary (:sc unsigned-reg) h0 h1 h2 h3 h4 t0 t1)
+  (:temporary (:sc double-reg) x0 x1 x2 x3)
+  (:generator 1000
+    (let ((disp (- (* n-word-bytes vector-data-offset) other-pointer-lowtag))
+          (loop (gen-label))
+          (done (gen-label)))
+      (flet ((a (i) (ea (+ disp (* 4 i)) acc))
+             (r (i) (ea (+ disp (* 8 i)) rvec))
+             (d (i) (ea (+ disp i) data)))
+        (inst mov :dword h0 (a 0))
+        (inst mov :dword h1 (a 1))
+        (inst mov :dword h2 (a 2))
+        (inst mov :dword h3 (a 3))
+        (inst mov :dword h4 (a 4))
+        ;; Fold the starting byte offset into the data pointer.
+        (inst add data offset)
+        (inst test nblocks nblocks)
+        (inst jmp :z done)
+        (emit-label loop)
+        ;; s_i = h_i + message word; s4 = h4 + hibit (hibit is 1 here).
+        (inst mov :dword t0 (d 0))  (inst add h0 t0)
+        (inst mov :dword t0 (d 4))  (inst add h1 t0)
+        (inst mov :dword t0 (d 8))  (inst add h2 t0)
+        (inst mov :dword t0 (d 12)) (inst add h3 t0)
+        (inst add h4 1)
+        (inst mov :dword h4 h4)
+        ;; x_j = sum_i s_i * r[(j-i) mod 4], with the high terms folded
+        ;; through RR; every sum is modulo 2^64.
+        (inst mov t1 h0) (inst imul t1 (r 0))
+        (inst mov t0 h1) (inst imul t0 (r 7)) (inst add t1 t0)
+        (inst mov t0 h2) (inst imul t0 (r 6)) (inst add t1 t0)
+        (inst mov t0 h3) (inst imul t0 (r 5)) (inst add t1 t0)
+        (inst mov t0 h4) (inst imul t0 (r 4)) (inst add t1 t0)
+        (inst movq x0 t1)
+
+        (inst mov t1 h0) (inst imul t1 (r 1))
+        (inst mov t0 h1) (inst imul t0 (r 0)) (inst add t1 t0)
+        (inst mov t0 h2) (inst imul t0 (r 7)) (inst add t1 t0)
+        (inst mov t0 h3) (inst imul t0 (r 6)) (inst add t1 t0)
+        (inst mov t0 h4) (inst imul t0 (r 5)) (inst add t1 t0)
+        (inst movq x1 t1)
+
+        (inst mov t1 h0) (inst imul t1 (r 2))
+        (inst mov t0 h1) (inst imul t0 (r 1)) (inst add t1 t0)
+        (inst mov t0 h2) (inst imul t0 (r 0)) (inst add t1 t0)
+        (inst mov t0 h3) (inst imul t0 (r 7)) (inst add t1 t0)
+        (inst mov t0 h4) (inst imul t0 (r 6)) (inst add t1 t0)
+        (inst movq x2 t1)
+
+        (inst mov t1 h0) (inst imul t1 (r 3))
+        (inst mov t0 h1) (inst imul t0 (r 2)) (inst add t1 t0)
+        (inst mov t0 h2) (inst imul t0 (r 1)) (inst add t1 t0)
+        (inst mov t0 h3) (inst imul t0 (r 0)) (inst add t1 t0)
+        (inst mov t0 h4) (inst imul t0 (r 7)) (inst add t1 t0)
+        (inst movq x3 t1)
+
+        ;; x4 = (h4 + 1) * (r0 & 3), as a 32-bit value.
+        (inst mov t1 (r 0))
+        (inst and t1 3)
+        (inst imul t1 h4)
+        (inst mov :dword t1 t1)
+        ;; u5 = x4 + (x3 >> 32), as a 32-bit value.
+        (inst movq h0 x3)
+        (inst shr h0 32)
+        (inst add t1 h0)
+        (inst mov :dword t1 t1)
+        ;; u0 = 5 * (u5 >> 2) + (x0 & #xffffffff)
+        (inst mov h0 t1)
+        (inst shr h0 2)
+        (inst lea h0 (ea h0 h0 4))
+        (inst movq h1 x0)
+        (inst mov :dword h1 h1)
+        (inst add h0 h1)
+        ;; The two independent halves of each input word are summed
+        ;; before the carry from the previous limb is added, so the
+        ;; serial part of the carry chain is one add and one shift per
+        ;; limb instead of three dependent adds.
+        ;; u1 = (u0 >> 32) + ((x1 & #xffffffff) + (x0 >> 32))
+        (inst movq h1 x1)
+        (inst mov :dword h1 h1)
+        (inst movq h2 x0)
+        (inst shr h2 32)
+        (inst add h1 h2)
+        (inst mov t0 h0)
+        (inst shr t0 32)
+        (inst add h1 t0)
+        ;; u2 = (u1 >> 32) + ((x2 & #xffffffff) + (x1 >> 32))
+        (inst movq h2 x2)
+        (inst mov :dword h2 h2)
+        (inst movq h3 x1)
+        (inst shr h3 32)
+        (inst add h2 h3)
+        (inst mov t0 h1)
+        (inst shr t0 32)
+        (inst add h2 t0)
+        ;; u3 = (u2 >> 32) + ((x3 & #xffffffff) + (x2 >> 32))
+        (inst movq h3 x3)
+        (inst mov :dword h3 h3)
+        (inst movq h4 x2)
+        (inst shr h4 32)
+        (inst add h3 h4)
+        (inst mov t0 h2)
+        (inst shr t0 32)
+        (inst add h3 t0)
+        ;; u4 = (u3 >> 32) + (u5 & 3)
+        (inst mov h4 h3)
+        (inst shr h4 32)
+        (inst and t1 3)
+        (inst add h4 t1)
+        ;; keep the low 32 bits of every limb
+        (inst mov :dword h0 h0)
+        (inst mov :dword h1 h1)
+        (inst mov :dword h2 h2)
+        (inst mov :dword h3 h3)
+        (inst mov :dword h4 h4)
+        (inst add data 16)
+        (inst sub nblocks 1)
+        (inst jmp :nz loop)
+        (emit-label done)
+        (inst mov :dword (a 0) h0)
+        (inst mov :dword (a 1) h1)
+        (inst mov :dword (a 2) h2)
+        (inst mov :dword (a 3) h3)
+        (inst mov :dword (a 4) h4)))))

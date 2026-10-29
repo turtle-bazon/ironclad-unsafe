@@ -3149,3 +3149,65 @@ signs an already-hashed message and returns raw R || S; use
 DIGEST-SEQUENCE and ECDSA-SIGNATURE-TO-DER, whose argument order is
 (curve signature)), or passing RSA-style key parameters (:x is the
 private octet string here, not :d/:n).
+
+## Poly1305: x86-64 block-loop VOP (1.32x MAC, 1.15-1.34x chacha-poly)
+
+The portable block loop in src/macs/poly1305.lisp spends about half of
+its instructions managing SBCL's tagged-fixnum representation: the five
+32-bit accumulator limbs and the 64-bit partial products are reloaded
+from [RBP-n] slots with a SHL/SAR pair around every multiply, and the
+carry chain masks every intermediate back into a fixnum.  The loop
+disassembles to 223 instructions for 16 bytes (~52 cycles/block,
+1.24 GB/s).
+
+The new POLY1305-BLOCKS VOP keeps the five active limbs and two scratch
+words in general registers, parks the four 64-bit product accumulators
+in XMM registers (the thirteen allocatable words cannot hold five
+limbs, four accumulators, two scratch words and the three live
+pointers), and uses the precomputed R0..R3/RR0..RR3 words directly as
+IMUL memory operands.  It loops over whole 16-byte blocks itself, so
+the per-block Lisp loop overhead is gone; the padded tail block still
+uses the portable code.  The loop is 119 instructions.
+
+The R/RR folding terms are computed once when the MAC is keyed and
+stored in a new 8-word (unsigned-byte 64) slot (R64), instead of being
+recomputed on every update call.
+
+| | before | after |
+|---|---|---|
+| Poly1305 8 KB MAC (table) | 1.249 GB/s | 1.650 GB/s (1.32x) |
+| Poly1305 8 KB MAC (isolated) | 1.241 GB/s | 1.552 GB/s |
+| chacha-poly encrypt 8192-byte message (table) | 571 MB/s | 656 MB/s |
+| chacha-poly, preallocated mode | 656 MB/s | 789 MB/s |
+| block loop | 223 instructions | 119 instructions |
+
+The chacha-poly row's C/Lisp gap falls from 3.79 to 3.10.  The remaining
+row is now limited by ChaCha as much as by Poly1305: the AEAD runs at
+789 MB/s with a preallocated mode, against a serial bound of 853 MB/s
+(ChaCha 1.81 GB/s, Poly1305 1.65 GB/s), and the four-block AVX2 ChaCha
+core measures 1.96 GB/s (1.73 cycles/byte) even with no counter or glue
+work.  A better ChaCha core is now the larger half of that gap.
+
+Note that the table's AEAD shape creates a fresh mode per message; that
+setup measures ~1.5 us, which is 12% of an 8192-byte call.  Making
+instantiation cheaper would move every AEAD row, but the setup is
+ordinary CLOS/cipher keying and was not touched here.
+
+Correctness: RFC 8439 section 2.5.2, 200 random messages plus every
+boundary length around 16/32/.../1024 against an independent bignum
+Poly1305, and 300 random buffers comparing the VOP loop byte-for-byte
+with the portable loop.  Full SBCL suite green; the same differential
+test passes on CCL 1.13, where only the portable path exists.
+
+Two things that did not work, recorded so they are not retried:
+
+* Putting the 64-bit intermediates in (unsigned-byte 64) arrays to stop
+  SBCL from using a tagged representation: 701 MB/s, 40% *slower* than
+  the 1182 MB/s baseline.  The extra load/store traffic costs more than
+  the tag shifts it removes.
+* Reordering the carry so the two halves of each input word are summed
+  before the incoming carry (one dependent add per limb instead of
+  three): 1555 MB/s versus 1552 MB/s, i.e. no change.  The loop is
+  instruction-throughput bound, not latency bound, so shortening the
+  dependency chain does not help.  (The reordering is kept anyway: it
+  is the same speed and slightly shorter.)
