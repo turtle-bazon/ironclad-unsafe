@@ -3010,3 +3010,21 @@ three-word column accumulator eats most of the halved products.
 Reverted; no code change.  This closes the "dedicated squaring" idea
 for the Montgomery paths: the current VOP selection is already the best
 of the three shapes.
+
+## Negative result: a global Montgomery-context cache
+
+Converting the base into Montgomery form costs 3.0 us of a 30 us
+RSA-2048 verify `((mod (* base 2^2048) m))`.  With `R^2 mod m` cached,
+the conversion is one 1.3 us VOP multiply; the exponentiation also
+skips recomputing N0 and the modulus limbs.  A per-modulus cache in
+MATH.LISP (EQ-matched, immutable contexts, bounded list) gave the
+expected saving for repeated verifications, but it is the wrong shape:
+RSA *key generation* runs hundreds of Miller-Rabin exponentiations on
+fresh candidate moduli, so every one of them paid to build a context
+(two 4096/2048-bit divisions) and the cache never hit.  A single
+`generate-key-pair :rsa` run slowed enough to hit a 15-minute timeout.
+
+The clean version would hang the context off the key object and thread
+it through `rsa-core`/`power-mod`; that is ~5.7% of RSA verify (and
+under 1% of anything else, since signing uses CRT exponents on p and
+q).  Not worth the API churn for one row.  Reverted; no code change.
