@@ -3787,3 +3787,21 @@ improved but remains above.  Aggregate: 54 rows ahead, 61 within 2x,
 8 beyond (from 11 at the start of the session).  The eight are falcon
 keygen, secp521r1/ed448/dsa/p256/p224 verify and chacha-poly, plus one
 McEliece keygen row that is noise.
+
+## P-521: interleaved 9-limb MULX multiply
+
+P-521 was still calling the separated (SOS) 9-limb Montgomery VOP even
+though the interleaved form is the faster one for every other size.  A
+9-limb instantiation of the MULX/two-chain CIOS now serves it, with the
+SOS path as the fallback when BMI2/ADX are absent.
+
+Measured on the real modulus and limbs:
+
+| form | ns |
+|---|---|
+| SOS (old) | 154.0 |
+| CIOS, serial | 141.5 |
+| CIOS, MULX/ADX | 130.7 |
+
+Direct sign 323 -> 304 us, verify 1389 -> 1212 us (verify is still
+field-bound: 520 doublings at ~1.2 us each).  Full suite passes.

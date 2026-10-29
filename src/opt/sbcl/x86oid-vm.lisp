@@ -7158,6 +7158,9 @@
 #+x86-64
 (define-mont-mul-cios-mulx-vop mont-mul-32-cios-mulx
     ironclad-unsafe::mont-mul-32-cios-mulx-asm 32)
+#+x86-64
+(define-mont-mul-cios-mulx-vop mont-mul-9-cios-mulx
+    ironclad-unsafe::mont-mul-9-cios-mulx-asm 9)
 
 ;;; Fixed-modulus add/sub VOPs for the P-521 limb field (9 x 64-bit).
 ;;; R := (A + B) mod P resp. (A - B) mod P, fully unrolled.

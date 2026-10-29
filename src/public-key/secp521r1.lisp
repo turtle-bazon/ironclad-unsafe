@@ -226,7 +226,10 @@ X is reduced, so the double needs one subtraction at most."
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
-    (mont-mul-9-asm r a b +secp521r1-modulus-limbs+ +secp521r1-n0+ c)
+    (if (and (adx-supported-p) (bmi2-supported-p))
+        (mont-mul-9-cios-mulx-asm r a b +secp521r1-modulus-limbs+
+                                  +secp521r1-n0+ c)
+        (mont-mul-9-asm r a b +secp521r1-modulus-limbs+ +secp521r1-n0+ c))
     r)
   #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
