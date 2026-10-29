@@ -99,6 +99,20 @@ behaviour as CHACHA-INC-COUNTER repeated N times."
 (defvar *chacha-avx2-enabled* t
   "Set to NIL to force the SSE two-block ChaCha core (validation only).")
 
+;; Byte-shuffle masks for the 16- and 8-bit rotates of the AVX2 core:
+;; one `vpshufb' replaces the shift/shift/or triple.  The pattern repeats
+;; in both 128-bit lanes because `vpshufb' works per lane.
+#+x86-64
+(defconst +chacha-rot16-mask+
+  (make-array 32 :element-type '(unsigned-byte 8)
+              :initial-contents '(2 3 0 1 6 7 4 5 10 11 8 9 14 15 12 13
+                                  2 3 0 1 6 7 4 5 10 11 8 9 14 15 12 13)))
+#+x86-64
+(defconst +chacha-rot8-mask+
+  (make-array 32 :element-type '(unsigned-byte 8)
+              :initial-contents '(3 0 1 2 7 4 5 6 11 8 9 10 15 12 13 14
+                                  3 0 1 2 7 4 5 6 11 8 9 10 15 12 13 14)))
+
 (defclass chacha (stream-cipher)
   ((state :reader chacha-state
           :initform (make-array 16 :element-type '(unsigned-byte 32)
@@ -239,7 +253,9 @@ behaviour as CHACHA-INC-COUNTER repeated N times."
                     (declare (ignore i))
                     (chacha-core-4x-avx2 state state-b state-c state-d
                                          plaintext plaintext-start
-                                         ciphertext ciphertext-start 2x-rounds)
+                                         ciphertext ciphertext-start 2x-rounds
+                                         +chacha-rot16-mask+
+                                         +chacha-rot8-mask+)
                     (chacha-add-counter state 4)
                     (chacha-add-counter state-b 4)
                     (chacha-add-counter state-c 4)

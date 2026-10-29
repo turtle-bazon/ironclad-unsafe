@@ -3387,3 +3387,30 @@ change was reverted.
 Moving this row needs a block VOP like the SM4/Blowfish/CAST5 ones,
 with one combined 1024-entry table so the lookups share a base
 register; there is no useful Lisp-level headroom left.
+
+## ChaCha: vpshufb rotates in the four-block AVX2 core (1.19x)
+
+The core's two byte-granular rotates (rotl16 and rotl8) were three
+instructions each (shift, shift, or) and sat on the quarter-round's
+dependency chain.  A single `vpshufb' does the same thing with a
+per-lane byte mask: rotl16 is the mask 2,3,0,1 per 32-bit lane and
+rotl8 is 3,0,1,2.  The two 32-byte masks are loaded into ymm registers
+once per call (two new array arguments); the rotl12 and rotl7 rotates
+stay as shift pairs.
+
+| | before | after |
+|---|---|---|
+| AVX2 four-block core | 1.96 GB/s | 2.41 GB/s |
+| ChaCha 8 KB | 1.81 GB/s | 2.15 GB/s (1.19x) |
+| chacha-poly 8 KB message | 789 MB/s | 852 MB/s |
+| C/Lisp gap (chacha) | 1.93 | 1.61 |
+
+Deleting the two rotates entirely (mathematically wrong; used only as a
+timing bound) measured 2.41 GB/s, so the shuffle version captures the
+whole gain available from those instructions.  Further improvement
+would need more independent block groups than the sixteen ymm
+registers can hold.
+
+Correctness: the RFC 8439 zero-key/zero-nonce keystream block, a
+5000-byte round trip (which takes the four-block path), the
+chacha-poly AEAD round trip, the full suite, and CCL.

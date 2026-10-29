@@ -8013,7 +8013,9 @@
          (plaintext-start :scs (unsigned-reg))
          (out :scs (descriptor-reg))
          (out-start :scs (unsigned-reg))
-         (n-rounds :scs (unsigned-reg)))
+         (n-rounds :scs (unsigned-reg))
+         (m16 :scs (descriptor-reg))
+         (m8 :scs (descriptor-reg)))
   (:arg-types simple-array-unsigned-byte-32
               simple-array-unsigned-byte-32
               simple-array-unsigned-byte-32
@@ -8022,8 +8024,10 @@
               unsigned-num
               simple-array-unsigned-byte-8
               unsigned-num
-              unsigned-num)
-  (:temporary (:sc int-avx2-reg) t0 t1 t2 t3 t4 t5 t6 t7 t8)
+              unsigned-num
+              simple-array-unsigned-byte-8
+              simple-array-unsigned-byte-8)
+  (:temporary (:sc int-avx2-reg) t0 t1 t2 t3 t4 t5 t6 t7 t8 r16 r8)
   (:temporary (:sc int-sse-reg) x0)
   (:temporary (:sc unsigned-reg) count)
   (:generator 1000
@@ -8041,9 +8045,7 @@
              `(progn
                 (inst vpaddd ,a ,a ,b)
                 (inst vpxor ,d ,d ,a)
-                (inst vpslld ,tmp ,d 16)
-                (inst vpsrld ,d ,d 16)
-                (inst vpor ,d ,d ,tmp)
+                (inst vpshufb ,d ,d r16)
                 (inst vpaddd ,c ,c ,d)
                 (inst vpxor ,b ,b ,c)
                 (inst vpslld ,tmp ,b 12)
@@ -8051,9 +8053,7 @@
                 (inst vpor ,b ,b ,tmp)
                 (inst vpaddd ,a ,a ,b)
                 (inst vpxor ,d ,d ,a)
-                (inst vpslld ,tmp ,d 8)
-                (inst vpsrld ,d ,d 24)
-                (inst vpor ,d ,d ,tmp)
+                (inst vpshufb ,d ,d r8)
                 (inst vpaddd ,c ,c ,d)
                 (inst vpxor ,b ,b ,c)
                 (inst vpslld ,tmp ,b 7)
@@ -8088,6 +8088,8 @@
         (load-row t5 1 state-c state-d)
         (load-row t6 2 state-c state-d)
         (load-row t7 3 state-c state-d)
+        (inst vmovdqu r16 (ea disp m16))
+        (inst vmovdqu r8 (ea disp m8))
         (inst mov count n-rounds)
         (emit-label repeat)
         (group-round t0 t1 t2 t3)
