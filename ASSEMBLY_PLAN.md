@@ -3115,3 +3115,37 @@ This is the second lookup/rotation-heavy digest to fall to the
 "unroll-in-a-VOP with a shared scratch buffer" recipe (Whirlpool was the
 first); unlike the round-only attempts it works because the *whole*
 block, schedule included, is in the VOP.
+
+## ECDSA signing: present, verified; DESTRUCTURE-SIGNATURE :ECDSA added
+
+A report that ECDSA signing is missing could not be reproduced on rev
+1168.  Checked on SBCL and CCL 1.13:
+
+* generate-key-pair for :ecdsa and every curve kind and alias
+  (:p-224/:p-256/:prime256v1/:p-384/:p-521, the five secp* kinds) ->
+  SIGN-MESSAGE and VERIFY-SIGNATURE round-trip;
+* five curves x four digests (:sha1 :sha256 :sha384 :sha512) x message
+  lengths 0/1/16/32/100 -> all verify;
+* 200 random signatures plus 200 bit-flipped ones per curve -> 0 wrong
+  accepts/rejects;
+* DER encode/decode round trip on all five curves;
+* pre-hashed messages (the documented use: hash first, sign the digest),
+  the nonce override, and MAKE-PRIVATE-KEY from :x alone (no :y).
+
+The suite already covers this: ECDSA-SIGNATURE-TEST signs with a fixed
+nonce and compares bytes, and ECDSA-RFC6979-TEST signs twice and checks
+the deterministic signature.  Both pass.
+
+The one genuinely missing method was DESTRUCTURE-SIGNATURE for the
+generic :ecdsa kind (MAKE-SIGNATURE :ecdsa existed).  It now splits by
+length (56/64/96/132 = P-224/P-256-family/P-384/P-521) and signals
+INVALID-SIGNATURE-LENGTH otherwise.  The values themselves do not
+depend on the curve.
+
+Possible causes of the report, for the reporter: loading upstream
+:ironclad rather than :ironclad-unsafe (the :ecdsa kind dates from
+rev 662), expecting SIGN-MESSAGE to hash the message or return DER (it
+signs an already-hashed message and returns raw R || S; use
+DIGEST-SEQUENCE and ECDSA-SIGNATURE-TO-DER, whose argument order is
+(curve signature)), or passing RSA-style key parameters (:x is the
+private octet string here, not :d/:n).

@@ -139,6 +139,19 @@ KEY must be one of the concrete SEC curve key objects."
 (defmethod make-signature ((kind (eql :ecdsa)) &key (curve :secp256r1) r s &allow-other-keys)
   (make-signature (resolve-ecdsa-curve curve) :r r :s s))
 
+(defmethod destructure-signature ((kind (eql :ecdsa)) signature)
+  "Split a raw R || S SIGNATURE by its length.  The encoding is the same
+on every curve (just the two halves), so the destination curve only
+matters for validating the element width; the three 32-byte curves are
+indistinguishable here, which is why the concrete kind is still needed
+to interpret the values."
+  (case (length signature)
+    (56 (destructure-signature :secp224r1 signature))
+    (64 (destructure-signature :secp256r1 signature))
+    (96 (destructure-signature :secp384r1 signature))
+    (132 (destructure-signature :secp521r1 signature))
+    (t (error 'invalid-signature-length :kind :ecdsa))))
+
 
 ;;; RFC 6979 deterministic nonces
 
