@@ -3725,3 +3725,16 @@ shared by both scalars and a positional table for G cannot be used; it
 stays at 664 us (about 3x the C reference).  The table costs a few
 tens of milliseconds to build on first use and uses a few megabytes.
 Full suite passes.
+
+### P-224 / Ed448 table refresh (rev 1198)
+
+| row | before | now | C | gap |
+|---|---|---|---|---|
+| secp224r1 sign | 5.35k | 17.04k | 22.37k | 3.82 -> 1.31 |
+| secp224r1 verify | 3.84k | 4.73k | 10.29k | 2.61 -> 2.18 |
+| ed448 sign | 2.21k | 6.56k | 5.20k | 2.19 -> 0.79 |
+
+Ed448 sign is now ahead of the C reference.  P-224 verify reads 2.18 in
+this run; the direct measurement was 194 us (~5.2k, 1.97), so the row
+is borderline and the difference is host noise.  Aggregate: 55 rows
+ahead, 59 within 2x, 9 beyond (down from 11).
