@@ -6,7 +6,9 @@
 ;;; class definitions
 
 (defclass rsa-key ()
-  ((n :initarg :n :reader rsa-key-modulus :type integer)))
+  ((n :initarg :n :reader rsa-key-modulus :type integer)
+   ;; Montgomery constants for n, built on first public exponentiation.
+   (mont-context :initform nil :accessor rsa-key-mont-context)))
 
 (defclass rsa-public-key (rsa-key)
   ((e :initarg :e :reader rsa-key-exponent :type integer)))
@@ -99,9 +101,15 @@
                                :crt-dp dp :crt-dq dq :crt-qinv qinv)
                 (make-public-key :rsa :e e :n n))))))
 
-(defun rsa-core (msg exponent modulus)
+(defun rsa-context-for (key)
+  "The Montgomery context for KEY's modulus, built once."
+  (or (rsa-key-mont-context key)
+      (setf (rsa-key-mont-context key)
+            (make-mont-context (rsa-key-modulus key)))))
+
+(defun rsa-core (msg exponent modulus &optional context)
   (assert (< msg modulus))
-  (expt-mod/unsafe msg exponent modulus))
+  (expt-mod/unsafe msg exponent modulus context))
 
 (defun rsa-crt-core (m key)
   "Compute m^d mod n using CRT when the primes and CRT parameters are available."
@@ -116,7 +124,8 @@
             (mq (expt-mod/unsafe m dq q)))
         (return-from rsa-crt-core
           (mod (+ mq (* q (mod (* qinv (- mp mq)) p))) n)))))
-  (rsa-core m (rsa-key-exponent key) (rsa-key-modulus key)))
+  (rsa-core m (rsa-key-exponent key) (rsa-key-modulus key)
+            (rsa-context-for key)))
 
 (defmethod make-message ((kind (eql :rsa)) &key m n-bits &allow-other-keys)
   (unless m
@@ -192,7 +201,8 @@
       (error 'invalid-signature-length :kind 'rsa))
     (let* ((signature-elements (destructure-signature :rsa signature))
            (s (getf signature-elements :s))
-           (m (rsa-core s (rsa-key-exponent key) (rsa-key-modulus key))))
+           (m (rsa-core s (rsa-key-exponent key) (rsa-key-modulus key)
+                        (rsa-context-for key))))
       (if pss
           (pss-verify pss (subseq msg start end) (integer-to-octets m :n-bits nbits))
           (= (octets-to-integer msg :start start :end end) m)))))

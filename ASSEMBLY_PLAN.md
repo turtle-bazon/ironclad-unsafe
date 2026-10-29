@@ -3028,3 +3028,22 @@ The clean version would hang the context off the key object and thread
 it through `rsa-core`/`power-mod`; that is ~5.7% of RSA verify (and
 under 1% of anything else, since signing uses CRT exponents on p and
 q).  Not worth the API churn for one row.  Reverted; no code change.
+
+## RSA: per-key Montgomery context (verify 30 -> 28 us)
+
+The global context cache recorded above was the wrong shape; the fix is
+a per-key one.  `rsa-key` carries a lazily built `MONT-CONTEXT`, and
+`rsa-core`/`expt-mod/unsafe`/`power-mod`/`montgomery-expt` take it as an
+optional argument (validated against the modulus and limb count).  With
+`R^2 mod n` cached, the base conversion is one 1.3 us Montgomery
+multiply instead of a 3.0 us `(mod (* base 2^2048) n)`; N0 and the
+modulus limbs are reused as well.
+
+  rsa-2048 verify   30.0 -> 28.0 us   (1.07x, gap 2.06 -> 1.92)
+
+Signing is unchanged: it uses the CRT exponents on p and q, so the
+modulus-n context is not on its path (and its exponentiation time is
+negligible next to padding).  The context is built on the first
+exponentiation with the key and never mutated (the exponentiation gets
+its own copy of R); key generation is untouched, which is the thing the
+global cache broke.  RSA vectors and the full suite pass.

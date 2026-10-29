@@ -138,10 +138,37 @@ the 2N+1-limb scratch TMP.  All arrays stay in Montgomery form."
         (64 (mont-mul-64-asm r a b m n0 tmp))))
   r)
 
-(defun montgomery-expt (base exp mod)
+;;; Precomputed Montgomery constants for one modulus, for callers that
+;;; exponentiate repeatedly with the same key (RSA verification).
+(defstruct (mont-context (:constructor %make-mont-context (modulus n n0 m r r2)))
+  (modulus nil :read-only t)
+  (n 0 :read-only t)
+  (n0 0 :read-only t)
+  (m nil :read-only t)
+  (r nil :read-only t)
+  (r2 nil :read-only t))
+
+(defun make-mont-context (mod)
+  "Montgomery constants for MOD; see MONTGOMERY-EXPT."
+  (declare (type integer mod) (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((bits (integer-length mod))
+         (n (cond ((<= bits 1024) 16)
+                  ((<= bits 2048) 32)
+                  ((<= bits 3072) 48)
+                  (t 64))))
+    (declare (type fixnum n))
+    (%make-mont-context
+     mod n (montgomery-n0 mod)
+     (integer-to-limbs64 mod n)
+     (integer-to-limbs64 (mod (ash 1 (* 64 n)) mod) n)
+     (integer-to-limbs64 (mod (ash 1 (* 128 n)) mod) n))))
+
+(defun montgomery-expt (base exp mod &optional context)
   "BASE^EXP mod MOD via Montgomery form and the limb VOPs.  MOD must be
 odd with bit-length in [512, 4096]; callers gate this.  The sliding
-window from POWER-MOD is mirrored here to save ~20% of the multiplies."
+window from POWER-MOD is mirrored here to save ~20% of the multiplies.
+CONTEXT, when given, supplies precomputed Montgomery constants for MOD
+and turns the base conversion into one VOP multiply."
   (declare (type integer base exp mod)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (if (zerop exp)
@@ -151,14 +178,26 @@ window from POWER-MOD is mirrored here to save ~20% of the multiplies."
                       ((<= bits 2048) 32)
                       ((<= bits 3072) 48)
                       (t 64)))
+             (ctx (and context
+                       (= (mont-context-modulus context) mod)
+                       (eql (mont-context-n context) n)
+                       context))
              (r (ash 1 (* 64 n)))
-             (n0 (montgomery-n0 mod))
-             (m (integer-to-limbs64 mod n))
-             (ar (integer-to-limbs64 (mod (* (mod base mod) r) mod) n))
-             (res (integer-to-limbs64 (mod r mod) n))
-             (one (integer-to-limbs64 1 n))
+             (n0 (if ctx (mont-context-n0 ctx) (montgomery-n0 mod)))
+             (m (if ctx (mont-context-m ctx) (integer-to-limbs64 mod n)))
              (tmp (make-array (1+ (* 2 n)) :element-type '(unsigned-byte 64)
                               :initial-element 0))
+             (ar (if ctx
+                     (let ((a (make-array n :element-type '(unsigned-byte 64)
+                                            :initial-element 0)))
+                       (mont-mul-limbs a (integer-to-limbs64 (mod base mod) n)
+                                       (mont-context-r2 ctx) m n0 tmp n)
+                       a)
+                     (integer-to-limbs64 (mod (* (mod base mod) r) mod) n)))
+             (res (if ctx
+                      (copy-seq (mont-context-r ctx))
+                      (integer-to-limbs64 (mod r mod) n)))
+             (one (integer-to-limbs64 1 n))
              (l (integer-length exp))
              (k (cond ((< l 65) 3) ((< l 161) 4) ((< l 385) 5)
                       ((< l 897) 6) (t 7)))
@@ -331,14 +370,14 @@ bit-length in [512, 4096]; callers gate this."
       (setq bi (mod (* bi bb) m))
       (setf (svref tab i) bi))))
 
-(defun power-mod (b e m)
+(defun power-mod (b e m &optional context)
   (declare (optimize (speed 3) (safety 0)))
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (when (and (oddp m) (<= 512 (integer-length m) 4096) (plusp e))
     ;; Montgomery VOP path: unboxed limb arithmetic with no bignum
     ;; allocation inside the loop.  Even moduli and out-of-range sizes
     ;; keep the Barrett/generic paths below.
-    (return-from power-mod (montgomery-expt b e m)))
+    (return-from power-mod (montgomery-expt b e m context)))
   (cond
     ((zerop e)
       (mod 1 m))
@@ -679,10 +718,11 @@ skipping that retry silently produced an invalid private key."
                  (setf acc (barrett-mul acc sel ctx)))))
            acc))))))
 
-(defun expt-mod/unsafe (n exponent modulus)
+(defun expt-mod/unsafe (n exponent modulus &optional context)
   "As (mod (expt n exponent) modulus), but more efficient. This function is
-faster than expt-mod, but it is not safe against side channel timing attacks."
-  (power-mod n exponent modulus))
+faster than expt-mod, but it is not safe against side channel timing attacks.
+CONTEXT is an optional MONT-CONTEXT for MODULUS."
+  (power-mod n exponent modulus context))
 
 
 ;;; prime numbers utilities
