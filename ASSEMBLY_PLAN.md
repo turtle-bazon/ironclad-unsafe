@@ -3517,3 +3517,27 @@ it is mis-encoded as VEX -- and needs its own probe before use.
 
 Not attempted here: the rewrite is a multi-hour piece of assembly work
 per curve and needs a fresh session.
+
+## Follow-up: MULX is fine; the "VEX" note was a misreading
+
+The earlier note said MULX "is mis-encoded as VEX".  It is not: MULX is
+*defined* as a VEX-encoded instruction (VEX.LZ.F2.0F38.W{0,1} F6 /r).
+A probe VOP
+
+    (inst mov rd a)
+    (inst mulx hi lo b)
+
+assembles to `C4 42 FB F6 C1` = MULX r8, rax, r9 with RDX implicit --
+the correct encoding: three-byte VEX, map 0F38, pp=F2, W=1 for 64-bit
+operands.
+
+So the whole BMI2/ADX set the field arithmetic wants -- RORX, SHLX,
+ADCX, ADOX, MULX -- is available and correctly encoded by this
+backend.  The claim that the field rows are "blocked by the assembler"
+was wrong, and with it the reason those rows (secp256r1 3.9/3.1,
+secp224r1 3.7/2.6, secp521r1 3.0, ed448 3.1/2.5, dsa 2.7) have not
+been touched.
+
+They are now ordinary work: rewrite the existing field VOPs to use
+three-operand rotates and the two carry chains.  That is the highest
+value item left by a wide margin.
