@@ -241,6 +241,15 @@ XOR-SRC and RC are XORed into the result (RC only into element 0)."
 (defmacro whirlpool-xform (src to mode r)
   (whirlpool-xform-forms src to mode r))
 
+;;; The VOP takes one table argument; the round constants live after the
+;;; 2048 entries of +C+.
+#+(and sbcl x86-64 ironclad-unsafe-assembly)
+(defconst +whirlpool-combined+
+  (let ((v (make-array 2064 :element-type '(unsigned-byte 64) :initial-element 0)))
+    (loop for i below 2048 do (setf (aref v i) (row-major-aref +c+ i)))
+    (dotimes (i (length +rc+)) (setf (aref v (+ 2048 i)) (aref +rc+ i)))
+    v))
+
 #+sbcl
 (defun update-whirlpool-block-sap (regs block)
   (declare (type whirlpool-regs regs)
@@ -268,7 +277,11 @@ word block of input, and updates the working state in the regs."
   (declare (type whirlpool-regs regs)
            (type (simple-array (unsigned-byte 64) (8)) block)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+sbcl
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (progn
+    (whirlpool-block-vop regs block +whirlpool-combined+)
+    (return-from update-whirlpool-block regs))
+  #+(and sbcl (not (and x86-64 ironclad-unsafe-assembly)))
   (progn
     (update-whirlpool-block-sap regs block)
     (return-from update-whirlpool-block regs))

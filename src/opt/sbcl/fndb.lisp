@@ -858,3 +858,12 @@
   (values simple-array)
   (any)
   :overwrite-fndb-silently t)
+
+#+x86-64
+(defknown ironclad-unsafe::whirlpool-block-vop
+  ((simple-array (unsigned-byte 64) (32))
+   (simple-array (unsigned-byte 64) (8))
+   (simple-array (unsigned-byte 64) (2064)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)

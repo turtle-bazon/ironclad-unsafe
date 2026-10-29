@@ -3047,3 +3047,28 @@ negligible next to padding).  The context is built on the first
 exponentiation with the key and never mutated (the exponentiation gets
 its own copy of R); key generation is untouched, which is the thing the
 global cache broke.  RSA vectors and the full suite pass.
+
+## Whirlpool: table-transform VOP (640 -> 440 ns; digest 93 -> 146 MB/s)
+
+The Lisp/SAP version loads a table entry and XORs it into an accumulator
+(two instructions after the byte fetch).  The VOP keeps the eight
+accumulators in registers and uses `XOR reg,[table+index]` memory
+operands, with each source byte fetched by a single MOVZX from the
+register vector.  The round constants are appended after the 2048 table
+entries in one combined array, because four descriptor arguments plus
+eight accumulators overflow the register file (three arguments fit).
+
+  block            640 -> 440 ns   (1.45x)
+  8 KB digest      93.1 -> 146.3 MB/s (1.57x)
+
+Checked against the SAP implementation on 500 random blocks (0
+mismatches); the Whirlpool vector file and the full suite pass.  C
+reference 202.7 MB/s, so the gap moves 2.18 -> ~1.39 (table row
+2.28 -> ~1.5).
+
+Two SBCL-VOP traps worth remembering: generator-time loops that look up
+an accumulator *symbol* from a vector and pass it to INST hand the
+assembler the symbol rather than the TN (all code generation must happen
+at macroexpansion time), and a `:qword` size prefix on MOV/XOR with EA
+operands confuses the instruction combiner (the operands reach it
+unevaluated).
