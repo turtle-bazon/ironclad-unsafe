@@ -3640,3 +3640,17 @@ a bignum with `(ldb (byte 64 (* 64 i)) v)` in a `DOTIMES` returned the
 wrong words for a 224-bit value; the equivalent `LOGAND`/`ASH` loop is
 correct.  The boundary test caught it because the derived R constant came
 out as 68 bits instead of 224.
+
+### P-256 table refresh (rev 1193)
+
+| row | rev 1191 | now | C | gap |
+|---|---|---|---|---|
+| secp256r1 sign | 18.58k | 27.61k | 53.37k | 2.82 -> 1.93 |
+| secp256r1 verify | 7.17k | 7.47k | 18.72k | 2.57 -> 2.51 |
+
+Sign crosses 2x for the first time.  Verify improves little in the
+table because its ~100 us joint multiplication is untouched.  The host
+remains noisy: McEliece-348864 and ML-DSA-87 keygen drifted above 2x in
+this snapshot without any change to their code, so the aggregate count
+(49 ahead, 63 within, 11 beyond) is not comparable to the previous one
+row for row.
