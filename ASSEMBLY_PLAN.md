@@ -3882,3 +3882,14 @@ so the table builder receives them directly.
 
 P-521 verification rebuilt its 31-entry Q table per call; caching it on
 the key takes verify 1227 -> 1179 us (about 4%).  Full suite passes.
+
+### Table refresh (rev 1209)
+
+| row | before | now | gap |
+|---|---|---|---|
+| ed448 verify | 1.51k | 1.775k | 3.25 -> 2.53 |
+| secp521r1 verify | 805 | 860 | 2.45 -> 2.31 |
+| dsa verify | 2.255k | 2.475k | 2.23 -> 2.00 |
+
+Aggregate: 50 rows ahead, 68 within 2x, 5 beyond.  DSA verify sits
+exactly on the 2.00 boundary (4.960k / 2.475k = 2.004).
