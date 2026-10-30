@@ -3819,3 +3819,18 @@ Aggregate: 49 rows ahead, 66 within 2x, 8 beyond.  Two of the eight are
 ML-DSA keygen rows that moved from ~1.2-1.5 to ~2.0-2.1 without any
 change to their code, so the structural set is six: falcon keygen,
 chacha-poly, ed448 verify, and the secp521r1/dsa/secp256r1 verify rows.
+
+## P-256 verify: cache the decoded point and Q table per key
+
+VERIFY-SIGNATURE decoded and validated the public key on every call and
+rebuilt the sixteen-entry affine Q table (fifteen point operations plus
+a batch inversion) for every joint multiplication.  Both depend only on
+the key, and MAKE-PUBLIC-KEY already decodes the point for validation,
+so the decoded point and the table are now stored on the public-key
+object and reused.  The first verification builds them; later ones skip
+the work.
+
+Direct verify 124.6 -> 117.9 us (about 5.5%), which puts the row just
+under 2x.  Two threads can race to build the cache; both compute the
+same read-only table and one wins, so no lock is needed.  Full suite
+passes.

@@ -9,7 +9,12 @@
 ;;; class definitions
 
 (defclass secp256r1-public-key ()
-  ((y :initarg :y :reader secp256r1-key-y :type (simple-array (unsigned-byte 8) (*)))))
+  ((y :initarg :y :reader secp256r1-key-y
+      :type (simple-array (unsigned-byte 8) (*)))
+   ;; The decoded point and its affine 16-entry window table are built
+   ;; on first verification and reused; both depend only on the key.
+   (point :initform nil :initarg :point :accessor secp256r1-key-point)
+   (q-table :initform nil :accessor secp256r1-key-q-table)))
 
 (defclass secp256r1-private-key ()
   ((x :initarg :x :reader secp256r1-key-x :type (simple-array (unsigned-byte 8) (*)))
@@ -843,7 +848,9 @@ to the bignum inverse."
   (unless (= (length signature) (/ +secp256r1-bits+ 4))
     (error 'invalid-signature-length :kind 'secp256r1))
   (let* ((end (min (or end (length message)) (/ +secp256r1-bits+ 8)))
-         (pk (ec-decode-point :secp256r1 (secp256r1-key-y key)))
+         (pk (or (secp256r1-key-point key)
+                 (setf (secp256r1-key-point key)
+                       (ec-decode-point :secp256r1 (secp256r1-key-y key)))))
          (signature-elements (destructure-signature :secp256r1 signature))
          (r (ec-decode-scalar :secp256r1 (getf signature-elements :r)))
          (s (ec-decode-scalar :secp256r1 (getf signature-elements :s))))
@@ -857,7 +864,10 @@ to the bignum inverse."
          (u1 (mod (* e w) +secp256r1-l+))
          (u2 (mod (* r w) +secp256r1-l+))
          ;; Joint multiplication (Shamir's trick): one pass instead of two.
-         (rp (secp256r1-shamir-mult +secp256r1-g+ pk u1 u2))
+         (tq (or (secp256r1-key-q-table key)
+                 (setf (secp256r1-key-q-table key)
+                       (secp256r1-build-q-table pk))))
+         (rp (secp256r1-shamir-mult +secp256r1-g+ pk u1 u2 tq))
          (x (subseq (ec-encode-point rp) 1 (1+ (/ +secp256r1-bits+ 8))))
          (v (ec-decode-scalar :secp256r1 x))
          (v (mod v +secp256r1-l+)))
@@ -875,9 +885,10 @@ to the bignum inverse."
            :parameter 'y
            :description "public key"))
   ;; Reject malformed encodings and off-curve points now, at
-  ;; construction time, rather than at first use.
-  (ec-decode-point :secp256r1 y)
-  (make-instance 'secp256r1-public-key :y y))
+  ;; construction time, rather than at first use; keep the decoded
+  ;; point so verification does not repeat the work.
+  (let ((point (ec-decode-point :secp256r1 y)))
+    (make-instance 'secp256r1-public-key :y y :point point)))
 
 (defmethod destructure-public-key ((public-key secp256r1-public-key))
   (list :y (secp256r1-key-y public-key)))
@@ -1271,29 +1282,16 @@ mixed additions and no doublings."
                               (secp256r1-select-base (aref table j) v) s)
         (secp256r1-point-copy! acc tmp)))))
 
-(defun secp256r1-shamir-mult (p q a b)
-  "Public-only joint scalar multiplication A*P + B*Q for verification.
-Uses 4-bit windows and destination-passing point operations; P must be
-the fixed generator, whose affine multiples come from the byte table."
-  (declare (type secp256r1-point p q)
-           (type integer a b)
+(defun secp256r1-build-q-table (q)
+  "The sixteen affine multiples of Q, index 0 the point at infinity.
+One batch inversion makes the table affine, so the additions in the
+joint multiplication are mixed additions (9 multiplies) rather than
+full ones (12)."
+  (declare (type secp256r1-point q)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (unless (eq p +secp256r1-g+)
-    (return-from secp256r1-shamir-mult (%ec-shamir-mult p q a b)))
-  (let* ((nbits (max (integer-length a) (integer-length b) 1))
-         (windows (ceiling nbits 4))
-         (tg (aref (secp256r1-ensure-base-table) 0))
-         (tq (make-array 16))
-         (acc (secp256r1-point-from-ints 1 1 0))
-         (tmp (secp256r1-point-from-ints 1 1 0))
-         (s (secp256r1-make-scratch)))
-    (declare (type fixnum nbits windows)
-             (type simple-vector tg tq)
-             (type secp256r1-point acc tmp)
-             (type simple-vector s))
-    ;; Small multiples of Q.  One batch inversion makes the table
-    ;; affine, so each of the ~64 additions in the main loop is a mixed
-    ;; addition (9 multiplies) instead of a full one (12).
+  (let ((tq (make-array 16))
+        (s (secp256r1-make-scratch)))
+    (declare (type simple-vector tq s))
     (setf (aref tq 0) +secp256r1-point-at-infinity+
           (aref tq 1) q)
     (loop for v of-type fixnum from 2 below 16 do
@@ -1304,6 +1302,29 @@ the fixed generator, whose affine multiples come from the byte table."
             (secp256r1-add! dst (aref tq (1- v)) q s))
         (setf (aref tq v) dst)))
     (secp256r1-batch-affine! tq)
+    tq))
+
+(defun secp256r1-shamir-mult (p q a b &optional q-table)
+  "Public-only joint scalar multiplication A*P + B*Q for verification.
+Uses 4-bit windows and destination-passing point operations; P must be
+the fixed generator, whose affine multiples come from the byte table.
+Q-TABLE, when given, is the affine table from SECP256R1-BUILD-Q-TABLE."
+  (declare (type secp256r1-point p q)
+           (type integer a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (unless (eq p +secp256r1-g+)
+    (return-from secp256r1-shamir-mult (%ec-shamir-mult p q a b)))
+  (let* ((nbits (max (integer-length a) (integer-length b) 1))
+         (windows (ceiling nbits 4))
+         (tg (aref (secp256r1-ensure-base-table) 0))
+         (tq (or q-table (secp256r1-build-q-table q)))
+         (acc (secp256r1-point-from-ints 1 1 0))
+         (tmp (secp256r1-point-from-ints 1 1 0))
+         (s (secp256r1-make-scratch)))
+    (declare (type fixnum nbits windows)
+             (type simple-vector tg tq)
+             (type secp256r1-point acc tmp)
+             (type simple-vector s))
     (loop for w of-type fixnum downfrom (1- windows) to 0 do
       (unless (= w (1- windows))
         (loop repeat 4 do
