@@ -4015,3 +4015,20 @@ falling back to a fresh context on a mismatch.
 Direct DSA-2048 verify 404 -> 350 us (about 14%), moving the row from
 2.00 to about 1.93.  The cached and uncached paths were compared on
 twenty random 2048-bit groups, and the full suite passes.
+
+### DSA context and Falcon gs-norm: table refresh (rev 1217)
+
+- DSA verify: direct 404 -> 350 us.  The table run reads 2.696k
+  (371 us) against C 5.489k (182 us), gap 2.04, but the host was about
+  10% slower on unrelated rows in the same run (secp256r1 verify 8.23k
+  vs 9.26k, secp224r1 4.62k vs 5.24k), so the row is borderline at
+  roughly 1.9-2.0.
+- Falcon-512 keygen: the `falcon-gs-norm` correctness fix makes keygen
+  reject the weak candidates the buggy code accepted, and evaluates the
+  first norm that used to be shadowed and optimized away.  The honest
+  rate is 8.93/s against C 76.2/s (gap 8.53); the previous 6.56 was
+  flattered by the bug.  This is a security fix, not a regression to
+  undo.
+- The aggregate count in this snapshot (12 beyond) includes several
+  noise rows (ML-DSA keygen, McEliece keygen, SLH-DSA sign); do not
+  compare it row-for-row with the previous table.
