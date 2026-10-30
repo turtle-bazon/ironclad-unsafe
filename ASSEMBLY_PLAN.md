@@ -4048,3 +4048,27 @@ A positional table for G (32 rows of 256 entries) would cut G's share to
 same trade was rejected.  The remaining DSA cost is the 32-limb
 Montgomery multiply itself, so a real step needs a squaring VOP (the
 CIOS symmetry trick does not apply; it needs the SOS/Comba form).
+
+### Squaring VOP: what does not work, and what the next one needs
+
+DSA/RSA exponentiations are mostly squarings, so a square VOP is the
+next arithmetic lever.  Two formulations were checked in a simulator
+before writing assembly:
+
+- **CIOS symmetry** (skip `j < i`, double `j > i` inside the rolling
+  accumulator) is invalid.  The CIOS `T` is a sliding window, so the
+  same product lands in different `T` slots in different rounds; the
+  doubling/skipping does not reconstruct the full product.
+- **Operand scanning with one carry word** (row `i` processes
+  `j >= i`, cross terms doubled) is also invalid: the 129th bit of
+  `2*a[i]*a[j]` belongs to column `c+2`, not to the `c+1` carry.  The
+  column sum needs a three-word accumulator (lo, hi, overflow) or the
+  product-scanning/Comba loop.
+
+The workable design is a Comba square: one 128-bit accumulator plus an
+overflow word, columns `0..2N-2`, cross terms doubled, then the existing
+SOS Montgomery reduction and final subtraction.  For N=32 that is 528
+products instead of 1024 in the product phase, about 24% fewer total
+products; it is a large, per-width VOP (the reduction code can be copied
+from DEFINE-MONT-MUL-VOP).  No code was landed: the two invalid forms
+were rejected before assembly.
