@@ -4032,3 +4032,19 @@ twenty random 2048-bit groups, and the full suite passes.
 - The aggregate count in this snapshot (12 beyond) includes several
   noise rows (ML-DSA keygen, McEliece keygen, SLH-DSA sign); do not
   compare it row-for-row with the previous table.
+
+### DSA verify: wider sliding windows are not a win (negative)
+
+With the per-key context the table build is amortized, so a wider window
+looked attractive: w=8 needs about 57 window multiplies per
+verification against about 86 at w=5.  Measured on the same key and
+host: w=5 350-394 us, w=6 415 us, w=8 364 us (the host load moved
+between runs, so the w=5 range is from the same period).  The 128-entry
+odd-power tables are 64 KB for both bases and fall out of L1; the random
+table access costs more than the saved multiplies.  w=5 is kept.
+
+A positional table for G (32 rows of 256 entries) would cut G's share to
+32 multiplies and save about 9%, but it is 2 MB per DSA public key; the
+same trade was rejected.  The remaining DSA cost is the 32-limb
+Montgomery multiply itself, so a real step needs a squaring VOP (the
+CIOS symmetry trick does not apply; it needs the SOS/Comba form).
