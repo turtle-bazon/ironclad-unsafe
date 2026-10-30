@@ -8,7 +8,9 @@
 ;;; class definitions
 
 (defclass secp521r1-public-key ()
-  ((y :initarg :y :reader secp521r1-key-y :type (simple-array (unsigned-byte 8) (*)))))
+  ((y :initarg :y :reader secp521r1-key-y
+      :type (simple-array (unsigned-byte 8) (*)))
+   (q-table :initform nil :accessor secp521r1-key-q-table)))
 
 (defclass secp521r1-private-key ()
   ((x :initarg :x :reader secp521r1-key-x :type (simple-array (unsigned-byte 8) (*)))
@@ -1125,8 +1127,9 @@ additions and no doublings."
                                                  (secp521r1-fe-from-int gy)
                                                  (secp521r1-fe-from-int gz))))))
 
-(defun secp521r1-shamir-mult-limbs-cached (qx qy qz a b)
-  "A * G + B * Q in the limb field, using the cached G table."
+(defun secp521r1-shamir-mult-limbs-cached (qx qy qz a b &optional tq)
+  "A * G + B * Q in the limb field, using the cached G table.
+TQ, when given, is a previously built window table for Q."
   (declare (type secp521r1-fe qx qy qz)
            (type integer a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
@@ -1136,7 +1139,7 @@ additions and no doublings."
          (bits (max abit bbit 1))
          (nwin (ceiling bits w))
          (tp (secp521r1-ensure-limb-g-table))
-         (tq (secp521r1-make-window-table-limbs qx qy qz))
+         (tq (or tq (secp521r1-make-window-table-limbs qx qy qz)))
          (s (secp521r1-make-scratch))
          (rx (secp521r1-fe-zero))
          (ry (secp521r1-fe-zero))
@@ -1197,10 +1200,16 @@ additions and no doublings."
          (qx (slot-value pk 'x))
          (qy (slot-value pk 'y))
          (qz (slot-value pk 'z))
+         (tq (or (secp521r1-key-q-table key)
+                 (setf (secp521r1-key-q-table key)
+                       (secp521r1-make-window-table-limbs
+                        (secp521r1-fe-from-int qx)
+                        (secp521r1-fe-from-int qy)
+                        (secp521r1-fe-from-int qz)))))
          (rp (secp521r1-shamir-mult-limbs-cached (secp521r1-fe-from-int qx)
                                                  (secp521r1-fe-from-int qy)
                                                  (secp521r1-fe-from-int qz)
-                                                 u1 u2))
+                                                 u1 u2 tq))
          (rz (third rp)))
       ;; RP is the point at infinity only for invalid signatures.
       (if (zerop rz)

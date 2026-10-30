@@ -3869,3 +3869,16 @@ The joint sliding window moves DSA verify from 2.15k to 2.255k ops/s
 (2.57 -> 2.23).  secp256r1 verify reads 9.05k (1.87).  Aggregate:
 51 rows ahead, 67 within 2x, 5 beyond -- falcon-512 keygen,
 chacha-poly, ed448 verify, secp521r1 verify and DSA verify.
+
+## Ed448 / P-521 verify: per-key point and window-table cache
+
+Ed448 verification decoded the public key on every call -- recovering X
+from Y is a square root over the field, 75 us -- and rebuilt its
+31-entry Q window table (~50 us).  Both depend only on the key.  The
+decoded point and the table are now cached on the public-key object;
+verify 653.6 -> 555.6 us (about 15%).  Note that an ED448-POINT's
+coordinate slots hold limb arrays, not the integers the class declares,
+so the table builder receives them directly.
+
+P-521 verification rebuilt its 31-entry Q table per call; caching it on
+the key takes verify 1227 -> 1179 us (about 4%).  Full suite passes.

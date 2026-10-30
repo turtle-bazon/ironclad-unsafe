@@ -7,7 +7,10 @@
 ;;; class definitions
 
 (defclass ed448-public-key ()
-  ((y :initarg :y :reader ed448-key-y :type (simple-array (unsigned-byte 8) (*)))))
+  ((y :initarg :y :reader ed448-key-y
+      :type (simple-array (unsigned-byte 8) (*)))
+   (point :initform nil :accessor ed448-key-point)
+   (q-table :initform nil :accessor ed448-key-q-table)))
 
 (defclass ed448-private-key ()
   ((x :initarg :x :reader ed448-key-x :type (simple-array (unsigned-byte 8) (*)))
@@ -287,7 +290,7 @@ ops from earlier entries (which must already be present)."
         (setf (aref table v) (vector dx dy dz))))
     table))
 
-(defun ed448-shamir-mult-limbs (ax ay az bx by bz a b)
+(defun ed448-shamir-mult-limbs (ax ay az bx by bz a b &optional tq)
   "A*(AX:AY:AZ) + B*(BX:BY:BZ), public only, five-bit windows. The
 input points use bignum coordinates; the result is an ed448-point."
   (declare (type integer ax ay az bx by bz a b)
@@ -300,7 +303,7 @@ input points use bignum coordinates; the result is an ed448-point."
          ;; The generator's 256-entry table starts with V*G for V in
          ;; [0, 32), so it serves the five-bit windows directly.
          (tg (ed448-ensure-base-table-limbs))
-         (tq (ed448-make-window-table-limbs bx by bz))
+         (tq (or tq (ed448-make-window-table-limbs bx by bz)))
          (rx (goldilocks-fe-from-int 0))
          (ry (goldilocks-fe-from-int 1))
          (rz (goldilocks-fe-from-int 1))
@@ -825,7 +828,7 @@ doublings."
            (s (mod (+ (* k a) ri) +ed448-l+)))
       (make-signature :ed448 :r rp :s (ec-encode-scalar :ed448 s)))))
 
-(defun ed448-verify (s m pk)
+(defun ed448-verify (s m pk &optional key)
   (declare (type (simple-array (unsigned-byte 8) (*)) s m pk)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (unless (= (length s) (ceiling +ed448-bits+ 4))
@@ -836,21 +839,31 @@ doublings."
          (r (getf signature-elements :r))
          (rp (ec-decode-point :ed448 r))
          (s (ec-decode-scalar :ed448 (getf signature-elements :s)))
-         (a (ec-decode-point :ed448 pk))
+         (a (or (and key (ed448-key-point key))
+                (ec-decode-point :ed448 pk)))
          (h (mod (ec-decode-scalar :ed448 (ed448-hash +ed448-dom+ r pk m)) +ed448-l+))
          ;; Joint multiplication for s*B - h*A == R: negate h modulo
          ;; the order and check the sum against R in one pass instead
          ;; of a fixed-base mult plus a ladder plus an add.
+         (tq (and key
+                  (or (ed448-key-q-table key)
+                      (setf (ed448-key-q-table key)
+                            (ed448-make-window-table-limbs
+                             (slot-value a 'x)
+                             (slot-value a 'y)
+                             (slot-value a 'z))))))
          (res1 (with-slots ((ax x) (ay y) (az z)) +ed448-b+
                  (declare (type integer ax ay az))
                  (with-slots ((bx x) (by y) (bz z)) a
                    (declare (type integer bx by bz))
                    (ed448-shamir-mult-limbs ax ay az bx by bz
-                                            s (mod (- h) +ed448-l+)))))
+                                            s (mod (- h) +ed448-l+) tq))))
          (res2 rp))
     (declare (type (simple-array (unsigned-byte 8) (*)) r)
              (type integer s h)
              (type ed448-point rp a res1 res2))
+    (when (and key (null (ed448-key-point key)))
+      (setf (ed448-key-point key) a))
     (and (< s +ed448-l+)
          (ec-point-equal res1 res2))))
 
@@ -886,7 +899,7 @@ doublings."
 (defmethod verify-signature ((key ed448-public-key) message signature &key (start 0) end &allow-other-keys)
   (let ((end (or end (length message)))
         (pk (ed448-key-y key)))
-    (ed448-verify signature (subseq message start end) pk)))
+    (ed448-verify signature (subseq message start end) pk key)))
 
 (defmethod generate-key-pair ((kind (eql :ed448)) &key &allow-other-keys)
   (let* ((sk (random-data (ceiling +ed448-bits+ 8)))
