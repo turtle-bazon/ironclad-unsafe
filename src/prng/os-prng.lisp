@@ -5,8 +5,17 @@
 
 #+unix
 (defparameter *os-prng-stream* nil)
-#+unix
+#+thread-support
 (defparameter *os-prng-stream-lock* (bt2:make-lock))
+
+;; BORDEAUX-THREADS is optional: when the implementation has no thread
+;; support the lock is omitted and the stream is used directly.
+#+thread-support
+(defmacro with-os-prng-lock (&body body)
+  `(bt2:with-lock-held (*os-prng-stream-lock*) ,@body))
+#-thread-support
+(defmacro with-os-prng-lock (&body body)
+  `(progn ,@body))
 
 (defclass os-prng ()
   ())
@@ -14,7 +23,7 @@
 (defmethod prng-random-data (num-bytes (prng os-prng))
   #+unix
   (let* ((seq (make-array num-bytes :element-type '(unsigned-byte 8)))
-         (n (bt2:with-lock-held (*os-prng-stream-lock*)
+         (n (with-os-prng-lock
               (unless (and *os-prng-stream* (open-stream-p *os-prng-stream*))
                 (setf *os-prng-stream* (open #P"/dev/urandom"
                                              #+ccl :sharing #+ccl :external

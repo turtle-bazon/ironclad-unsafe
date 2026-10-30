@@ -3904,3 +3904,30 @@ forward and inverse transforms; the unrolled form stays on the other
 implementations.  The loop form is about 2.4x slower, which only affects
 ML-DSA on Allegro.  With it, ml-dsa.lisp compiles and the Allegro test
 run proceeds.
+
+## Portability: threads are optional; CLISP 2.49
+
+BORDEAUX-THREADS is now a dependency only where its own ASDF reports
+support (the same condition list: SBCL with SB-THREAD, CCL with native
+threads, ECL with threads, ABCL, Allegro with multiprocessing, CLISP
+only with MT, and so on).  Without it the OS PRNG's stream lock expands
+to a no-op, so the library loads and runs single-threaded.
+
+CLISP 2.49 also evaluates DEFCONSTANT with a non-EQL value (an array or
+a bignum) lazily, so the compile-time table builders (CAST5's round
+table, the ML-DSA zetas, the curve moduli) saw unbound names.  The
+crypto-unsafe package now shadows DEFCONSTANT on CLISP and binds the
+value in the compile-time environment before calling CL:DEFCONSTANT.
+
+Portability check matrix, Roswell installations on 2026-10-30:
+
+| implementation | version | result |
+|---|---|---|
+| SBCL (roswell) | 2.6.9 | full suite pass |
+| SBCL (system) | 2.6.7 | full suite pass |
+| CCL | 1.13 | full suite pass, also with READTABLE_CASE_INVERT |
+| ECL | 26.5.5 | full suite pass; ML-DSA targeted |
+| ABCL | 1.9.3 | full suite pass; ML-DSA targeted |
+| Allegro | 11.0express | full suite pass (loop NTT) |
+| CLISP | 2.49 (no MT) | loads and runs single-threaded; suite in progress |
+| LispWorks | lib only | not runnable here; CI excludes it |

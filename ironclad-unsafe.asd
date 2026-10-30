@@ -37,7 +37,28 @@
 
 (defsystem "ironclad-unsafe/core"
   :class ironclad-unsafe-system
-  :depends-on (#+sbcl "sb-rotate-byte" #+sbcl "sb-posix" "bordeaux-threads")
+  :depends-on (#+sbcl "sb-rotate-byte"
+               #+sbcl "sb-posix"
+               ;; BORDEAUX-THREADS signals an error at system-definition
+               ;; time on an implementation it does not support (CLISP
+               ;; without MT, for instance).  Depend on it only where it
+               ;; can load; the OS PRNG then runs without a lock.
+               #+(or armedbear
+                     (and allegro multiprocessing)
+                     (and clasp threads)
+                     (and clisp mt)
+                     (and openmcl openmcl-native-threads)
+                     (and cmu mp)
+                     corman
+                     (and ecl threads)
+                     genera
+                     mezzano
+                     mkcl
+                     lispworks
+                     (and digitool ccl-5.1)
+                     (and sbcl sb-thread)
+                     scl)
+               "bordeaux-threads")
   :serial t
   :components ((:static-file "LICENSE")
                (:static-file "NEWS")

@@ -268,6 +268,25 @@
 
 (in-package :crypto-unsafe)
 
+;;; CLISP evaluates DEFCONSTANT with a non-EQL value (an array or a
+;;; bignum) lazily: the name is not bound in the compile-time
+;;; environment, so a later EVAL-WHEN or macro that reads it signals
+;;; "variable ... has no value" (CAST5's round table, the ML-DSA zetas,
+;;; the curve moduli).  Bind the value before calling CL:DEFCONSTANT so
+;;; the compile-time environment sees it; redefinitions still pass the
+;;; existing object, which CLISP accepts.
+#+clisp
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (shadow "DEFCONSTANT"))
+
+#+clisp
+(defmacro defconstant (name value &optional documentation)
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (unless (boundp ',name)
+       (setf (symbol-value ',name) ,value))
+     (cl:defconstant ,name (symbol-value ',name)
+       ,@(when documentation (list documentation)))))
+
 ;;; easy-to-type readmacro for creating s-boxes and the like
 
 (defun array-reader (stream subchar arg)
