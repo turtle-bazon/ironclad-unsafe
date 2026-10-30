@@ -4150,3 +4150,19 @@ Raw multiply timings (best of five 200 ms samples) and end to end
 Validated against the multiply on 1000 random elements per field and by
 the full SBCL suite.  The reductions, not the products, dominate these
 fields, which is why the raw gains translate to a few percent.
+
+### Squaring VOPs: table refresh
+
+The snapshot after the squaring work reads (C reference in parentheses):
+DSA-2048 verify 3.00k/s (5.37k, 1.79), RSA-2048 verify 42.1k/s
+(69.4k, 1.65), RSA-2048 sign 1.275k/s (2.005k, 1.57), DSA sign 2.76k/s
+(4.68k, 1.70); secp521r1 verify 890/s (2.186k, 2.46), ed448 verify
+1.873k/s (4.810k, 2.57), secp224r1 verify 5.24k/s (10.38k, 1.98),
+secp256r1 verify 9.295k/s (18.68k, 2.01).
+
+The host is noisy (load average 0.5-5, glusterfs on the same box), so
+the AEAD and Falcon rows swing: chacha-poly reads 3.42 here against
+2.94 in the previous snapshot, and Falcon keygen 6.50 against 7.07 and
+10.16.  The direct A/B measurements above are the reliable numbers for
+the squaring changes; the table is for the broad picture, not for
+row-by-row comparison across runs.
