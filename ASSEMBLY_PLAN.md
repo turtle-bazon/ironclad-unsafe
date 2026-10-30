@@ -3894,16 +3894,17 @@ the key takes verify 1227 -> 1179 us (about 4%).  Full suite passes.
 Aggregate: 50 rows ahead, 68 within 2x, 5 beyond.  DSA verify sits
 exactly on the 2.00 boundary (4.960k / 2.475k = 2.004).
 
-## Allegro: loop NTT fallback for the 50 MB Express heap
+## Allegro / CLISP: loop NTT fallback for constrained implementations
 
 Compiling ML-DSA on Allegro 11.0 Express dies while expanding the
 unrolled NTT (256 butterflies): the compiler exhausts the edition's
-50 MB heap and then reports the constant table as unbound.  The loop
-form from before rev 1150 is restored under #+ALLEGRO for both the
-forward and inverse transforms; the unrolled form stays on the other
-implementations.  The loop form is about 2.4x slower, which only affects
-ML-DSA on Allegro.  With it, ml-dsa.lisp compiles and the Allegro test
-run proceeds.
+50 MB heap and then reports the constant table as unbound.  CLISP
+compiles it but the resulting bytecode is impractically slow.  The loop
+form from before rev 1150 is restored under #+(OR ALLEGRO CLISP) for
+both the forward and inverse transforms; the unrolled form stays on the
+other implementations.  The loop form is about 2.4x slower on SBCL but
+makes ML-DSA practical on these two.  With it, ml-dsa.lisp compiles and
+the Allegro test run passes, and CLISP's ML-DSA-SIGNATURE passes.
 
 ## Portability: threads are optional; CLISP 2.49
 
@@ -3929,5 +3930,5 @@ Portability check matrix, Roswell installations on 2026-10-30:
 | ECL | 26.5.5 | full suite pass; ML-DSA targeted |
 | ABCL | 1.9.3 | full suite pass; ML-DSA targeted |
 | Allegro | 11.0express | full suite pass (loop NTT) |
-| CLISP | 2.49 (no MT) | loads and runs single-threaded; suite in progress |
+| CLISP | 2.49 (no MT) | full suite pass; ML-DSA targeted (loop NTT) |
 | LispWorks | lib only | not runnable here; CI excludes it |

@@ -229,7 +229,7 @@ Allegro Express has a 50 MB heap and cannot compile the unrolled form,
 so it uses the loop form (about 2.4x slower) instead."
   (declare (type ml-dsa-poly r)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+allegro
+  #+(or allegro clisp)
   (let ((k 0))
     (declare (type fixnum k))
     (loop for len = 128 then (ash len -1)
@@ -240,7 +240,7 @@ so it uses the loop form (about 2.4x slower) instead."
                               do (let ((tt (ml-dsa-fqmul zeta (aref r (+ j len)))))
                                    (setf (aref r (+ j len)) (- (aref r j) tt)
                                          (aref r j) (+ (aref r j) tt))))))))
-  #-allegro
+  #-(or allegro clisp)
   (unrolled-ml-dsa-ntt r)
   (values))
 
@@ -249,7 +249,7 @@ so it uses the loop form (about 2.4x slower) instead."
 the loop form; see ML-DSA-NTT."
   (declare (type ml-dsa-poly r)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  #+allegro
+  #+(or allegro clisp)
   (let ((k 256)
         (f +ml-dsa-invntt-f+))
     (declare (type fixnum k))
@@ -264,7 +264,7 @@ the loop form; see ML-DSA-NTT."
                                          (ml-dsa-fqmul zeta (- tt (aref r (+ j len))))))))))
     (dotimes (j 256)
       (setf (aref r j) (ml-dsa-fqmul (aref r j) f))))
-  #-allegro
+  #-(or allegro clisp)
   (unrolled-ml-dsa-invntt r +ml-dsa-invntt-f+)
   (values))
 
