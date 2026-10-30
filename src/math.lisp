@@ -120,6 +120,10 @@ measurement and as an escape hatch.")
 (defvar *mont-mulx-enabled* t
   "Use the MULX/ADCX/ADOX CIOS variants when the CPU has BMI2 and ADX.")
 
+(defvar *mont-sqr-enabled* t
+  "Use the Comba/SOS squaring VOP when both operands are the same array.
+It needs BMI2 (MULX) and is only used for 32-limb moduli.")
+
 (declaim (inline mont-mul-limbs))
 (defun mont-mul-limbs (r a b m n0 tmp n)
   "Montgomery multiply of the N-limb residues A and B into R, reusing
@@ -130,18 +134,34 @@ the 2N+1-limb scratch TMP.  All arrays stay in Montgomery form."
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (if *mont-cios-enabled*
       (ecase n
-        (16 (mont-mul-16-cios-asm r a b m n0 tmp))
-        (32 (if (and *mont-mulx-enabled*
-                     (adx-supported-p) (bmi2-supported-p))
-                (mont-mul-32-cios-mulx-asm r a b m n0 tmp)
-                (mont-mul-32-cios-asm r a b m n0 tmp)))
-        (48 (mont-mul-48-cios-asm r a b m n0 tmp))
-        (64 (mont-mul-64-cios-asm r a b m n0 tmp)))
+        (16 (cond ((and *mont-sqr-enabled* (eq a b) (bmi2-supported-p))
+                   (mont-sqr-16-asm r a m n0 tmp))
+                  (t (mont-mul-16-cios-asm r a b m n0 tmp))))
+        (32 (cond ((and *mont-sqr-enabled* (eq a b) (bmi2-supported-p))
+                   (mont-sqr-32-asm r a m n0 tmp))
+                  ((and *mont-mulx-enabled*
+                        (adx-supported-p) (bmi2-supported-p))
+                   (mont-mul-32-cios-mulx-asm r a b m n0 tmp))
+                  (t (mont-mul-32-cios-asm r a b m n0 tmp))))
+        (48 (cond ((and *mont-sqr-enabled* (eq a b) (bmi2-supported-p))
+                   (mont-sqr-48-asm r a m n0 tmp))
+                  (t (mont-mul-48-cios-asm r a b m n0 tmp))))
+        (64 (cond ((and *mont-sqr-enabled* (eq a b) (bmi2-supported-p))
+                   (mont-sqr-64-asm r a m n0 tmp))
+                  (t (mont-mul-64-cios-asm r a b m n0 tmp)))))
       (ecase n
-        (16 (mont-mul-16-asm r a b m n0 tmp))
-        (32 (mont-mul-32-asm r a b m n0 tmp))
-        (48 (mont-mul-48-asm r a b m n0 tmp))
-        (64 (mont-mul-64-asm r a b m n0 tmp))))
+        (16 (cond ((and *mont-sqr-enabled* (eq a b) (bmi2-supported-p))
+                   (mont-sqr-16-asm r a m n0 tmp))
+                  (t (mont-mul-16-asm r a b m n0 tmp))))
+        (32 (cond ((and *mont-sqr-enabled* (eq a b) (bmi2-supported-p))
+                   (mont-sqr-32-asm r a m n0 tmp))
+                  (t (mont-mul-32-asm r a b m n0 tmp))))
+        (48 (cond ((and *mont-sqr-enabled* (eq a b) (bmi2-supported-p))
+                   (mont-sqr-48-asm r a m n0 tmp))
+                  (t (mont-mul-48-asm r a b m n0 tmp))))
+        (64 (cond ((and *mont-sqr-enabled* (eq a b) (bmi2-supported-p))
+                   (mont-sqr-64-asm r a m n0 tmp))
+                  (t (mont-mul-64-asm r a b m n0 tmp))))))
   r)
 
 ;;; Precomputed Montgomery constants for one modulus, for callers that

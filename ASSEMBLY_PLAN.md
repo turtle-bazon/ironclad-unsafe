@@ -4072,3 +4072,49 @@ products instead of 1024 in the product phase, about 24% fewer total
 products; it is a large, per-width VOP (the reduction code can be copied
 from DEFINE-MONT-MUL-VOP).  No code was landed: the two invalid forms
 were rejected before assembly.
+
+## Comba/SOS Montgomery squaring VOP (16/32/48/64 limbs)
+
+The earlier note said a square VOP needs the Comba form and a three-word
+column accumulator.  It does, but the reduction was the part that
+decided the result.  The first version used the existing SOS reduction
+unchanged, including its unconditional carry propagation across the
+whole top half (O(N) words per reduction step); it measured 1372 ns for
+N=32 against 1120 ns for the CIOS MULX multiply, so it was a loss.
+
+Two changes made it a win:
+
+- The carry out of each reduction step is now propagated only while it
+  actually carries (a conditional `add`/`jnc` cascade), not across the
+  whole top half.  On random limbs the cascade is one or two words.
+- The product phase is the validated Comba square: column `c` sums
+  `a[i]*a[j]` with `i+j=c`, off-diagonal products doubled, in a
+  three-word accumulator (lo, hi, overflow).  For N=32 that is 528
+  products instead of 1024.
+
+The VOPs are `mont-sqr-16/32/48/64-asm`, selected by MONT-MUL-LIMBS
+when `(eq a b)` and BMI2 is present (`*mont-sqr-enabled*` is the A/B
+switch); other widths and CPUs keep the CIOS multiply.  Validated
+against the CIOS multiply and a bignum reference on 150 random moduli
+per width and on edge inputs (0, 1, mod-1, all-ones modulus); the full
+SBCL suite passes.
+
+Montgomery square, single operation (best of nine 150 ms samples):
+
+| limbs | multiply | square | gain |
+|---|---|---|---|
+| 16 | 351 ns | 288 ns | 18% |
+| 32 | 1124 ns | 1017 ns | 9.5% |
+| 48 | 2761 ns | 2232 ns | 19% |
+| 64 | 4902 ns | 3899 ns | 20% |
+
+End to end (same key, `*mont-sqr-enabled*` toggled):
+
+| operation | off | on | gain |
+|---|---|---|---|
+| DSA-2048 verify | 364 us | 325 us | 11% |
+| RSA-2048 verify | 26.3 us | 24.2 us | 8% |
+| RSA-2048 sign (CRT, 1024-bit primes) | 890 us | 805 us | 9.5% |
+
+The N=16 gain is why RSA CRT signing moves: its primes are 1024-bit
+moduli, so it uses the 16-limb square.

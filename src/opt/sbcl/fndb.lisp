@@ -550,6 +550,47 @@
   :overwrite-fndb-silently t)
 
 #+x86-64
+(defknown ironclad-unsafe::mont-sqr-16-asm
+  ((simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*))
+   (unsigned-byte 64)
+   (simple-array (unsigned-byte 64) (*)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+#+x86-64
+(defknown ironclad-unsafe::mont-sqr-32-asm
+  ((simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*))
+   (unsigned-byte 64)
+   (simple-array (unsigned-byte 64) (*)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+#+x86-64
+(defknown ironclad-unsafe::mont-sqr-48-asm
+  ((simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*))
+   (unsigned-byte 64)
+   (simple-array (unsigned-byte 64) (*)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+#+x86-64
+(defknown ironclad-unsafe::mont-sqr-64-asm
+  ((simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*))
+   (unsigned-byte 64)
+   (simple-array (unsigned-byte 64) (*)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
 (defknown ironclad-unsafe::secp256r1-fe-mont-mul-asm
   ((simple-array (unsigned-byte 64) (*))
    (simple-array (unsigned-byte 64) (*))

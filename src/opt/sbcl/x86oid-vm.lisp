@@ -6860,6 +6860,135 @@
 #+x86-64
 (define-mont-mul-vop mont-mul-64 ironclad-unsafe::mont-mul-64-asm 64)
 
+;;; Montgomery squaring, SOS form.  The product is computed by the
+;;; product-scanning (Comba) method: column C has the products a[i]*a[j]
+;;; with i+j=C, the off-diagonal ones doubled.  A column sum can exceed
+;;; 128 bits, so the accumulator is three words (LO, HI, ACC): LO and HI
+;;; are the current column's low words, ACC collects the overflow of HI.
+;;; After the columns the existing SOS reduction is used unchanged.
+(defmacro define-mont-sqr-vop (vop-name fun-name n)
+  (let ((tmp-size (1+ (* 2 n))))
+    `(define-vop (,vop-name)
+       (:translate ,fun-name)
+       (:policy :fast-safe)
+       (:args (r :scs (descriptor-reg))
+              (a :scs (descriptor-reg))
+              (m :scs (descriptor-reg))
+              (n0 :scs (unsigned-reg))
+              (tt :scs (descriptor-reg)))
+       (:arg-types simple-array-unsigned-byte-64
+                   simple-array-unsigned-byte-64
+                   simple-array-unsigned-byte-64
+                   unsigned-num
+                   simple-array-unsigned-byte-64)
+       (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+       (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
+       (:temporary (:sc unsigned-reg) lo hi acc pl)
+       (:generator 1000
+         (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                              other-pointer-lowtag))
+               (done (gen-label)))
+           (flet ((a64 (i) (ea (+ data-offset (* 8 i)) a))
+                  (m64 (i) (ea (+ data-offset (* 8 i)) m))
+                  (r64 (i) (ea (+ data-offset (* 8 i)) r))
+                  (t64 (i) (ea (+ data-offset (* 8 i)) tt)))
+             ;; T[0..2N-1] := A^2, T[2N] := 0.
+             (inst mov lo 0)
+             (inst mov hi 0)
+             (inst mov acc 0)
+             (inst mov pl 0)
+             (inst mov (t64 ,(* 2 n)) pl)
+             (dotimes (c ,(1- (* 2 n)))
+               (let ((i0 (max 0 (- c (1- ,n))))
+                     (i1 (min (1- ,n) (floor (1- c) 2))))
+                 (loop for i from i0 to i1 do
+                   (let ((j (- c i)))
+                     (inst mov rdx-tmp (a64 i))
+                     (inst mulx rax-tmp pl (a64 j))
+                     (inst add pl pl)
+                     (inst adc rax-tmp rax-tmp)
+                     (inst adc acc 0)
+                     (inst add lo pl)
+                     (inst adc hi rax-tmp)
+                     (inst adc acc 0))))
+               (when (evenp c)
+                 (let ((i (ash c -1)))
+                   (when (< i ,n)
+                     (inst mov rdx-tmp (a64 i))
+                     (inst mulx rax-tmp pl (a64 i))
+                     (inst add lo pl)
+                     (inst adc hi rax-tmp)
+                     (inst adc acc 0))))
+               (inst mov (t64 c) lo)
+               (inst mov lo hi)
+               (inst mov hi acc)
+               (inst mov acc 0))
+             (inst mov (t64 ,(1- (* 2 n))) lo)
+             ;; The SOS reduction, with LO/HI/ACC reused for its
+             ;; carry/temporary roles.
+             (dotimes (i ,n)
+               (inst mov rax-tmp (t64 i))
+               (inst mul n0)
+               (inst mov acc rax-tmp)
+               (inst mov lo 0)
+               (dotimes (j ,n)
+                 (inst mov rax-tmp acc)
+                 (inst mov pl (m64 j))
+                 (inst mul pl)
+                 (inst add rax-tmp (t64 (+ i j)))
+                 (inst adc rdx-tmp 0)
+                 (inst add rax-tmp lo)
+                 (inst adc rdx-tmp 0)
+                 (inst mov (t64 (+ i j)) rax-tmp)
+                 (inst mov lo rdx-tmp))
+               ;; Propagate the carry, but only while it actually
+               ;; carries: on random data the cascade is one or two
+               ;; words, not the whole top half.
+               (let ((skip (gen-label)))
+                 (inst mov hi lo)
+                 (inst add (t64 (+ i ,n)) hi)
+                 (inst jmp :nc skip)
+                 (inst mov hi 1)
+                 (loop for k from (1+ (+ i ,n)) to ,(* 2 n) do
+                   (inst add (t64 k) hi)
+                   (inst jmp :nc skip))
+                 (emit-label skip)))
+             (inst mov acc 0)
+             (dotimes (i ,n)
+               (inst mov rax-tmp (t64 (+ i ,n)))
+               (inst mov pl (m64 i))
+               (inst sub rax-tmp pl)
+               (inst mov hi 0)
+               (inst adc hi 0)
+               (inst sub rax-tmp acc)
+               (inst adc hi 0)
+               (inst mov (r64 i) rax-tmp)
+               (inst mov acc hi))
+             (inst mov pl (t64 ,(* 2 n)))
+             (inst sub pl acc)
+             (inst jmp :nc done)
+             (inst mov lo 0)
+             (dotimes (i ,n)
+               (inst mov rax-tmp (r64 i))
+               (inst mov pl (m64 i))
+               (inst add rax-tmp pl)
+               (inst mov hi 0)
+               (inst adc hi 0)
+               (inst add rax-tmp lo)
+               (inst adc hi 0)
+               (inst mov (r64 i) rax-tmp)
+               (inst mov lo hi))
+             (emit-label done)))))))
+
+#+x86-64
+(define-mont-sqr-vop mont-sqr-16 ironclad-unsafe::mont-sqr-16-asm 16)
+#+x86-64
+(define-mont-sqr-vop mont-sqr-32 ironclad-unsafe::mont-sqr-32-asm 32)
+#+x86-64
+(define-mont-sqr-vop mont-sqr-48 ironclad-unsafe::mont-sqr-48-asm 48)
+#+x86-64
+(define-mont-sqr-vop mont-sqr-64 ironclad-unsafe::mont-sqr-64-asm 64)
+
 ;;; CIOS variant of the same operation.
 ;;;
 ;;; The SOS form above writes the whole 2N-word product to the scratch
