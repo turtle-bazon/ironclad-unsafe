@@ -3893,3 +3893,14 @@ the key takes verify 1227 -> 1179 us (about 4%).  Full suite passes.
 
 Aggregate: 50 rows ahead, 68 within 2x, 5 beyond.  DSA verify sits
 exactly on the 2.00 boundary (4.960k / 2.475k = 2.004).
+
+## Allegro: loop NTT fallback for the 50 MB Express heap
+
+Compiling ML-DSA on Allegro 11.0 Express dies while expanding the
+unrolled NTT (256 butterflies): the compiler exhausts the edition's
+50 MB heap and then reports the constant table as unbound.  The loop
+form from before rev 1150 is restored under #+ALLEGRO for both the
+forward and inverse transforms; the unrolled form stays on the other
+implementations.  The loop form is about 2.4x slower, which only affects
+ML-DSA on Allegro.  With it, ml-dsa.lisp compiles and the Allegro test
+run proceeds.

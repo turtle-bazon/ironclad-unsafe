@@ -224,16 +224,47 @@
                     collect `(setf (aref ,r ,j) (ml-dsa-fqmul (aref ,r ,j) ,f))))))
 
 (defun ml-dsa-ntt (r)
-  "In-place forward NTT.  No modular reduction after adds/subs."
+  "In-place forward NTT.  No modular reduction after adds/subs.
+Allegro Express has a 50 MB heap and cannot compile the unrolled form,
+so it uses the loop form (about 2.4x slower) instead."
   (declare (type ml-dsa-poly r)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+allegro
+  (let ((k 0))
+    (declare (type fixnum k))
+    (loop for len = 128 then (ash len -1)
+          while (> len 0)
+          do (loop for start from 0 below 256 by (+ len len)
+                   do (let ((zeta (aref +ml-dsa-zetas+ (incf k))))
+                        (loop for j from start below (+ start len)
+                              do (let ((tt (ml-dsa-fqmul zeta (aref r (+ j len)))))
+                                   (setf (aref r (+ j len)) (- (aref r j) tt)
+                                         (aref r j) (+ (aref r j) tt))))))))
+  #-allegro
   (unrolled-ml-dsa-ntt r)
   (values))
 
 (defun ml-dsa-invntt-tomont (r)
-  "In-place inverse NTT with Montgomery-domain output."
+  "In-place inverse NTT with Montgomery-domain output.  Allegro uses
+the loop form; see ML-DSA-NTT."
   (declare (type ml-dsa-poly r)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+allegro
+  (let ((k 256)
+        (f +ml-dsa-invntt-f+))
+    (declare (type fixnum k))
+    (loop for len = 1 then (ash len 1)
+          while (< len 256)
+          do (loop for start from 0 below 256 by (+ len len)
+                   do (let ((zeta (- (aref +ml-dsa-zetas+ (decf k)))))
+                        (loop for j from start below (+ start len)
+                              do (let ((tt (aref r j)))
+                                   (setf (aref r j) (+ tt (aref r (+ j len)))
+                                         (aref r (+ j len))
+                                         (ml-dsa-fqmul zeta (- tt (aref r (+ j len))))))))))
+    (dotimes (j 256)
+      (setf (aref r j) (ml-dsa-fqmul (aref r j) f))))
+  #-allegro
   (unrolled-ml-dsa-invntt r +ml-dsa-invntt-f+)
   (values))
 
