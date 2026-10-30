@@ -102,10 +102,16 @@
                 (make-public-key :rsa :e e :n n))))))
 
 (defun rsa-context-for (key)
-  "The Montgomery context for KEY's modulus, built once."
+  "The Montgomery context for KEY's modulus, built once.
+NIL on implementations without the SBCL Montgomery VOPs."
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
+  (declare (ignore key))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (or (rsa-key-mont-context key)
       (setf (rsa-key-mont-context key)
-            (make-mont-context (rsa-key-modulus key)))))
+            (make-mont-context (rsa-key-modulus key))))
+  #-(and sbcl x86-64 ironclad-unsafe-assembly)
+  nil)
 
 (defun rsa-core (msg exponent modulus &optional context)
   (assert (< msg modulus))

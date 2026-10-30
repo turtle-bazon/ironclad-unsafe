@@ -10800,14 +10800,23 @@ into O0..O7."
   (:policy :fast-safe)
   (:args (acc :scs (descriptor-reg))
          (rvec :scs (descriptor-reg))
-         (data :scs (descriptor-reg))
+         (data :scs (descriptor-reg) :target data-ptr)
          (offset :scs (unsigned-reg))
-         (nblocks :scs (unsigned-reg)))
+         (nblocks :scs (unsigned-reg) :target blocks-left))
   (:arg-types simple-array-unsigned-byte-32
               simple-array-unsigned-byte-64
               simple-array-unsigned-byte-8
               unsigned-num
               unsigned-num)
+  ;; The loop counts NBLOCKS down.  Do that on a temporary, not on the
+  ;; argument TN: the register allocator is free to keep a caller value
+  ;; that is live after the VOP (such as the BLOCKS count computed in
+  ;; POLY1305-PROCESS-FULL-BLOCKS) in the argument's register when it
+  ;; believes the argument is unchanged.  SBCL 2.6.9 does exactly that
+  ;; coalescing, which made POLY1305 get zero BLOCKS back and never
+  ;; process the message.
+  (:temporary (:sc descriptor-reg :from (:argument 2)) data-ptr)
+  (:temporary (:sc unsigned-reg :from (:argument 4)) blocks-left)
   (:temporary (:sc unsigned-reg) h0 h1 h2 h3 h4 t0 t1)
   (:temporary (:sc double-reg) x0 x1 x2 x3)
   (:generator 1000
@@ -10816,15 +10825,17 @@ into O0..O7."
           (done (gen-label)))
       (flet ((a (i) (ea (+ disp (* 4 i)) acc))
              (r (i) (ea (+ disp (* 8 i)) rvec))
-             (d (i) (ea (+ disp i) data)))
+             (d (i) (ea (+ disp i) data-ptr)))
+        (move data-ptr data)
+        (move blocks-left nblocks)
         (inst mov :dword h0 (a 0))
         (inst mov :dword h1 (a 1))
         (inst mov :dword h2 (a 2))
         (inst mov :dword h3 (a 3))
         (inst mov :dword h4 (a 4))
         ;; Fold the starting byte offset into the data pointer.
-        (inst add data offset)
-        (inst test nblocks nblocks)
+        (inst add data-ptr offset)
+        (inst test blocks-left blocks-left)
         (inst jmp :z done)
         (emit-label loop)
         ;; s_i = h_i + message word; s4 = h4 + hibit (hibit is 1 here).
@@ -10923,8 +10934,8 @@ into O0..O7."
         (inst mov :dword h2 h2)
         (inst mov :dword h3 h3)
         (inst mov :dword h4 h4)
-        (inst add data 16)
-        (inst sub nblocks 1)
+        (inst add data-ptr 16)
+        (inst sub blocks-left 1)
         (inst jmp :nz loop)
         (emit-label done)
         (inst mov :dword (a 0) h0)

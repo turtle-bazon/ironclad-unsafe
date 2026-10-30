@@ -44,14 +44,22 @@ jobs:
           ros -e '(format t "Fixnum bits: ~a~%" (integer-length most-positive-fixnum))'
           ros -e '(ql:quickload "trivial-features" :silent t)' -e '(format t "Features: ~s~%" *features*)'
 
+      - name: Raise SBCL heap
+        # Roswell starts SBCL with its default 1 GB dynamic space, which is
+        # not enough to compile this tree: assembling MONTGOMERY-EXPT in
+        # src/math.lisp alone exhausts it ("Heap exhausted, game over").
+        if: ${{ matrix.lisp == 'sbcl-bin' }}
+        shell: bash
+        run: ros config set dynamic-space-size 4096
+
       - name: Allegro workaround
         # Compiling and testing can fail on Allegro CL Express Free edition
         # because of the 50 MB heap size limitation, so let's try to split
         # the work in two as a possible workaround...
         if: ${{matrix.lisp == 'allegro/11.0express'}}
         shell: bash
-        run: ros -e '(setf *debugger-hook* (lambda (&rest ignorable) (declare (ignore ignorable)) (uiop:quit 0)))' -e '(ql:quickload "ironclad-unsafe/tests")'
+        run: ros -e '(push (uiop:getcwd) asdf:*central-registry*)' -e '(setf *debugger-hook* (lambda (&rest ignorable) (declare (ignore ignorable)) (uiop:quit 0)))' -e '(ql:quickload "ironclad-unsafe/tests")'
 
       - name: Run tests
         shell: bash
-        run: ros -e '(setf *debugger-hook* (lambda (&rest ignorable) (declare (ignore ignorable)) (uiop:quit -1)))' -e '(when (plusp (length (or (uiop:getenv "READTABLE_CASE_INVERT") ""))) (format t "changing readtable-case to :invert~%") (setq *readtable* (let ((rt (copy-readtable))) (setf (readtable-case rt) :invert) rt)))' -e '(ql:quickload "ironclad-unsafe/tests")' -e '(unless (rt:do-tests) (uiop:quit -1))'
+        run: ros -e '(push (uiop:getcwd) asdf:*central-registry*)' -e '(setf *debugger-hook* (lambda (&rest ignorable) (declare (ignore ignorable)) (uiop:quit -1)))' -e '(when (plusp (length (or (uiop:getenv "READTABLE_CASE_INVERT") ""))) (format t "changing readtable-case to :invert~%") (setq *readtable* (let ((rt (copy-readtable))) (setf (readtable-case rt) :invert) rt)))' -e '(ql:quickload "ironclad-unsafe/tests")' -e '(unless (rt:do-tests) (uiop:quit -1))'
