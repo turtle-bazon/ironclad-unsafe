@@ -3862,3 +3862,10 @@ the window's last squaring has been applied, and the skipped bits
 cannot start another window.  Validated against EXPT-MOD on 512-3072
 bit moduli with random 256-bit exponents, and by DSA sign/verify/tamper
 and the full suite.
+
+### Table refresh (rev 1207)
+
+The joint sliding window moves DSA verify from 2.15k to 2.255k ops/s
+(2.57 -> 2.23).  secp256r1 verify reads 9.05k (1.87).  Aggregate:
+51 rows ahead, 67 within 2x, 5 beyond -- falcon-512 keygen,
+chacha-poly, ed448 verify, secp521r1 verify and DSA verify.
