@@ -10,7 +10,10 @@
   ((group :initarg :group :reader group)))
 
 (defclass dsa-public-key (dsa-key)
-  ((y :initarg :y :reader dsa-key-y :type integer)))
+  ((y :initarg :y :reader dsa-key-y :type integer)
+   ;; Montgomery limbs and odd-power tables for G and Y, built on the
+   ;; first verification and reused (see DSA-MONT-CONTEXT-FOR).
+   (mont-context :initform nil :accessor dsa-key-mont-context)))
 
 (defclass dsa-private-key (dsa-key)
   ((y :initarg :y :reader dsa-key-y :type integer)
@@ -22,6 +25,18 @@
   (group-qval (group dsa-key)))
 (defun dsa-key-g (dsa-key)
   (group-gval (group dsa-key)))
+
+#+(and sbcl x86-64 ironclad-unsafe-assembly)
+(defun dsa-mont-context-for (key)
+  "The reusable Montgomery context for KEY's G, Y and P."
+  (or (dsa-key-mont-context key)
+      (setf (dsa-key-mont-context key)
+            (make-mont-shamir-context (dsa-key-g key) (dsa-key-y key)
+                                      (dsa-key-p key)))))
+#-(and sbcl x86-64 ironclad-unsafe-assembly)
+(defun dsa-mont-context-for (key)
+  (declare (ignore key))
+  nil)
 
 
 ;;; function definitions
@@ -196,5 +211,5 @@
              (u2 (mod (* r w) q))
              ;; U1, U2, G and Y are public, so the variable-time
              ;; sliding-window exponentiation is safe here.
-             (v (mod (power-mod2 g u1 y u2 p) q)))
+             (v (mod (power-mod2 g u1 y u2 p (dsa-mont-context-for key)) q)))
         (= v r)))))

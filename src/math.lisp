@@ -430,17 +430,19 @@ bit-length in [512, 4096]; callers gate this."
               (setq res (barrett-mul res res ctx))
               (decf i))))))))
 
-(defun power-mod2 (a e1 b e2 m)
+(defun power-mod2 (a e1 b e2 m &optional context)
   "As (mod (* (expt a e1) (expt b e2)) m), computed in one pass by
 Shamir's trick: one squaring per bit of the longer exponent, and a
 multiply for each bit where at least one exponent is set.  The
-exponents are non-negative and the bases are below M."
+exponents are non-negative and the bases are below M.  CONTEXT, when
+given, is a MONT-SHAMIR-CONTEXT for the same bases and modulus."
   (declare (optimize (speed 3) (safety 0))
-           (type integer a e1 b e2 m))
+           (type integer a e1 b e2 m)
+           #-(and sbcl x86-64 ironclad-unsafe-assembly) (ignore context))
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (when (and (oddp m) (<= 512 (integer-length m) 4096))
     ;; Montgomery VOP path; the zerop-exponent cases are handled inside.
-    (return-from power-mod2 (montgomery-expt-shamir a e1 b e2 m)))
+    (return-from power-mod2 (montgomery-expt-shamir a e1 b e2 m context)))
   (when (or (zerop e1) (zerop e2))
     (return-from power-mod2
       (mod (* (power-mod a e1 m) (power-mod b e2 m)) m)))
@@ -464,49 +466,89 @@ exponents are non-negative and the bases are below M."
 #+(and sbcl x86-64 ironclad-unsafe-assembly)
 (progn
 
-(defun montgomery-expt-shamir (a e1 b e2 mod)
+(defstruct (mont-shamir-context (:constructor %make-mont-shamir-context))
+  (modulus nil)
+  (n 0)
+  (n0 0)
+  (m nil)
+  (a nil)
+  (b nil)
+  (ar nil)
+  (br nil)
+  (taba nil)
+  (tabb nil)
+  (one nil))
+
+(defun make-mont-shamir-context (a b mod)
+  "Precomputed Montgomery limbs and odd-power tables for
+A^E1 * B^E2 mod MOD, reusable across calls with the same bases."
+  (declare (type integer a b mod)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((bits (integer-length mod))
+         (n (cond ((<= bits 1024) 16)
+                  ((<= bits 2048) 32)
+                  ((<= bits 3072) 48)
+                  (t 64)))
+         (r (ash 1 (* 64 n)))
+         (n0 (montgomery-n0 mod))
+         (m (integer-to-limbs64 mod n))
+         (ar (integer-to-limbs64 (mod (* (mod a mod) r) mod) n))
+         (br (integer-to-limbs64 (mod (* (mod b mod) r) mod) n))
+         (one (integer-to-limbs64 1 n))
+         (tmp (make-array (1+ (* 2 n)) :element-type '(unsigned-byte 64)
+                          :initial-element 0))
+         (w 5)
+         (ntab (ash 1 (1- w)))
+         (taba (make-array ntab))
+         (tabb (make-array ntab))
+         (acc (make-array n :element-type '(unsigned-byte 64)
+                          :initial-element 0)))
+    (declare (type fixnum bits n w ntab))
+    (setf (aref taba 0) (copy-seq ar)
+          (aref tabb 0) (copy-seq br))
+    (mont-mul-limbs acc ar ar m n0 tmp n)
+    (let ((ar2 (copy-seq acc)))
+      (loop for i of-type fixnum from 1 below ntab do
+        (mont-mul-limbs acc (aref taba (1- i)) ar2 m n0 tmp n)
+        (setf (aref taba i) (copy-seq acc))))
+    (mont-mul-limbs acc br br m n0 tmp n)
+    (let ((br2 (copy-seq acc)))
+      (loop for i of-type fixnum from 1 below ntab do
+        (mont-mul-limbs acc (aref tabb (1- i)) br2 m n0 tmp n)
+        (setf (aref tabb i) (copy-seq acc))))
+    (%make-mont-shamir-context :modulus mod :n n :n0 n0 :m m :a a :b b
+                               :ar ar :br br :taba taba :tabb tabb
+                               :one one)))
+
+(defun montgomery-expt-shamir (a e1 b e2 mod &optional context)
   "A^E1 * B^E2 mod MOD by Shamir's trick in Montgomery form.  MOD must
-be odd with bit-length in [512, 4096]; callers gate this."
+be odd with bit-length in [512, 4096]; callers gate this.  CONTEXT, when
+it matches MOD, A and B, supplies the Montgomery limbs and odd-power
+tables from a previous call."
   (declare (type integer a e1 b e2 mod)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (if (or (zerop e1) (zerop e2))
       (mod (* (montgomery-expt a e1 mod) (montgomery-expt b e2 mod)) mod)
-      (let* ((bits (integer-length mod))
-             (n (cond ((<= bits 1024) 16)
-                      ((<= bits 2048) 32)
-                      ((<= bits 3072) 48)
-                      (t 64)))
+      (let* ((context (if (and context
+                               (= (mont-shamir-context-modulus context) mod)
+                               (= (mont-shamir-context-a context) a)
+                               (= (mont-shamir-context-b context) b))
+                          context
+                          (make-mont-shamir-context a b mod)))
+             (n (mont-shamir-context-n context))
+             (n0 (mont-shamir-context-n0 context))
+             (m (mont-shamir-context-m context))
+             (taba (mont-shamir-context-taba context))
+             (tabb (mont-shamir-context-tabb context))
+             (one (mont-shamir-context-one context))
              (r (ash 1 (* 64 n)))
-             (n0 (montgomery-n0 mod))
-             (m (integer-to-limbs64 mod n))
-             (ar (integer-to-limbs64 (mod (* (mod a mod) r) mod) n))
-             (br (integer-to-limbs64 (mod (* (mod b mod) r) mod) n))
              (res (integer-to-limbs64 (mod r mod) n))
-             (one (integer-to-limbs64 1 n))
              (tmp (make-array (1+ (* 2 n)) :element-type '(unsigned-byte 64)
                               :initial-element 0))
              (nbits (max (integer-length e1) (integer-length e2)))
-             (w 5)
-             (ntab (ash 1 (1- w)))
-             (taba (make-array ntab))
-             (tabb (make-array ntab))
-             (acc (make-array n :element-type '(unsigned-byte 64)
-                               :initial-element 0)))
-        (declare (type fixnum bits n nbits w ntab)
+             (w 5))
+        (declare (type fixnum n nbits w)
                  (type integer r))
-        ;; Odd powers of each base, for the joint sliding window.
-        (setf (aref taba 0) (copy-seq ar)
-              (aref tabb 0) (copy-seq br))
-        (mont-mul-limbs acc ar ar m n0 tmp n)
-        (let ((ar2 (copy-seq acc)))
-          (loop for i of-type fixnum from 1 below ntab do
-            (mont-mul-limbs acc (aref taba (1- i)) ar2 m n0 tmp n)
-            (setf (aref taba i) (copy-seq acc))))
-        (mont-mul-limbs acc br br m n0 tmp n)
-        (let ((br2 (copy-seq acc)))
-          (loop for i of-type fixnum from 1 below ntab do
-            (mont-mul-limbs acc (aref tabb (1- i)) br2 m n0 tmp n)
-            (setf (aref tabb i) (copy-seq acc))))
         ;; One squaring per bit; a multiply per odd window of either
         ;; exponent.  A window's multiply is delayed until the last of
         ;; its squarings has been applied, so the contribution gets the
@@ -555,7 +597,6 @@ be odd with bit-length in [512, 4096]; callers gate this."
               (decf i))))
         (mont-mul-limbs res res one m n0 tmp n)
         (limbs64-to-integer res))))
-
 ) ; end #+sbcl progn for shamir
 
 (defun miller-rabin-decomposition (n) ;; assume n > 2 (n-1 is even)

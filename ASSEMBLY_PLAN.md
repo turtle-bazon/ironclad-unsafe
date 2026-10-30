@@ -4001,3 +4001,17 @@ were already present.  To see the warnings, use
 `(asdf:compile-system :ironclad-unsafe :force t)`, which compiles
 without loading, or delete
 `~/.cache/common-lisp/.../ironclad-unsafe` first.
+
+## DSA verify: cache the Montgomery context per key
+
+DSA verification rebuilt the Montgomery limbs and the sixteen odd-power
+tables of G and Y on every call -- about thirty Montgomery multiplies
+plus the bignum conversions -- although they depend only on the key.  A
+MONT-SHAMIR-CONTEXT is now built on first verification and stored on the
+DSA public key; POWER-MOD2 takes it as an optional argument and
+MONTGOMERY-EXPT-SHAMIR checks the modulus and both bases before using it,
+falling back to a fresh context on a mismatch.
+
+Direct DSA-2048 verify 404 -> 350 us (about 14%), moving the row from
+2.00 to about 1.93.  The cached and uncached paths were compared on
+twenty random 2048-bit groups, and the full suite passes.
