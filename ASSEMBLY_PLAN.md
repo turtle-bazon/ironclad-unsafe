@@ -3846,3 +3846,19 @@ Aggregate: **53 rows ahead, 65 within 2x, 5 beyond**.  The five are
 falcon-512 keygen, ed448 verify, chacha-poly, secp521r1 verify and dsa
 verify -- the set the plan has been converging on, with no noise rows
 left in it this time.
+
+## DSA verify: joint sliding window for the simultaneous exponentiation
+
+MONTGOMERY-EXPT-SHAMIR was bit-by-bit: one squaring per bit and one
+multiply for every bit where either exponent was set, about 448
+multiplications for a 2048-bit modulus with two 256-bit exponents.  It
+now uses a joint five-bit sliding window: one squaring per bit and a
+multiply per odd window of either exponent, plus sixteen odd powers of
+each base.  DSA-2048 verify 465 -> 402 us (about 14%).
+
+The first attempt was wrong: multiplying at the window's first bit gave
+the window value l-1 extra squarings.  The multiply is now held until
+the window's last squaring has been applied, and the skipped bits
+cannot start another window.  Validated against EXPT-MOD on 512-3072
+bit moduli with random 256-bit exponents, and by DSA sign/verify/tamper
+and the full suite.
