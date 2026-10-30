@@ -3834,3 +3834,15 @@ Direct verify 124.6 -> 117.9 us (about 5.5%), which puts the row just
 under 2x.  Two threads can race to build the cache; both compute the
 same read-only table and one wins, so no lock is needed.  Full suite
 passes.
+
+### Table refresh (rev 1205)
+
+The per-key cache moves secp256r1 verify from 7.72k to 9.28k ops/s
+(2.18 -> 1.98).  The run also landed on a quiet host for the other
+curve rows: secp224r1 verify 1.91, secp521r1 verify 2.63, dsa verify
+2.57.
+
+Aggregate: **53 rows ahead, 65 within 2x, 5 beyond**.  The five are
+falcon-512 keygen, ed448 verify, chacha-poly, secp521r1 verify and dsa
+verify -- the set the plan has been converging on, with no noise rows
+left in it this time.
