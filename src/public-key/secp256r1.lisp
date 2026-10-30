@@ -796,8 +796,7 @@ to the bignum inverse."
             (declare (type integer e))
             (loop for wi of-type fixnum downfrom 63 to 0 do
               (unless (= wi 63)
-                (dotimes (j 4)
-                  (declare (ignore j))
+                (loop repeat 4 do
                   (secp256r1-scalar-mont-mul acc acc acc)))
               (let* ((shift (* wi 4))
                      (v (ldb (byte 4 shift) e))

@@ -576,27 +576,6 @@
   (any)
   :overwrite-fndb-silently t)
 
-#+x86-64
-(defknown ironclad-unsafe::secp256r1-double-asm
-  ((simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 64) (*)))
-  (values)
-  (any)
-  :overwrite-fndb-silently t)
-
 
 
 #+x86-64
@@ -753,27 +732,6 @@
   ((simple-array (unsigned-byte 64) (*))
    (simple-array (unsigned-byte 32) (*))
    (simple-array (unsigned-byte 32) (*)))
-  (values)
-  (any)
-  :overwrite-fndb-silently t)
-
-#+x86-64
-(defknown ironclad-unsafe::secp256r1-double-asm
-  ((simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 32) (*))
-   (simple-array (unsigned-byte 64) (*)))
   (values)
   (any)
   :overwrite-fndb-silently t)

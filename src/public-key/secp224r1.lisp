@@ -1269,8 +1269,7 @@ leave the caller's variables alone."
                 (setf (aref subs h) sub)))
             (setf (aref rows j) subs))
           ;; base := 256 * base
-          (dotimes (i 8)
-            (declare (ignore i))
+          (loop repeat 8 do
             (let ((x (secp224r1-fe-zero))
                   (y (secp224r1-fe-zero))
                   (z (secp224r1-fe-zero)))
@@ -1368,8 +1367,7 @@ Returns the three coordinates as multiple values."
       (declare (type fixnum nibbles))
       (loop for j of-type fixnum downfrom (1- nibbles) to 0 do
         (unless (= j (1- nibbles))
-          (dotimes (i 4)
-            (declare (ignore i))
+          (loop repeat 4 do
             (secp224r1-double! tx ty tz ax ay az s)
             (secp224r1-swap3 ax ay az tx ty tz)))
         (let ((v (ldb (byte 4 (* j 4)) e)))

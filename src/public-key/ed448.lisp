@@ -316,8 +316,7 @@ input points use bignum coordinates; the result is an ed448-point."
              (type goldilocks-fe rx ry rz tx ty tz))
     (loop for wi of-type fixnum downfrom (1- nwin) to 0 do
       (unless (= wi (1- nwin))
-        (dotimes (i w)
-          (declare (ignore i))
+        (loop repeat w do
           (ed448-point-double-limbs! tx ty tz rx ry rz s)
           (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))
       (let* ((shift (* wi w))
@@ -361,8 +360,7 @@ input points use bignum coordinates; the result is an ed448-point."
              (type goldilocks-fe ax ay az tx ty tz sx sy sz))
     (loop for j of-type fixnum from 56 downto 0 do ; 456 bits / 8
       (unless (= j 56)
-        (dotimes (i 8)
-          (declare (ignore i))
+        (loop repeat 8 do
           (ed448-point-double-limbs! tx ty tz ax ay az s)
           (rotatef ax tx) (rotatef ay ty) (rotatef az tz)))
       ;; Linear scan: timing does not depend on the secret scalar.
@@ -430,8 +428,7 @@ input points use bignum coordinates; the result is an ed448-point."
                 (setf (aref subs h) sub)))
             (setf (aref rows j) subs))
           ;; base := 256 * base
-          (dotimes (i 8)
-            (declare (ignore i))
+          (loop repeat 8 do
             (let ((x (goldilocks-fe-zero))
                   (y (goldilocks-fe-zero))
                   (z (goldilocks-fe-zero)))

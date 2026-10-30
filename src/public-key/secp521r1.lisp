@@ -614,8 +614,7 @@ coordinates are Montgomery field elements; the result is integers."
     ;; Accumulator starts at infinity (all-zero limbs).
     (loop for wi of-type fixnum downfrom (1- nwin) to 0 do
       (unless (= wi (1- nwin))
-        (dotimes (i w)
-          (declare (ignore i))
+        (loop repeat w do
           (secp521r1-point-double! tx ty tz rx ry rz s)
           (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))
       (let* ((shift (* wi w))
@@ -866,8 +865,7 @@ addition chain (ecp_nistp521.c), far fewer multiplications than Fermat."
                               (ec-add (aref row (1- v)) base))))
                   (setf (aref rows j) row)
                   ;; base := 256 * base for the next row.
-                  (dotimes (i 8)
-                    (declare (ignore i))
+                  (loop repeat 8 do
                     (setf base (ec-double base)))))))))
 
 (declaim (inline secp521r1-select-base))
@@ -1100,8 +1098,7 @@ additions and no doublings."
              (type simple-vector tp tq))
     (loop for wi of-type fixnum downfrom (1- nwin) to 0 do
       (unless (= wi (1- nwin))
-        (dotimes (i w)
-          (declare (ignore i))
+        (loop repeat w do
           (setf acc (ec-double acc))))
       (let* ((shift (* wi w))
              (va (if (< shift abit) (ldb (byte w shift) a) 0))
@@ -1152,8 +1149,7 @@ TQ, when given, is a previously built window table for Q."
              (type secp521r1-fe rx ry rz tx ty tz))
     (loop for wi of-type fixnum downfrom (1- nwin) to 0 do
       (unless (= wi (1- nwin))
-        (dotimes (i w)
-          (declare (ignore i))
+        (loop repeat w do
           (secp521r1-point-double! tx ty tz rx ry rz s)
           (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))
       (let* ((shift (* wi w))

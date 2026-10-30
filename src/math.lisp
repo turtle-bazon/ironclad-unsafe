@@ -247,8 +247,7 @@ and turns the base conversion into one VOP multiply."
                    (loop while (and (< s i) (not (logbitp s exp))) do (incf s))
                    (let ((wlen (1+ (- i s))))
                      (declare (type fixnum wlen))
-                     (dotimes (h wlen)
-                       (declare (ignore h))
+                     (loop repeat wlen do
                        (mont-mul-limbs res res res m n0 tmp n))
                      (let ((u (ldb (byte wlen s) exp)))
                        (declare (type integer u))
@@ -296,8 +295,7 @@ bit-length in [512, 4096]; callers gate this."
             (setf (aref tab i) next)))
         (loop for wi of-type fixnum downfrom (1- nwin) to 0 do
           (unless (= wi (1- nwin))
-            (dotimes (j w)
-              (declare (ignore j))
+            (loop repeat w do
               (mont-mul-limbs acc acc acc m n0 tmp n)))
           (let* ((shift (* wi w))
                  (v (if (< shift (integer-length exp)) (ldb (byte w shift) exp) 0))
@@ -483,12 +481,6 @@ be odd with bit-length in [512, 4096]; callers gate this."
              (m (integer-to-limbs64 mod n))
              (ar (integer-to-limbs64 (mod (* (mod a mod) r) mod) n))
              (br (integer-to-limbs64 (mod (* (mod b mod) r) mod) n))
-             (abr (let ((tmp (make-array (1+ (* 2 n)) :element-type '(unsigned-byte 64)
-                                         :initial-element 0))
-                        (ab (make-array n :element-type '(unsigned-byte 64)
-                                        :initial-element 0)))
-                    (mont-mul-limbs ab ar br m n0 tmp n)
-                    ab))
              (res (integer-to-limbs64 (mod r mod) n))
              (one (integer-to-limbs64 1 n))
              (tmp (make-array (1+ (* 2 n)) :element-type '(unsigned-byte 64)
@@ -763,8 +755,7 @@ skipping that retry silently produced an invalid private key."
            (declare (type integer acc))
            (loop for wi of-type fixnum downfrom (1- nwin) to 0 do
              (unless (= wi (1- nwin))
-               (dotimes (j w)
-                 (declare (ignore j))
+               (loop repeat w do
                  (setf acc (barrett-mul acc acc ctx))))
              (let* ((shift (* wi w))
                     (v (if (< shift bits)

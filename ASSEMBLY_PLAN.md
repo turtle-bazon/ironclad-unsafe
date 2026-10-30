@@ -3932,3 +3932,45 @@ Portability check matrix, Roswell installations on 2026-10-30:
 | Allegro | 11.0express | full suite pass (loop NTT) |
 | CLISP | 2.49 (no MT) | full suite pass; ML-DSA targeted (loop NTT) |
 | LispWorks | lib only | not runnable here; CI excludes it |
+
+## Compilation-warning audit (SBCL, full log)
+
+A clean `asdf:load-system` of the working tree produced 3,177 compiler
+notes, 3 warnings and 78 style warnings.  The notes are overwhelmingly
+SBCL explaining why generic bignum/float arithmetic cannot use
+fixnum/float inline operations (POWER-MOD, EXPT-MOD, McEliece, XMSS,
+the portable curve fallbacks); they are not missed inlining of the VOP
+hot paths.
+
+Real issues found and fixed:
+
+- `secp384r1-fe-copy!` was defined twice; ASDF treats the duplicate
+  definition warning as an error, so a from-scratch `compile-system`
+  failed at secp384r1.
+- `montgomery-expt-shamir` still computed `abr` (one Montgomery
+  multiply per `power-mod2` call, i.e. per DSA verify) after the
+  sliding-window rewrite made it dead.  Removed.
+- `falcon-gs-norm`: `sqnorm-fg` and `sqnorm-FG` are the same symbol, so
+  the second binding shadowed the first and `(max ...)` compared the
+  inverse norm with itself.  Renamed; a correctness fix.
+- `falcon-ldl-fft` allocated two unused vectors per call (Falcon
+  keygen).  Removed.
+- `+falcon-mu+` was used before its `defconstant`; moved above.
+- Twenty-three `(dotimes (i n) (declare (ignore i)) ...)` forms produced
+  "set/read ignored variable" style warnings; replaced with `loop
+  repeat`.
+- Removed the dead `secp256r1-double-asm` placeholder VOP and its two
+  duplicate `defknown`s.
+
+Remaining: two "undefined variable" warnings for
+`+pristine-sha256-registers+` and `+secp256r1-point-at-infinity+`,
+because ASDF compiles the public-key files before the digest/curve
+files that define them; both are bound by the time they are called, so
+this is a compile-order artifact, not a runtime bug.
+
+Environment note: `~/quicklisp` contains a `bazon-public` dist copy of
+ironclad-unsafe that shadows the working tree for plain
+`ql:quickload` (the ros runs use a different Quicklisp and did use the
+tree).  Local checks should use
+`(asdf:load-asd #P".../ironclad-unsafe.asd")` and then
+`asdf:load-system`; the suite passes that way.

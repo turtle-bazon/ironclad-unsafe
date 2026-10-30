@@ -81,6 +81,13 @@ A and B are reduced residues, so the difference needs one addition."
   (let ((d (- a b)))
     (if (< d 0) (+ d +falcon-q+) d)))
 
+(defconstant +falcon-mu+ 1431539266
+  "The reciprocal of the prime, for the reduction of a product.
+The product of two residues is below 2^28, and this is 2^44
+divided by the prime, so the quotient that the reciprocal gives is
+never more than one below the true quotient, and one subtraction of
+the prime at most brings the remainder back.")
+
 (defun falcon-mulmod (a b)
   "The product of A and B modulo the falcon prime.
 The product of two reduced residues is below 2^28, so it is reduced
@@ -96,13 +103,6 @@ below twice the prime."
          (qh (ash (* p +falcon-mu+) -44))
          (r (- p (* qh +falcon-q+))))
     (if (>= r +falcon-q+) (- r +falcon-q+) r)))
-
-(defconstant +falcon-mu+ 1431539266
-  "The reciprocal of the prime, for the reduction of a product.
-The product of two residues is below 2^28, and this is 2^44
-divided by the prime, so the quotient that the reciprocal gives is
-never more than one below the true quotient, and one subtraction of
-the prime at most brings the remainder back.")
 
 (defun falcon-make-twiddles (n)
   "The twiddles of the merge of a transform of size N.
@@ -188,8 +188,7 @@ The entry for the size 2^k is at the index k-1.")
         (dotimes (i n)
           (let ((r 0) (x i))
             (declare (type fixnum r x))
-            (dotimes (b logn)
-              (declare (ignore b))
+            (loop repeat logn do
               (setf r (+ (* r 2) (logand x 1))
                     x (ash x -1)))
             (setf (aref brev i) r)))
@@ -693,8 +692,7 @@ identical to the recursive transform's."
         (dotimes (i n)
           (let ((r 0) (x i))
             (declare (type fixnum r x))
-            (dotimes (b logn)
-              (declare (ignore b))
+            (loop repeat logn do
               (setf r (+ (* r 2) (logand x 1))
                     x (ash x -1)))
             (setf (aref brev i) r)))
@@ -1152,10 +1150,7 @@ then single bytes; without buffering every one is a full call."
     (list (list g00 g01) (list g01 g11))))
 
 (defun falcon-ldl-fft (g00 g10 g11)
-  (let* ((n (length g00))
-         (zero (falcon-cvec n))
-         (one (falcon-cvec n #C(1d0 0d0)))
-         (l10 (falcon-div-fft g10 g00))
+  (let* ((l10 (falcon-div-fft g10 g00))
          (d11 (falcon-sub-fft g11 (falcon-mul-fft (falcon-mul-fft l10 (falcon-adj-fft l10)) g00))))
     (values l10 d11)))
 
@@ -1563,6 +1558,9 @@ elements, the low half followed by the high half."
               (falcon-babai-reduce f g rF rG)))))))
 
 (defun falcon-gs-norm (f g)
+  ;; SQNORM-FG and SQNORM-FG (the inverse) are the same symbol in CL:
+  ;; the second binding used to shadow the first, so the MAX compared
+  ;; the inverse norm with itself.  Keep the two names distinct.
   (let* ((fg (map 'vector (lambda (x) (float x 0d0)) f))
          (gg (map 'vector (lambda (x) (float x 0d0)) g))
          (sqnorm-fg (+ (reduce #'+ (map 'vector (lambda (x) (* x x)) fg))
@@ -1571,10 +1569,10 @@ elements, the low half followed by the high half."
                            (falcon-mul gg (falcon-adj gg))))
          (Ft (falcon-div (falcon-adj gg) ffgg))
          (Gt (falcon-div (falcon-adj fg) ffgg))
-         (sqnorm-FG (* (expt +falcon-q+ 2)
-                       (+ (reduce #'+ (map 'vector (lambda (x) (* x x)) Ft))
-                          (reduce #'+ (map 'vector (lambda (x) (* x x)) Gt))))))
-    (max sqnorm-fg sqnorm-FG)))
+         (sqnorm-inv (* (expt +falcon-q+ 2)
+                        (+ (reduce #'+ (map 'vector (lambda (x) (* x x)) Ft))
+                           (reduce #'+ (map 'vector (lambda (x) (* x x)) Gt))))))
+    (max sqnorm-fg sqnorm-inv)))
 
 (defun falcon-gen-poly (n randbytes)
   (let ((f0 (make-array 4096 :element-type 'integer :initial-element 0))

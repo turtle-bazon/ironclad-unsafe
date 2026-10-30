@@ -248,18 +248,6 @@ operation allocates nothing."
 ;;; Limb point operations for P-384 (six 64-bit Montgomery coordinates).
 ;;; Destination-passing with a scratch pool: no allocation inside.
 
-(defun secp384r1-fe-copy! (dst src)
-  "Copy field element SRC into DST."
-  (declare (type secp384r1-fe dst src)
-           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (setf (aref dst 0) (aref src 0)
-        (aref dst 1) (aref src 1)
-        (aref dst 2) (aref src 2)
-        (aref dst 3) (aref src 3)
-        (aref dst 4) (aref src 4)
-        (aref dst 5) (aref src 5))
-  dst)
-
 (defun secp384r1-make-scratch ()
   "A fresh scratch pool: forty field elements plus the 13-word product
 buffer, so the point operations allocate nothing."
@@ -487,8 +475,7 @@ coordinates are Montgomery field elements; the result is integers."
              (type secp384r1-fe rx ry rz tx ty tz))
     (loop for wi of-type fixnum downfrom (1- nwin) to 0 do
       (unless (= wi (1- nwin))
-        (dotimes (i w)
-          (declare (ignore i))
+        (loop repeat w do
           (secp384r1-point-double! tx ty tz rx ry rz s)
           (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))
       (let* ((shift (* wi w))
@@ -551,8 +538,7 @@ coordinates are Montgomery field elements; the result is integers."
              (type secp384r1-fe rx ry rz tx ty tz))
     (loop for wi of-type fixnum downfrom (1- nwin) to 0 do
       (unless (= wi (1- nwin))
-        (dotimes (i w)
-          (declare (ignore i))
+        (loop repeat w do
           (secp384r1-point-double! tx ty tz rx ry rz s)
           (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))
       (let* ((shift (* wi w))
@@ -677,8 +663,7 @@ coordinates are Montgomery field elements; the result is integers."
                               (ec-add (aref row (1- v)) base))))
                   (setf (aref rows j) row)
                   ;; base := 256 * base for the next row.
-                  (dotimes (i 8)
-                    (declare (ignore i))
+                  (loop repeat 8 do
                     (setf base (ec-double base)))))))))
 
 (declaim (inline secp384r1-select-base))
@@ -896,8 +881,7 @@ additions and no doublings."
              (type simple-vector tp tq))
     (loop for wi of-type fixnum downfrom (1- nwin) to 0 do
       (unless (= wi (1- nwin))
-        (dotimes (i w)
-          (declare (ignore i))
+        (loop repeat w do
           (setf acc (ec-double acc))))
       (let* ((shift (* wi w))
              (va (if (< shift abit) (ldb (byte w shift) a) 0))

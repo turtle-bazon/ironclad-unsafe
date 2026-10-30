@@ -249,8 +249,7 @@ behaviour as CHACHA-INC-COUNTER repeated N times."
                 (multiple-value-bind (q4 r4)
                     (truncate length 256)
                   (declare (ignore r4))
-                  (dotimes (i q4)
-                    (declare (ignore i))
+                  (loop repeat q4 do
                     (chacha-core-4x-avx2 state state-b state-c state-d
                                          plaintext plaintext-start
                                          ciphertext ciphertext-start 2x-rounds
@@ -266,8 +265,7 @@ behaviour as CHACHA-INC-COUNTER repeated N times."
             (multiple-value-bind (q r)
                 (truncate length 128)
               (declare (type index q r))
-              (dotimes (i q)
-                (declare (ignore i))
+              (loop repeat q do
                 (if avx2
                     (chacha-core-2x-avx2 state state-b plaintext
                                          plaintext-start ciphertext

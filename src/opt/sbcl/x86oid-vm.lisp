@@ -4558,56 +4558,6 @@
 
 
 #+x86-64
-(define-vop (secp256r1-double-asm)
-  ;; PLACEHOLDER: copies src to dst. Full implementation in progress.
-  (:translate ironclad-unsafe::secp256r1-double-asm)
-  (:policy :fast-safe)
-  (:args (dx :scs (descriptor-reg))
-         (dy :scs (descriptor-reg))
-         (dz :scs (descriptor-reg))
-         (sx :scs (descriptor-reg))
-         (sy :scs (descriptor-reg))
-         (sz :scs (descriptor-reg))
-         (A :scs (descriptor-reg))
-         (B :scs (descriptor-reg))
-         (C :scs (descriptor-reg))
-         (D :scs (descriptor-reg))
-         (E :scs (descriptor-reg))
-         (F :scs (descriptor-reg))
-         (G :scs (descriptor-reg))
-         (H :scs (descriptor-reg))
-         (P :scs (descriptor-reg)))
-  (:arg-types simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-32
-              simple-array-unsigned-byte-64)
-  (:temporary (:sc unsigned-reg) tmp tmp2 carry borrow lo hi)
-  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
-  (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
-  (:generator 1000
-    (let ((data-offset (- (* n-word-bytes vector-data-offset)
-                           other-pointer-lowtag)))
-      ;; Copy src to dst (placeholder)
-      (dotimes (i 8)
-        (dword-inst mov tmp (dword-ea (+ data-offset (* 4 i)) sx))
-        (dword-inst mov (dword-ea (+ data-offset (* 4 i)) dx) tmp)
-        (dword-inst mov tmp (dword-ea (+ data-offset (* 4 i)) sy))
-        (dword-inst mov (dword-ea (+ data-offset (* 4 i)) dy) tmp)
-        (dword-inst mov tmp (dword-ea (+ data-offset (* 4 i)) sz))
-        (dword-inst mov (dword-ea (+ data-offset (* 4 i)) dz) tmp)))))
-
-#+x86-64
 (define-vop (secp256r1-fe-add-asm)
   ;; R := (A + B) mod P, for reduced residues in eight 32-bit limbs.
   ;;

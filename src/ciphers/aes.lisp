@@ -1116,16 +1116,14 @@ half."
                        (truncate remaining 16)
                      (multiple-value-bind (q8 q1)
                          (truncate q 8)
-                       (dotimes (i q8)
-                         (declare (ignore i))
+                       (loop repeat q8 do
                          (fill-ctr-blocks-8 iv ctr-blocks)
                          (aes-ni-ctr-encrypt-8x ctr-blocks 0 in offset out out-start
                                                 round-keys n-rounds)
                          (incf offset 128)
                          (incf out-start 128))
                        (incf keystream-blocks (* q8 8))
-                       (dotimes (i q1)
-                         (declare (ignore i))
+                       (loop repeat q1 do
                          (funcall function cipher iv 0 encrypted-iv 0)
                          (increment-counter-block-1 16 iv)
                          (xor-block 16 encrypted-iv 0 in offset out out-start)
