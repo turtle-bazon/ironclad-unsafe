@@ -4166,3 +4166,13 @@ the AEAD and Falcon rows swing: chacha-poly reads 3.42 here against
 10.16.  The direct A/B measurements above are the reliable numbers for
 the squaring changes; the table is for the broad picture, not for
 row-by-row comparison across runs.
+
+### P-256: ping-pong the point accumulator
+
+SECP256R1-BASE-MULT and SECP256R1-SHAMIR-MULT wrote each sum or double
+into TMP and then copied the three coordinates back to ACC.  The two
+point objects are distinct and every operation requires DST /= SRC, so
+the copy can be replaced by swapping the two variables.  Direct
+measurement: verify 107.6 -> 106.8 us, sign 33.2 -> 32.7 us (about 1%,
+inside the host noise but a real removal of 32 to ~380 copies per
+operation).  The full suite passes.

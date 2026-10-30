@@ -1279,7 +1279,9 @@ mixed additions and no doublings."
         (declare (type (unsigned-byte 8) v))
         (secp256r1-mixed-add! tmp acc
                               (secp256r1-select-base (aref table j) v) s)
-        (secp256r1-point-copy! acc tmp)))))
+        ;; Ping-pong: the sum is in TMP; make it the accumulator
+        ;; without copying the three coordinates.
+        (rotatef acc tmp)))))
 
 (defun secp256r1-build-q-table (q)
   "The sixteen affine multiples of Q, index 0 the point at infinity.
@@ -1328,7 +1330,8 @@ Q-TABLE, when given, is the affine table from SECP256R1-BUILD-Q-TABLE."
       (unless (= w (1- windows))
         (loop repeat 4 do
           (secp256r1-double! tmp acc s)
-          (secp256r1-point-copy! acc tmp)))
+          ;; Ping-pong instead of copying the result back.
+          (rotatef acc tmp)))
       (let* ((shift (* w 4))
              (ga (if (< shift nbits) (ldb (byte 4 shift) a) 0))
              (gb (if (< shift nbits) (ldb (byte 4 shift) b) 0)))
@@ -1336,8 +1339,8 @@ Q-TABLE, when given, is the affine table from SECP256R1-BUILD-Q-TABLE."
                  (type (unsigned-byte 4) ga gb))
         (unless (zerop ga)
           (secp256r1-mixed-add! tmp acc (aref (aref tg 0) ga) s)
-          (secp256r1-point-copy! acc tmp))
+          (rotatef acc tmp))
         (unless (zerop gb)
           (secp256r1-mixed-add! tmp acc (aref tq gb) s)
-          (secp256r1-point-copy! acc tmp))))
+          (rotatef acc tmp))))
     acc))
