@@ -3974,3 +3974,30 @@ ironclad-unsafe that shadows the working tree for plain
 tree).  Local checks should use
 `(asdf:load-asd #P".../ironclad-unsafe.asd")` and then
 `asdf:load-system`; the suite passes that way.
+
+### Correction: the central registry does shadow the Quicklisp dist
+
+The previous entry said `~/quicklisp`'s bazon-public copy shadowed the
+working tree for `ql:quickload`.  That was wrong.  ASDF's
+`*CENTRAL-REGISTRY*` docstring describes its entries as "system
+directory designators": pathnames or expressions that evaluate to
+pathnames, and `SYSDEF-CENTRAL-REGISTRY-SEARCH` evaluates them in
+order and returns the first `.asd` found.  Either
+
+    (pushnew #P"/home/turtle/ironclad-unsafe/" asdf:*central-registry*
+             :test #'equal)
+
+or, for the current directory,
+
+    (pushnew '*default-pathname-defaults* asdf:*central-registry*
+             :test #'equal)
+
+puts the checkout ahead of the dist; both ASDF and `ql:quickload` then
+use it (verified: `FOUND /home/turtle/ironclad-unsafe/`).
+
+The 25-line "clean" log was not the dist: `ql:quickload`'s `:force`
+argument forces loading, not recompilation, and the repository's fasls
+were already present.  To see the warnings, use
+`(asdf:compile-system :ironclad-unsafe :force t)`, which compiles
+without loading, or delete
+`~/.cache/common-lisp/.../ironclad-unsafe` first.
