@@ -696,6 +696,9 @@ being folded.  When it is not negative, a carry out is folded as
     (dotimes (i 4 n)
       (setf n (+ n (ash (aref a i) (* 56 i)))))))
 
+(defvar *secp224r1-sqr-enabled* t
+  "Use the Comba squaring VOP when both operands are the same array.")
+
 (defun secp224r1-fe-mul-raw (c a b)
   "C := A * B, as seven wide coefficients, after the reference.
 The coefficients are the columns of the product, and they are not
@@ -704,7 +707,10 @@ reduced."
            (type secp224r1-fe a b)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
-  (progn (secp224r1-fe-mul-limbs-asm c a b) c)
+  (progn (if (and *secp224r1-sqr-enabled* (eq a b))
+             (secp224r1-fe-sqr-limbs-asm c a)
+             (secp224r1-fe-mul-limbs-asm c a b))
+         c)
   #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn (secp224r1-felem-mul c a b) c))
 

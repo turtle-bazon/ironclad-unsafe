@@ -3947,6 +3947,43 @@
 
 
 #+x86-64
+(define-vop (secp224r1-fe-sqr-limbs-asm)
+  ;; C := A * A, as the seven wide coefficients of the reference.
+  ;; Same column scan as SECP224R1-FE-MUL-LIMBS-ASM, but each unordered
+  ;; pair is formed once and the off-diagonal products are doubled.
+  ;; The four 56-bit limbs leave the two-word column accumulator enough
+  ;; headroom for the doubled products.
+  (:translate ironclad-unsafe::secp224r1-fe-sqr-limbs-asm)
+  (:policy :fast-safe)
+  (:args (c :scs (descriptor-reg))
+         (a :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg) lo hi tmp)
+  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+  (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (flet ((a64 (i) (ea (+ data-offset (* 8 i)) a))
+             (c64 (k) (ea (+ data-offset (* 8 k)) c)))
+        (dotimes (k 7)
+          (inst mov lo 0)
+          (inst mov hi 0)
+          (loop for i from (max 0 (- k 3)) to (min 3 (floor k 2)) do
+            (let ((j (- k i)))
+              (inst mov rax-tmp (a64 i))
+              (inst mov tmp (a64 j))
+              (inst mul tmp)
+              (unless (= i j)
+                (inst add rax-tmp rax-tmp)
+                (inst adc rdx-tmp rdx-tmp))
+              (inst add lo rax-tmp)
+              (inst adc hi rdx-tmp)))
+          (inst mov (c64 (* 2 k)) lo)
+          (inst mov (c64 (1+ (* 2 k))) hi))))))
+
+#+x86-64
 (define-vop (secp224r1-fe-reduce-limbs-asm)
   ;; R := C mod P, after the reference, where C is the fourteen words
   ;; of the seven wide coefficients, two words each.  R is four words,
@@ -4253,6 +4290,54 @@
               (inst adc hi rdx-tmp)))
           ;; The limb is the low 56 bits of the low half, and the
           ;; carry into the next column is the rest of the column.
+          (inst mov tmp lo)
+          (inst shl tmp 8)
+          (inst shr tmp 8)
+          (inst mov (c64 k) tmp)
+          (inst mov tmp lo)
+          (inst shr tmp 56)
+          (inst shl hi 8)
+          (inst or tmp hi)
+          (inst mov carry tmp))
+        (inst mov (c64 15) carry)))))
+
+
+#+x86-64
+(define-vop (goldilocks-fe-sqr-raw-asm)
+  ;; R := A * A, as sixteen limbs of 56 bits, without reduction.
+  ;; Same column scan as GOLDILOCKS-FE-MUL-RAW-ASM, but each unordered
+  ;; pair is formed once and the off-diagonal products are doubled.
+  ;; The 56-bit limbs leave enough headroom that the two-word column
+  ;; accumulator is still sufficient: a column holds at most four
+  ;; doubled products plus one diagonal, below 2^116.
+  (:translate ironclad-unsafe::goldilocks-fe-sqr-raw-asm)
+  (:policy :fast-safe)
+  (:args (c :scs (descriptor-reg))
+         (a :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg) lo hi carry tmp)
+  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+  (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (flet ((a64 (i) (ea (+ data-offset (* 8 i)) a))
+             (c64 (k) (ea (+ data-offset (* 8 k)) c)))
+        (inst mov carry 0)
+        (dotimes (k 15)
+          (inst mov lo carry)
+          (inst mov hi 0)
+          (loop for i from (max 0 (- k 7)) to (min 7 (floor k 2)) do
+            (let ((j (- k i)))
+              (inst mov rax-tmp (a64 i))
+              (inst mov tmp (a64 j))
+              (inst mul tmp)
+              (unless (= i j)
+                (inst add rax-tmp rax-tmp)
+                (inst adc rdx-tmp rdx-tmp))
+              (inst add lo rax-tmp)
+              (inst adc hi rdx-tmp)))
           (inst mov tmp lo)
           (inst shl tmp 8)
           (inst shr tmp 8)
@@ -6980,6 +7065,8 @@
                (inst mov lo hi))
              (emit-label done)))))))
 
+#+x86-64
+(define-mont-sqr-vop mont-sqr-9 ironclad-unsafe::mont-sqr-9-asm 9)
 #+x86-64
 (define-mont-sqr-vop mont-sqr-16 ironclad-unsafe::mont-sqr-16-asm 16)
 #+x86-64

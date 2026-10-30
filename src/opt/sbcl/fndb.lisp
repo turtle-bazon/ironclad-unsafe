@@ -550,6 +550,17 @@
   :overwrite-fndb-silently t)
 
 #+x86-64
+(defknown ironclad-unsafe::mont-sqr-9-asm
+  ((simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*))
+   (unsigned-byte 64)
+   (simple-array (unsigned-byte 64) (*)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
 (defknown ironclad-unsafe::mont-sqr-16-asm
   ((simple-array (unsigned-byte 64) (*))
    (simple-array (unsigned-byte 64) (*))
@@ -628,6 +639,14 @@
   :overwrite-fndb-silently t)
 
 #+x86-64
+(defknown ironclad-unsafe::secp224r1-fe-sqr-limbs-asm
+  ((simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
 (defknown ironclad-unsafe::secp224r1-fe-reduce-limbs-asm
   ((simple-array (unsigned-byte 64) (*))
    (simple-array (unsigned-byte 64) (*)))
@@ -665,6 +684,14 @@
 (defknown ironclad-unsafe::goldilocks-fe-mul-raw-asm
   ((simple-array (unsigned-byte 64) (*))
    (simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
+(defknown ironclad-unsafe::goldilocks-fe-sqr-raw-asm
+  ((simple-array (unsigned-byte 64) (*))
    (simple-array (unsigned-byte 64) (*)))
   (values)
   (any)

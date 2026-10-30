@@ -4118,3 +4118,35 @@ End to end (same key, `*mont-sqr-enabled*` toggled):
 
 The N=16 gain is why RSA CRT signing moves: its primes are 1024-bit
 moduli, so it uses the 16-limb square.
+
+### Field squaring VOPs: P-521, P-224 and Ed448
+
+The same Comba symmetry works in the three specialized field
+multipliers, where the limbs are 56-bit (or 64-bit for P-521) and the
+reduction is unchanged:
+
+- **P-521**: `mont-sqr-9-asm`, selected by SECP521R1-FE-MONT-MUL when
+  `(eq a b)` and BMI2 is present.  The nineteen-word scratch the field
+  already carries is exactly the 2N+1 the square needs.
+- **P-224**: `secp224r1-fe-sqr-limbs-asm`, a column scan over the four
+  56-bit limbs with the off-diagonal products doubled.  Selected in
+  SECP224R1-FE-MUL-RAW.
+- **Ed448**: `goldilocks-fe-sqr-raw-asm`, the same column scan over the
+  eight 56-bit Goldilocks limbs.  Selected in GOLDILOCKS-FE-MUL-RAW.
+
+The 56-bit limbs leave the two-word column accumulator enough headroom
+for the doubled products (the largest column is below 2^116), so these
+do not need the three-word accumulator of the 64-bit generic square.
+
+Raw multiply timings (best of five 200 ms samples) and end to end
+(same key, the respective `*...-sqr-enabled*` switch toggled):
+
+| field | raw multiply | raw square | gain | end to end |
+|---|---|---|---|---|
+| P-521 (9 limbs) | 150.4 ns | 139.9 ns | 7% | verify 1172 -> 1117 us (4.7%), sign 301 -> 296 us |
+| P-224 (4x56) | 39.0 ns | 33.7 ns | 14% | verify ~207 -> ~205 us (1-2.5%), sign ~55 -> ~55 us |
+| Goldilocks (8x56) | 64.4 ns | 51.3 ns | 20% | verify 554 -> 535 us (3.5%), sign 156 -> 152 us (2.5%) |
+
+Validated against the multiply on 1000 random elements per field and by
+the full SBCL suite.  The reductions, not the products, dominate these
+fields, which is why the raw gains translate to a few percent.

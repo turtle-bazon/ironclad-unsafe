@@ -100,6 +100,9 @@ V may be of any size, and may be negative."
     (dotimes (i 8 v)
       (setf v (+ v (ash (aref a i) (* 56 i)))))))
 
+(defvar *goldilocks-sqr-enabled* t
+  "Use the Comba squaring VOP when both operands are the same array.")
+
 (defun goldilocks-fe-mul-raw (r a b)
   "R := A * B, as sixteen limbs of 56 bits, without any reduction.
 This is the portable version; the assembly version is faster."
@@ -107,7 +110,9 @@ This is the portable version; the assembly version is faster."
            (type goldilocks-product r)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
-  (goldilocks-fe-mul-raw-asm r a b)
+  (if (and *goldilocks-sqr-enabled* (eq a b))
+      (goldilocks-fe-sqr-raw-asm r a)
+      (goldilocks-fe-mul-raw-asm r a b))
   #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
     (dotimes (k 16) (setf (aref r k) 0))
