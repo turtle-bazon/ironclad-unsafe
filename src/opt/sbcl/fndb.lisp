@@ -982,15 +982,16 @@
   :overwrite-fndb-silently t)
 
 #+x86-64
-(defknown ironclad-unsafe::poly1305-blocks-asm
+(defknown ironclad-unsafe::poly1305-blocks64-asm
   ((simple-array (unsigned-byte 32) (5))
-   (simple-array (unsigned-byte 64) (8))
+   (simple-array (unsigned-byte 64) (11))
    (simple-array (unsigned-byte 8) (*))
    (unsigned-byte 64)
    (unsigned-byte 64))
   (values)
   (any)
   :overwrite-fndb-silently t)
+
 
 #+x86-64
 (defknown ironclad-unsafe::sm3-block-asm

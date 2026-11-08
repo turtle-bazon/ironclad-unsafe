@@ -151,3 +151,7 @@
     decrypted-message))
 
 (defaead gcm)
+
+(define-aead-fast-constructor gcm
+  (:key :cipher-name :initialization-vector)
+  (:key :cipher-name :initialization-vector :tag))

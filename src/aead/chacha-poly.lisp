@@ -213,3 +213,11 @@ REINITIALIZE-INSTANCE, and the Poly1305 key is single-use anyway."
 
 (defaead chacha-poly)
 (defaead xchacha-poly)
+
+(define-aead-fast-constructor chacha-poly
+  (:key :initialization-vector)
+  (:key :initialization-vector :tag))
+
+(define-aead-fast-constructor xchacha-poly
+  (:key :initialization-vector)
+  (:key :initialization-vector :tag))

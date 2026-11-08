@@ -35,6 +35,26 @@ list-all-authenticated-encryption-modes NIL otherwise."
 (defmacro defaead (name)
   `(setf (get ',name 'aead) t))
 
+(defmacro define-aead-fast-constructor (class &rest shapes)
+  "Register exact-shape constructors for CLASS.  Each shape is a list of
+initarg keywords; a call whose initargs are exactly one shape (in any
+order) is built with a MAKE-INSTANCE of the constant class and constant
+keywords, which takes SBCL's optimized constructor path instead of the
+generic one (about a microsecond per AEAD object).  Any other call falls
+back to APPLY of MAKE-INSTANCE, so behaviour is unchanged."
+  (let ((args (gensym "ARGS")))
+    `(setf (get ',class 'aead-fast-constructor)
+           (lambda (,args)
+             (cond
+               ,@(loop for shape in shapes
+                       collect
+                       `((and (= (length ,args) ,(* 2 (length shape)))
+                              (loop for (k) on ,args by #'cddr
+                                    always (member k ',shape)))
+                         (make-instance ',class
+                                        ,@(loop for k in shape
+                                                append `(,k (getf ,args ,k)))))))))))
+
 (defun make-authenticated-encryption-mode (name &rest args)
   "Return an authenticated encryption object suitable for use for both
 encryption and decryption."
@@ -42,7 +62,9 @@ encryption and decryption."
     (symbol
      (let ((name (massage-symbol name)))
        (if (aeadp name)
-           (apply #'make-instance name args)
+           (let ((fast (get name 'aead-fast-constructor)))
+             (or (and fast (funcall (the function fast) args))
+                 (apply #'make-instance name args)))
            (error 'unsupported-authenticated-encryption-mode :name name))))
     (t
      (error 'type-error :datum name :expected-type 'symbol))))
