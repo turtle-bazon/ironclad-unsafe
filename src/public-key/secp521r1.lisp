@@ -221,6 +221,9 @@ X is reduced, so the double needs one subtraction at most."
         (dotimes (i 9 r)
           (setf (aref r i) (aref mont i)))))))
 
+(defvar *secp521r1-mersenne-enabled* t
+  "Use the Mersenne-reduction multiply for the P-521 limb field.")
+
 (defun secp521r1-fe-mont-mul (r a b c)
   "R := A * B * R^-1 mod P, with C a scratch of nineteen 64-bit words."
   (declare (type secp521r1-fe r a b)
@@ -228,7 +231,14 @@ X is reduced, so the double needs one subtraction at most."
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
-    (cond ((and *mont-sqr-enabled* (eq a b) (bmi2-supported-p))
+    (cond (*secp521r1-mersenne-enabled*
+           ;; Same result as the Montgomery VOPs below (A*B*2^-55 mod P),
+           ;; from the Mersenne reduction plus a rotation: half the
+           ;; multiplies.  See SECP521R1-MERSENNE-MUL-ASM.
+           (if (eq a b)
+               (secp521r1-mersenne-sqr-asm r a c)
+               (secp521r1-mersenne-mul-asm r a b c)))
+          ((and *mont-sqr-enabled* (eq a b) (bmi2-supported-p))
            (mont-sqr-9-asm r a +secp521r1-modulus-limbs+ +secp521r1-n0+ c))
           ((and (adx-supported-p) (bmi2-supported-p))
            (mont-mul-9-cios-mulx-asm r a b +secp521r1-modulus-limbs+

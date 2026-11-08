@@ -297,6 +297,7 @@
 (defun square-munge-block (round-keys n-rounds t-array s-array
                               plaintext plaintext-start
                               ciphertext ciphertext-start)
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (declare (type (simple-array (unsigned-byte 8) (*)) plaintext ciphertext)
            (type (simple-array (unsigned-byte 8) (256)) s-array)
            (type (simple-array (unsigned-byte 32) (*)) round-keys)

@@ -8471,6 +8471,417 @@
         (inst vzeroupper)))
     (values)))
 
+;;; ChaCha, eight blocks per call in the "vertical" layout.
+;;;
+;;; YMM register w holds state word w of eight consecutive blocks, so the
+;;; quarter rounds need no diagonal VPSHUFDs: the row layout of the cores
+;;; above spends 18 of every 38 instructions on the shift/shuffle units
+;;; (rotates by 12 and 7, the VPSHUFB rotates and six VPSHUFDs), and
+;;; those units, not the dependency chains, bound it.  This layout needs
+;;; six such operations per block per double round instead of nine.
+;;;
+;;; Sixteen state words plus two temporaries do not fit the sixteen YMM
+;;; registers, so two of the four "c" words (8..11) rotate through a
+;;; scratch area: each double round stores and reloads two pairs.  The
+;;; rotate masks are memory operands.  After the rounds each group of
+;;; four words is fed forward and transposed with VPUNPCK{L,H}{DQ,QDQ},
+;;; which leaves block J's 16 octets in the low lane and block J+4's in
+;;; the high lane; VPERM2I128 then joins two groups into 32 contiguous
+;;; octets per block, so the output is xored and stored a YMM at a time.
+;;;
+;;; WORK layout (32-bit words): 0..127 the initial state, word w of block
+;;; k at 8w+k; 128..159 the scratch for words 8..11; 160..167 the rotl16
+;;; VPSHUFB mask; 168..175 the rotl8 mask.
+#+x86-64
+(define-vop (chacha-core-8x-avx2)
+  (:translate ironclad-unsafe::chacha-core-8x-avx2)
+  (:policy :fast-safe)
+  (:args (work :scs (descriptor-reg))
+         (plaintext :scs (descriptor-reg))
+         (plaintext-start :scs (unsigned-reg))
+         (out :scs (descriptor-reg))
+         (out-start :scs (unsigned-reg))
+         (n-rounds :scs (unsigned-reg)))
+  (:arg-types simple-array-unsigned-byte-32
+              simple-array-unsigned-byte-8
+              unsigned-num
+              simple-array-unsigned-byte-8
+              unsigned-num
+              unsigned-num)
+  (:temporary (:sc int-avx2-reg) x0 x1 x2 x3 x4 x5 x6 x7 x12 x13 x14 x15 p q t1 t2)
+  (:temporary (:sc unsigned-reg) count)
+  (:generator 1000
+    (let ((disp (- (* n-word-bytes vector-data-offset) other-pointer-lowtag))
+          (repeat (gen-label)))
+      (flet ((col (w) (ea (+ disp (* 32 w)) work))
+             (cs (i) (ea (+ disp 512 (* 32 (- i 8))) work))
+             (m16 () (ea (+ disp 640) work))
+             (m8 () (ea (+ disp 672) work)))
+        (macrolet
+            ((qr2 ((a1 b1 c1 d1) (a2 b2 c2 d2))
+               `(progn
+                  (inst vpaddd ,a1 ,a1 ,b1) (inst vpaddd ,a2 ,a2 ,b2)
+                  (inst vpxor ,d1 ,d1 ,a1) (inst vpxor ,d2 ,d2 ,a2)
+                  (inst vpshufb ,d1 ,d1 (m16)) (inst vpshufb ,d2 ,d2 (m16))
+                  (inst vpaddd ,c1 ,c1 ,d1) (inst vpaddd ,c2 ,c2 ,d2)
+                  (inst vpxor ,b1 ,b1 ,c1) (inst vpxor ,b2 ,b2 ,c2)
+                  (inst vpslld t1 ,b1 12) (inst vpslld t2 ,b2 12)
+                  (inst vpsrld ,b1 ,b1 20) (inst vpsrld ,b2 ,b2 20)
+                  (inst vpor ,b1 ,b1 t1) (inst vpor ,b2 ,b2 t2)
+                  (inst vpaddd ,a1 ,a1 ,b1) (inst vpaddd ,a2 ,a2 ,b2)
+                  (inst vpxor ,d1 ,d1 ,a1) (inst vpxor ,d2 ,d2 ,a2)
+                  (inst vpshufb ,d1 ,d1 (m8)) (inst vpshufb ,d2 ,d2 (m8))
+                  (inst vpaddd ,c1 ,c1 ,d1) (inst vpaddd ,c2 ,c2 ,d2)
+                  (inst vpxor ,b1 ,b1 ,c1) (inst vpxor ,b2 ,b2 ,c2)
+                  (inst vpslld t1 ,b1 7) (inst vpslld t2 ,b2 7)
+                  (inst vpsrld ,b1 ,b1 25) (inst vpsrld ,b2 ,b2 25)
+                  (inst vpor ,b1 ,b1 t1) (inst vpor ,b2 ,b2 t2)))
+             (transpose (g r0 r1 r2 r3)
+               ;; Words 4G..4G+3 in R0..R3: feed forward and transpose, so
+               ;; that RJ holds block J's 16 octets (low lane) and block
+               ;; J+4's (high lane).  Clobbers T1, T2, P and Q.
+               `(progn
+                  (inst vpaddd ,r0 ,r0 (col ,(+ (* 4 g) 0)))
+                  (inst vpaddd ,r1 ,r1 (col ,(+ (* 4 g) 1)))
+                  (inst vpaddd ,r2 ,r2 (col ,(+ (* 4 g) 2)))
+                  (inst vpaddd ,r3 ,r3 (col ,(+ (* 4 g) 3)))
+                  (inst vpunpckldq t1 ,r0 ,r1)
+                  (inst vpunpckhdq t2 ,r0 ,r1)
+                  (inst vpunpckldq p ,r2 ,r3)
+                  (inst vpunpckhdq q ,r2 ,r3)
+                  (inst vpunpcklqdq ,r0 t1 p)
+                  (inst vpunpckhqdq ,r1 t1 p)
+                  (inst vpunpcklqdq ,r2 t2 q)
+                  (inst vpunpckhqdq ,r3 t2 q)))
+             (emit-pair (base (r0 r1 r2 r3) (s0 s1 s2 s3))
+               ;; R holds word group G and S group G+1 of every block:
+               ;; join block J's two 16-octet chunks into one register
+               ;; (VPERM2I128 #x20) and block J+4's (#x31), xor with the
+               ;; input and store 32 octets at 64J+BASE.
+               `(progn
+                  ,@(loop for j from 0
+                          for r in (list r0 r1 r2 r3)
+                          for s in (list s0 s1 s2 s3)
+                          append
+                          `((inst vperm2i128 t1 ,r ,s #x20)
+                            (inst vpxor t1 t1 (ea (+ disp ,(+ (* 64 j) base))
+                                                  plaintext plaintext-start))
+                            (inst vmovdqu (ea (+ disp ,(+ (* 64 j) base))
+                                              out out-start)
+                                  t1)
+                            (inst vperm2i128 t2 ,r ,s #x31)
+                            (inst vpxor t2 t2 (ea (+ disp ,(+ (* 64 (+ j 4)) base))
+                                                  plaintext plaintext-start))
+                            (inst vmovdqu (ea (+ disp ,(+ (* 64 (+ j 4)) base))
+                                              out out-start)
+                                  t2))))))
+          ;; Load the state; words 8..11 go to the scratch, 8 and 9 also
+          ;; to P and Q.
+          (inst vmovdqu x0 (col 0)) (inst vmovdqu x1 (col 1))
+          (inst vmovdqu x2 (col 2)) (inst vmovdqu x3 (col 3))
+          (inst vmovdqu x4 (col 4)) (inst vmovdqu x5 (col 5))
+          (inst vmovdqu x6 (col 6)) (inst vmovdqu x7 (col 7))
+          (inst vmovdqu x12 (col 12)) (inst vmovdqu x13 (col 13))
+          (inst vmovdqu x14 (col 14)) (inst vmovdqu x15 (col 15))
+          (inst vmovdqu p (col 10)) (inst vmovdqu (cs 10) p)
+          (inst vmovdqu q (col 11)) (inst vmovdqu (cs 11) q)
+          (inst vmovdqu p (col 8))
+          (inst vmovdqu q (col 9))
+          (inst mov count n-rounds)
+          (emit-label repeat)
+          ;; P = word 8, Q = word 9 on entry and exit.
+          (qr2 (x0 x4 p x12) (x1 x5 q x13))          ; columns 0, 1
+          (inst vmovdqu (cs 8) p) (inst vmovdqu (cs 9) q)
+          (inst vmovdqu p (cs 10)) (inst vmovdqu q (cs 11))
+          (qr2 (x2 x6 p x14) (x3 x7 q x15))          ; columns 2, 3
+          (qr2 (x0 x5 p x15) (x1 x6 q x12))          ; diagonals 0, 1
+          (inst vmovdqu (cs 10) p) (inst vmovdqu (cs 11) q)
+          (inst vmovdqu p (cs 8)) (inst vmovdqu q (cs 9))
+          (qr2 (x2 x7 p x13) (x3 x4 q x14))          ; diagonals 2, 3
+          (inst sub count 1)
+          (inst jmp :nz repeat)
+          (inst vmovdqu (cs 8) p) (inst vmovdqu (cs 9) q)
+          (transpose 0 x0 x1 x2 x3)
+          (transpose 1 x4 x5 x6 x7)
+          (emit-pair 0 (x0 x1 x2 x3) (x4 x5 x6 x7))
+          (inst vmovdqu x0 (cs 8)) (inst vmovdqu x1 (cs 9))
+          (inst vmovdqu x2 (cs 10)) (inst vmovdqu x3 (cs 11))
+          (transpose 2 x0 x1 x2 x3)
+          (transpose 3 x12 x13 x14 x15)
+          (emit-pair 32 (x0 x1 x2 x3) (x12 x13 x14 x15))
+          (inst vzeroupper))))
+    (values)))
+
+;;; P-521 field multiply, Mersenne-reduced, in the Montgomery convention.
+;;;
+;;; The P-521 limb field keeps residues in Montgomery form with R = 2^576,
+;;; and multiplied them with the generic nine-limb Montgomery VOPs: 81
+;;; products for A*B and 81 more for the reduction.  But P = 2^521 - 1 is
+;;; a Mersenne prime, so R = 2^55 (mod P) and the Montgomery product
+;;; A*B*R^-1 = A*B*2^-55 is just the Mersenne-reduced product rotated
+;;; right by 55 bits inside its 521 bits.  This VOP computes exactly that,
+;;; so every caller and every table stays as it is:
+;;;
+;;;   1. C[0..17] := A*B, product scanning (Comba); each column is summed
+;;;      in two three-word accumulators (alternate products) so the two
+;;;      add/adc chains overlap, then merged.
+;;;   2. S := (C mod 2^521) + (C >> 521), folded once more, then made
+;;;      canonical (P -> 0) by adding one and folding the carry back.
+;;;   3. R := S rotated right by 55 bits: (S >> 55) + (S mod 2^55) * 2^466.
+;;;
+;;; A and B must be canonical (below P); so is the result.  C is a
+;;; scratch of at least eighteen words.
+#+x86-64
+(defmacro define-secp521r1-mersenne-vop (name square-p)
+  `(define-vop (,name)
+  (:translate ,(intern (symbol-name name) :ironclad-unsafe))
+  (:policy :fast-safe)
+  (:args (r :scs (descriptor-reg))
+         (a :scs (descriptor-reg))
+         ,@(unless square-p '((b :scs (descriptor-reg))))
+         (c :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64
+              ,@(unless square-p '(simple-array-unsigned-byte-64))
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+  (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
+  (:temporary (:sc unsigned-reg) l0 h0 t0 l1 h1 t1)
+  (:generator 1000
+    (let ((disp (- (* n-word-bytes vector-data-offset) other-pointer-lowtag)))
+      (flet ((a64 (i) (ea (+ disp (* 8 i)) a))
+             ,@(unless square-p '((b64 (i) (ea (+ disp (* 8 i)) b))))
+             (c64 (i) (ea (+ disp (* 8 i)) c))
+             (r64 (i) (ea (+ disp (* 8 i)) r)))
+        ;; 1. Product, column by column.  (L0 H0 T0) carries in.
+        (inst xor l0 l0) (inst xor h0 h0) (inst xor t0 t0)
+        (dotimes (k 17)
+          (inst xor l1 l1) (inst xor h1 h1) (inst xor t1 t1)
+          ,(if square-p
+               ;; Square: the cross products A[i]*A[j], i < j, once into
+               ;; (L1 H1 T1), doubled; the diagonal A[k/2]^2 into (L0 H0
+               ;; T0).  45 products instead of 81.
+               '(progn
+                  (loop for i from (max 0 (- k 8)) to (min 8 k)
+                        for j = (- k i)
+                        when (< i j)
+                          do (inst mov rax-tmp (a64 i))
+                             (inst mul :qword (a64 j))
+                             (inst add l1 rax-tmp) (inst adc h1 rdx-tmp)
+                             (inst adc t1 0))
+                  (inst add l1 l1) (inst adc h1 h1) (inst adc t1 t1)
+                  (when (evenp k)
+                    (inst mov rax-tmp (a64 (ash k -1)))
+                    (inst mul rax-tmp)
+                    (inst add l0 rax-tmp) (inst adc h0 rdx-tmp)
+                    (inst adc t0 0)))
+               '(loop for i from (max 0 (- k 8)) to (min 8 k)
+                      for n from 0
+                      do (inst mov rax-tmp (a64 i))
+                         (inst mul :qword (b64 (- k i)))
+                         (if (evenp n)
+                             (progn (inst add l0 rax-tmp) (inst adc h0 rdx-tmp)
+                                    (inst adc t0 0))
+                             (progn (inst add l1 rax-tmp) (inst adc h1 rdx-tmp)
+                                    (inst adc t1 0)))))
+          (inst add l0 l1) (inst adc h0 h1) (inst adc t0 t1)
+          (inst mov (c64 k) l0)
+          (inst mov l0 h0) (inst mov h0 t0) (inst xor t0 t0))
+        (inst mov (c64 17) l0)
+        ;; 2. Mersenne reduction.  M := C[8] mod 2^9 (the top of the low
+        ;; half); C[8..16] := C >> 521, in place (H_k reads C[8+k] and
+        ;; C[9+k], and only C[8+k] is overwritten).
+        (inst mov t1 (c64 8))
+        (inst and t1 #x1ff)
+        (dotimes (k 9)
+          (inst mov l0 (c64 (+ 8 k)))
+          (inst mov h0 (c64 (+ 9 k)))
+          (inst shrd l0 h0 9)
+          (inst mov (c64 (+ 8 k)) l0))
+        ;; S := L + H into C[0..7] and T1.
+        (dotimes (k 8)
+          (inst mov l0 (c64 k))
+          (if (zerop k)
+              (inst add l0 (c64 (+ 8 k)))
+              (inst adc l0 (c64 (+ 8 k))))
+          (inst mov (c64 k) l0))
+        (inst adc t1 (c64 16))
+        ;; Fold the bits >= 2^521 once more: S < 2^522, so the carry
+        ;; T0 is at most one.
+        (flet ((fold ()
+                 (inst mov t0 t1)
+                 (inst shr t0 9)
+                 (inst and t1 #x1ff)
+                 (inst mov l0 (c64 0))
+                 (inst add l0 t0)
+                 (inst mov (c64 0) l0)
+                 (loop for k from 1 below 8
+                       do (inst mov l0 (c64 k))
+                          (inst adc l0 0)
+                          (inst mov (c64 k) l0))
+                 (inst adc t1 0)))
+          (fold)
+          ;; Canonical form: S + 1 reaches 2^521 exactly when S >= P
+          ;; (S = P, or S = 2^521 after the fold).  Add one, fold the
+          ;; carry in, take one away: S if S < P, else S - P.
+          (inst mov l0 (c64 0))
+          (inst add l0 1)
+          (inst mov (c64 0) l0)
+          (loop for k from 1 below 8
+                do (inst mov l0 (c64 k))
+                   (inst adc l0 0)
+                   (inst mov (c64 k) l0))
+          (inst adc t1 0)
+          (fold)
+          (inst mov l0 (c64 0))
+          (inst sub l0 1)
+          (inst mov (c64 0) l0)
+          (loop for k from 1 below 8
+                do (inst mov l0 (c64 k))
+                   (inst sbb l0 0)
+                   (inst mov (c64 k) l0))
+          (inst sbb t1 0))
+        ;; 3. Rotate right by 55 within 521 bits.  Z := S mod 2^55.
+        (inst mov h1 (c64 0))
+        (inst shl h1 9)
+        (inst shr h1 9)
+        (dotimes (k 8)
+          (inst mov l0 (c64 k))
+          (if (< k 7)
+              (inst mov h0 (c64 (1+ k)))
+              (inst mov h0 t1))
+          (inst shrd l0 h0 55)
+          (when (= k 7)
+            ;; bits 466..511 of the result: Z << 18
+            (inst mov t0 h1)
+            (inst shl t0 18)
+            (inst or l0 t0))
+          (inst mov (r64 k) l0))
+        ;; word 8: (S_8 >> 55) is zero; bits 512..520 are Z >> 46.
+        (inst shr h1 46)
+        (inst mov (r64 8) h1))))))
+
+#+x86-64
+(define-secp521r1-mersenne-vop secp521r1-mersenne-mul-asm nil)
+#+x86-64
+(define-secp521r1-mersenne-vop secp521r1-mersenne-sqr-asm t)
+
+;;; Goldilocks multiply, Karatsuba over phi = 2^224.
+;;;
+;;; With a = a0 + a1*phi and b = b0 + b1*phi (four 56-bit limbs each) and
+;;; phi^2 = phi + 1 modulo P = 2^448 - 2^224 - 1:
+;;;   a*b = (a0*b0 + a1*b1) + ((a0 + a1)*(b0 + b1) - a0*b0) * phi
+;;; which is 48 limb products instead of 64, with most of the reduction
+;;; done by the identity.  Columns T0..T10 (128-bit, 56-bit spacing):
+;;;   T_t = Z_t + Y_t (t <= 6) + S_(t-4) - Z_(t-4) (t >= 4)
+;;; with Z = a0*b0, Y = a1*b1 and S = (a0+a1)*(b0+b1) by columns.  Z is
+;;; computed first into BUF; T is built from t = 10 down, so Z_t is read
+;;; before T_t overwrites its slot and Z_(t-4) is still there for T_t.
+;;; T7..T10 go to the unused upper half of R, which is zeroed again at
+;;; the end.  T8..T10 are folded (2^448 = 2^224 + 1), the eight columns
+;;; are carried into 56-bit limbs, and BUF is left as a sixteen-limb
+;;; product (the final carry in limbs 8 and 9) for GOLDILOCKS-REDUCE-ASM.
+;;; Bounds: limbs < 2^56, so every column stays below 2^119.
+;;; R may be A or B: only their low eight limbs are read.
+#+x86-64
+(define-vop (goldilocks-kara-mul-asm)
+  (:translate ironclad-unsafe::goldilocks-kara-mul-asm)
+  (:policy :fast-safe)
+  (:args (buf :scs (descriptor-reg))
+         (a :scs (descriptor-reg))
+         (b :scs (descriptor-reg))
+         (r :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+  (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
+  (:temporary (:sc unsigned-reg) lo hi tmp cy)
+  (:generator 1000
+    (let ((disp (- (* n-word-bytes vector-data-offset) other-pointer-lowtag)))
+      (labels ((a64 (i) (ea (+ disp (* 8 i)) a))
+               (b64 (i) (ea (+ disp (* 8 i)) b))
+               (buf64 (i) (ea (+ disp (* 8 i)) buf))
+               (r64 (i) (ea (+ disp (* 8 i)) r))
+               (tcol (t-index word)
+                 ;; Where column T lives: BUF for t <= 6, R[8..15] above.
+                 (if (<= t-index 6)
+                     (buf64 (+ (* 2 t-index) word))
+                     (r64 (+ 8 (* 2 (- t-index 7)) word))))
+               (pairs (s)
+                 (loop for i from 0 to 3
+                       for j = (- s i)
+                       when (<= 0 j 3) collect (cons i j)))
+               (acc+ ()
+                 (inst add lo rax-tmp) (inst adc hi rdx-tmp))
+               (acc- ()
+                 (inst sub lo rax-tmp) (inst sbb hi rdx-tmp)))
+        ;; Z_s = sum a_i b_j (low halves), into BUF.
+        (dotimes (s 7)
+          (inst xor lo lo) (inst xor hi hi)
+          (loop for (i . j) in (pairs s)
+                do (inst mov rax-tmp (a64 i))
+                   (inst mul :qword (b64 j))
+                   (acc+))
+          (inst mov (buf64 (* 2 s)) lo)
+          (inst mov (buf64 (1+ (* 2 s))) hi))
+        ;; T_t, t = 10 down to 0.
+        (loop for tt from 10 downto 0 do
+          (inst xor lo lo) (inst xor hi hi)
+          (when (<= tt 6)
+            (inst add lo (buf64 (* 2 tt)))
+            (inst adc hi (buf64 (1+ (* 2 tt))))
+            (loop for (i . j) in (pairs tt)
+                  do (inst mov rax-tmp (a64 (+ 4 i)))
+                     (inst mul :qword (b64 (+ 4 j)))
+                     (acc+)))
+          (when (>= tt 4)
+            (let ((s (- tt 4)))
+              (loop for (i . j) in (pairs s)
+                    do (inst mov rax-tmp (a64 i))
+                       (inst add rax-tmp (a64 (+ 4 i)))
+                       (inst mov tmp (b64 j))
+                       (inst add tmp (b64 (+ 4 j)))
+                       (inst mul tmp)
+                       (acc+))
+              (inst sub lo (buf64 (* 2 s)))
+              (inst sbb hi (buf64 (1+ (* 2 s))))))
+          (inst mov (tcol tt 0) lo)
+          (inst mov (tcol tt 1) hi))
+        ;; Fold T8..T10: T_(t-8) += T_t and T_(t-4) += T_t.
+        (loop for tt from 10 downto 8 do
+          (inst mov lo (tcol tt 0))
+          (inst mov hi (tcol tt 1))
+          (inst add (tcol (- tt 8) 0) lo)
+          (inst adc (tcol (- tt 8) 1) hi)
+          (inst add (tcol (- tt 4) 0) lo)
+          (inst adc (tcol (- tt 4) 1) hi))
+        ;; Carry T0..T7 into 56-bit limbs BUF[0..7]; BUF[t] is written
+        ;; only after column T_(t/2), which it overlays, has been read.
+        (inst xor cy cy)
+        (dotimes (tt 8)
+          (inst mov lo (tcol tt 0))
+          (inst mov hi (tcol tt 1))
+          (inst add lo cy)
+          (inst adc hi 0)
+          (inst mov tmp lo)
+          (inst shl tmp 8)
+          (inst shr tmp 8)
+          (inst mov (buf64 tt) tmp)
+          (inst shrd lo hi 56)
+          (inst mov cy lo))
+        ;; The carry is the coefficient of 2^448: limbs 8 and 9.
+        (inst mov tmp cy)
+        (inst shl tmp 8)
+        (inst shr tmp 8)
+        (inst mov (buf64 8) tmp)
+        (inst shr cy 56)
+        (inst mov (buf64 9) cy)
+        (inst xor tmp tmp)
+        (loop for i from 10 below 16 do (inst mov (buf64 i) tmp))
+        (loop for i from 8 below 16 do (inst mov (r64 i) tmp))))))
+
 #+x86-64
 (define-vop (mce-xor-words)
   ;; DST[START .. START+COUNT) ^= SRC[START .. START+COUNT), word by word.

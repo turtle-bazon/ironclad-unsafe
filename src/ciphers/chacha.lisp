@@ -113,6 +113,12 @@ behaviour as CHACHA-INC-COUNTER repeated N times."
               :initial-contents '(3 0 1 2 7 4 5 6 11 8 9 10 15 12 13 14
                                   3 0 1 2 7 4 5 6 11 8 9 10 15 12 13 14)))
 
+;; Both rotate masks in one array, for the eight-block core.
+#+x86-64
+(defconst +chacha-rot-masks+
+  (concatenate '(simple-array (unsigned-byte 8) (64))
+               +chacha-rot16-mask+ +chacha-rot8-mask+))
+
 (defclass chacha (stream-cipher)
   ((state :reader chacha-state
           :initform (make-array 16 :element-type '(unsigned-byte 32)
@@ -217,6 +223,52 @@ behaviour as CHACHA-INC-COUNTER repeated N times."
           (decf length size)
           (incf ciphertext-start size)
           (incf plaintext-start size)))
+      ;; Eight-block phase (the vertical-layout core).  WORK holds word w
+      ;; of block k at 8w+k with block k's counter at +k, then the scratch
+      ;; and the two rotate masks (see CHACHA-CORE-8X-AVX2); each call
+      ;; advances every lane's counter by eight.
+      #+(and sbcl x86-64 ironclad-unsafe-assembly)
+      (when (and (zerop keystream-buffer-remaining)
+                 (>= length 512)
+                 *chacha-avx2-enabled*
+                 (avx2-supported-p)
+                 (or (eq core-function #'chacha/20-core)
+                     (eq core-function #'chacha/12-core)
+                     (eq core-function #'chacha/8-core)))
+        (let ((rounds (if (eq core-function #'chacha/8-core) 4
+                          (if (eq core-function #'chacha/12-core) 6 10)))
+              (work (make-array 176 :element-type '(unsigned-byte 32)
+                                    :initial-element 0))
+              (masks +chacha-rot-masks+)
+              (q8 (truncate length 512)))
+          (declare (type (integer 4 10) rounds)
+                   (type (simple-array (unsigned-byte 32) (176)) work)
+                   (type (simple-array (unsigned-byte 8) (64)) masks)
+                   (type index q8))
+          (flet ((advance (k n)
+                   ;; CHACHA-ADD-COUNTER on lane K of WORK.
+                   (declare (type (integer 0 7) k) (type (unsigned-byte 5) n))
+                   (let* ((old (aref work (+ 96 k)))
+                          (new (mod32+ old n)))
+                     (declare (type (unsigned-byte 32) old new))
+                     (setf (aref work (+ 96 k)) new)
+                     (when (< new old)
+                       (setf (aref work (+ 104 k))
+                             (mod32+ (aref work (+ 104 k)) 1))))))
+            (dotimes (w 16)
+              (dotimes (k 8)
+                (setf (aref work (+ (* 8 w) k)) (aref state w))))
+            (dotimes (k 8) (advance k k))
+            (dotimes (i 16)
+              (setf (aref work (+ 160 i)) (ub32ref/le masks (* 4 i))))
+            (loop repeat q8 do
+              (chacha-core-8x-avx2 work plaintext plaintext-start
+                                   ciphertext ciphertext-start rounds)
+              (dotimes (k 8) (advance k 8))
+              (incf plaintext-start 512)
+              (incf ciphertext-start 512)))
+          (loop repeat q8 do (chacha-add-counter state 8))
+          (decf length (* q8 512))))
       (unless (zerop length)
         ;; Two-wide bulk path when the keystream buffer is empty: a
         ;; staged second state lets one VOP call do two blocks.  Only

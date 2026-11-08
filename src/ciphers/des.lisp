@@ -259,6 +259,7 @@
                 (des-round ,right ,left ,keys (+ key-index 2)))))
 
 (defun des-munge-block (input input-start output output-start keys)
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (declare (type (simple-array (unsigned-byte 8) (*)) input output))
   (declare (type (integer 0 #.(- array-dimension-limit 8))
                  input-start output-start))
@@ -273,6 +274,7 @@
       (store-words output output-start right left))))
 
 (defun 3des-munge-block (input input-start output output-start k1 k2 k3)
+  (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (declare (type (simple-array (unsigned-byte 8) (*)) input output))
   (declare (type (integer 0 #.(- array-dimension-limit 8))
                  input-start output-start))

@@ -237,11 +237,22 @@ one sixteen-limb product buffer."
                           :initial-element 0))
     s))
 
+(defvar *goldilocks-kara-enabled* t
+  "Multiply with the Karatsuba VOP (48 products) instead of the 64-product
+raw multiply.  Squares keep the 36-product Comba square.")
+
 (defun goldilocks-fe-mul-buf (r a b buf)
   "R := A * B, reduced, using BUF as the product buffer."
   (declare (type goldilocks-fe r a b)
            (type goldilocks-product buf)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (when (and *goldilocks-kara-enabled* (not (eq a b)))
+    (goldilocks-kara-mul-asm buf a b r)
+    (goldilocks-fe-reduce16 buf)
+    (return-from goldilocks-fe-mul-buf
+      (dotimes (i 8 r)
+        (setf (aref r i) (aref buf i)))))
   (goldilocks-fe-mul-raw buf a b)
   (goldilocks-fe-reduce16 buf)
   (dotimes (i 8 r)

@@ -6,7 +6,7 @@
 
 (in-package :crypto-unsafe)
 
-(defun idea-mul (a b)
+(defun idea-mul-reference (a b)
   (declare (type (unsigned-byte 16) a b))
   (cond
     ((zerop a) (ldb (byte 16 0) (- 1 b)))
@@ -16,6 +16,23 @@
             (x (ldb (byte 16 16) product))
             (y (ldb (byte 16 0) product)))
        (ldb (byte 16 0) (+ (- y x) (if (< y x) 1 0)))))))
+
+(declaim (inline idea-mul))
+(defun idea-mul (a b)
+  "A * B modulo 2^16 + 1, with 0 standing for 2^16.  Branch-free (the
+reference version branches on zero operands, which made the block time
+depend on the data) and inlined into the block function."
+  (declare (type (unsigned-byte 16) a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((a1 (1+ (ldb (byte 16 0) (1- a))))      ; 0 -> 2^16
+         (b1 (1+ (ldb (byte 16 0) (1- b))))
+         (p (* a1 b1))                            ; <= 2^32
+         (d (- (ldb (byte 16 0) p) (ash p -16))))
+    (declare (type (integer 1 65536) a1 b1)
+             (type (integer 1 4294967296) p)
+             (type (integer -65536 65535) d))
+    ;; P mod 65537 = lo - hi, plus 65537 when negative; 65536 maps to 0.
+    (ldb (byte 16 0) (+ d (logand 65537 (ash d -20))))))
 
 (defun idea-mul-inv (x)
   (declare (type (unsigned-byte 16) x))
@@ -40,7 +57,8 @@
 (deftype idea-round-keys () '(simple-array (unsigned-byte 16) (52)))
 
 (defun idea-munge-block (input input-start output output-start keys)
-  (declare (type (simple-array (unsigned-byte 8) (*)) input output))
+  (declare (type (simple-array (unsigned-byte 8) (*)) input output)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (declare (type (integer 0 #.(- array-dimension-limit 8))
                  input-start output-start))
   (declare (type idea-round-keys keys))

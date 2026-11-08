@@ -678,20 +678,60 @@ coordinates are Montgomery field elements; the result is integers."
       (when (= i v)
         (setf sel (aref row i))))))
 
+(defvar *secp384r1-limb-base-table* nil
+  "The positional table *SECP384R1-BASE-TABLE* in Montgomery limbs.")
+
+(defun secp384r1-ensure-limb-base-table ()
+  (or *secp384r1-limb-base-table*
+      (let ((bignum-table (secp384r1-ensure-base-table))
+            (limb-table (make-array 48)))
+        (declare (type simple-vector bignum-table limb-table))
+        (dotimes (j 48)
+          (let ((brow (aref bignum-table j))
+                (lrow (make-array 256)))
+            (declare (type simple-vector brow lrow))
+            (dotimes (v 256)
+              (let ((p (aref brow v)))
+                (setf (aref lrow v)
+                      (vector (secp384r1-fe-from-int (slot-value p 'x))
+                              (secp384r1-fe-from-int (slot-value p 'y))
+                              (secp384r1-fe-from-int (slot-value p 'z))))))
+            (setf (aref limb-table j) lrow)))
+        (setf *secp384r1-limb-base-table* limb-table))))
+
 (defun secp384r1-base-mult (k)
   "Fixed-base multiplication K*G via the positional byte table: 48
-additions and no doublings."
+additions and no doublings, in the limb field.  (The additions used to
+be bignum EC-ADDs on CLOS points.)  Every row is scanned in full, so
+the memory access pattern does not depend on K."
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer k))
-  (let ((table (secp384r1-ensure-base-table))
-        (acc +secp384r1-point-at-infinity+))
-    (declare (type simple-vector table))
+  (let ((table (secp384r1-ensure-limb-base-table))
+        (rx (secp384r1-fe-zero)) (ry (secp384r1-fe-zero)) (rz (secp384r1-fe-zero))
+        (tx (secp384r1-fe-zero)) (ty (secp384r1-fe-zero)) (tz (secp384r1-fe-zero))
+        (s (secp384r1-make-scratch)))
+    (declare (type simple-vector table s)
+             (type secp384r1-fe rx ry rz tx ty tz))
     (loop for j of-type fixnum from 47 downto 0 do
-      (let ((v (ldb (byte 8 (* j 8)) k)))
-        (declare (type (unsigned-byte 8) v))
+      (let ((v (ldb (byte 8 (* j 8)) k))
+            (row (aref table j)))
+        (declare (type (unsigned-byte 8) v)
+                 (type simple-vector row))
         (unless (zerop v)
-          (setf acc (ec-add acc (secp384r1-select-base (aref table j) v))))))
-    acc))
+          (let ((sel (aref row 0)))
+            (dotimes (i 256)
+              (when (= i v) (setf sel (aref row i))))
+            (let ((sel sel))
+              (declare (type simple-vector sel))
+              (secp384r1-point-add! tx ty tz rx ry rz
+                                    (aref sel 0) (aref sel 1) (aref sel 2) s)
+              (rotatef rx tx) (rotatef ry ty) (rotatef rz tz))))))
+    (if (secp384r1-fe-is-zero rz)
+        +secp384r1-point-at-infinity+
+        (make-instance 'secp384r1-point
+                       :x (secp384r1-fe-to-int rx)
+                       :y (secp384r1-fe-to-int ry)
+                       :z (secp384r1-fe-to-int rz)))))
 
 (define-limb-window-mult secp384r1-window-mult-limbs
   :limbs 6 :bits 384

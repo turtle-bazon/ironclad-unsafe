@@ -4379,3 +4379,70 @@ the 128-bit products box.  Matches an independent bignum Poly1305 on
 921 messages (all lengths 0-300, all-0xFF keys and messages, chunked
 updates).  chacha-poly 8 KB ~600-640 -> 682 MB/s; the rest of that row
 is now the four-block ChaCha core and the per-message setup.
+
+## Third round (2026-11-08)
+
+### ChaCha: eight-block vertical-layout AVX2 core
+
+The row-layout cores (two blocks per YMM row, two or three groups per
+call) are bound by the shift/shuffle units: of 38 instructions per group
+and double round, 18 are rotates, VPSHUFB rotates and diagonal VPSHUFDs.
+A six-block row core (three groups, to overlap three chains) measured
+only ~9% better, which is what pointed at the ports rather than latency.
+
+`chacha-core-8x-avx2` keeps state word w of eight blocks in YMM w, so the
+diagonal shuffles disappear.  Sixteen words plus two temporaries do not
+fit, so words 10/11 and 8/9 swap through a scratch pair each double
+round; the rotate masks are memory operands.  Output: feed-forward,
+VPUNPCK{L,H}{DQ,QDQ} transpose per group of four words, VPERM2I128 to
+join two groups into 32 contiguous octets per block.  The core went
+from ~2.0 to ~2.5 GB/s (8 KB, excluding cipher construction; OpenSSL
+3.3).  Verified against the portable core for ChaCha/8, /12, /20, all
+lengths 0..1600 step 7 and large sizes, random keystream offsets and
+counters about to carry (720 cases).  The six-block core was removed.
+
+### P-384 signing: fixed-base table in limbs (1.84k -> 3.23k/s)
+
+`secp384r1-base-mult` added table points with the bignum EC-ADD on CLOS
+points.  It now uses the positional table converted once to Montgomery
+limbs and `secp384r1-point-add!`, as P-521 already did.
+
+### P-521: Mersenne multiply in the Montgomery convention
+
+P = 2^521 - 1, so R = 2^576 = 2^55 and the Montgomery product A*B*R^-1
+is the Mersenne-reduced product rotated right by 55 bits.
+`secp521r1-mersenne-mul-asm` / `-sqr-asm` compute exactly that (Comba
+product with two interleaved accumulators, or the 45-product square;
+fold at bit 521 twice; branch-free canonicalization; rotate), so the
+representation and every caller are unchanged.  Multiply 117 -> 72 ns,
+square 57 ns.  Verified against a*b*2^466 mod p on 20k random and
+edge inputs each.  Sign 2.54k -> 3.27k/s, verify 791 -> 1139/s, ECDH
+883 -> 1231/s (OpenSSL 4.05k / 2.10k / 3.54k).
+
+### Goldilocks: Karatsuba multiply (48 products)
+
+`goldilocks-kara-mul-asm` uses a*b = (a0b0 + a1b1) + ((a0+a1)(b0+b1) -
+a0b0)*phi with phi = 2^224, building the eleven 128-bit columns from the
+top down so the a0b0 columns are read before they are overwritten, then
+folds columns 8..10 and hands a sixteen-limb product to the existing
+reduction VOP.  Multiply 78 -> 67 ns; Ed448 verify +13%, X448 +8%.  The
+remaining time is the separate canonicalizing reduction and the copy.
+
+### IDEA: branch-free, inlined multiply (47.7 -> 74.9 MB/s)
+
+`idea-munge-block` had no optimization declarations and called a
+non-inlined `idea-mul` that branched on zero operands (a secret-
+dependent branch).  The multiply is now branch-free modulo 65537
+(0 -> 2^16 by ((x-1) mod 2^16) + 1, lo - hi, conditional +65537 by
+mask) and inlined; checked against the old version on 17M pairs
+including every pairing with 0, 1, 2, 32768, 65534, 65535.  Adding the
+missing declarations to the DES, 3DES and Square block functions gave
+only 2-7%.
+
+### Not done this round, in order of value
+
+- Keccak-f: a *looped* VOP with the round constants and the counter in
+  the state array (the unrolled one lost to the op cache).  ~22 rows.
+- Falcon keygen: word-based (RNS) NTRU solve.
+- Poly1305: four-way AVX2 (powers of r) for the remaining chacha-poly gap.
+- ARIA (1.75x) and SHA-512 (1.7x).

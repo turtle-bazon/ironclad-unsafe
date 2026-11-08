@@ -153,6 +153,47 @@
   :overwrite-fndb-silently t)
 
 #+x86-64
+(defknown ironclad-unsafe::secp521r1-mersenne-mul-asm
+  ((simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
+(defknown ironclad-unsafe::secp521r1-mersenne-sqr-asm
+  ((simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
+(defknown ironclad-unsafe::goldilocks-kara-mul-asm
+  ((simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*))
+   (simple-array (unsigned-byte 64) (*)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
+(defknown ironclad-unsafe::chacha-core-8x-avx2
+  ((simple-array (unsigned-byte 32) (176))
+   (simple-array (unsigned-byte 8) (*))
+   (unsigned-byte 64)
+   (simple-array (unsigned-byte 8) (*))
+   (unsigned-byte 64)
+   (unsigned-byte 8))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
 (defknown ironclad-unsafe::chacha-core-4x-avx2
   ((simple-array (unsigned-byte 32) (*))
    (simple-array (unsigned-byte 32) (*))
