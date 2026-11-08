@@ -4519,3 +4519,43 @@ instructions per round.  Bit-exact on 20000 random states; all
 SHA-3/SHAKE/cSHAKE/KMAC/SLH-DSA/ML-KEM/ML-DSA/X-Wing KATs pass.  Gated on
 BMI1 (new cached BMI1-SUPPORTED-P).  SLH-DSA-SHAKE-128f sign 13.4 ->
 16.6/s, SHA3-256 241 -> 311 MB/s.
+
+## Sixth round (2026-11-09)
+
+### P-224: register reduction and two silent bignum paths (ECDH 5.4k -> 6.8k/s)
+
+The P-224 field multiply cost 45 ns, four times P-256's: the reduction
+VOP did every 128-bit step memory to memory (~24 ns, more than the 10 ns
+multiply).  SECP224R1-FE-REDUCE-LIMBS-REG-ASM runs the identical
+sequence with C0..C2 in register pairs (13 ns; identical output on 300k
+products).  Profiling then showed bignum allocation (+BIGNUM-TO-RBX,
+ALLOC-UNSIGNED-BIGNUM) inside the point operations:
+SECP224R1-WIDE-SCALAR! multiplied a 64-bit word by a 16-bit constant
+(an 80-bit bignum per coefficient; now split into 32-bit halves), and
+SECP224R1-FELEM-DIFF! summed words in generic arithmetic, inlined into
+every double and add (now LDB-wrapped word arithmetic; the limbs are
+below 2^57 so the result is exact).  ECDH 5.4k -> 6.8k/s, verify 4.9k
+-> 6.1k/s, sign 15.9k -> 17.3k/s.
+
+The window-multiply mask was also passed to a local function as an
+all-ones word, which boxes as a bignum when not inlined; TAKE! now gets
+the 0/1 digit flag and builds the mask itself (DEFINE-LIMB-WINDOW-MULT
+and both P-256 window multiplies).  Neutral in time, but no boxing.
+
+### Goldilocks: register reduction without data-dependent branches
+
+GOLDILOCKS-REDUCE-REG-ASM replaces GOLDILOCKS-REDUCE-ASM: limbs in
+registers, a fixed three carry passes (provably enough), and the final
+subtraction of P by adding F*(2^224 + 1) and dropping 2^448.  The old
+VOP looped until no carry was left and branched on the comparison.
+Identical on 300k reductions; 27 -> 23 ns.  Ed448/X448 hardly move: the
+products dominate, ~42 ns for either the 64-product or the 48-product
+Karatsuba VOP.
+
+That is not MUL throughput: MULX variants of the P-521 Mersenne VOPs
+(the product lands in RDX:RAX exactly as with MUL) measured the same
+71/59 ns and were dropped.  The column (Comba) accumulators are bound by
+their add/adc/adc carry chains, about three dependent operations per
+product per accumulator.  The step that worked for P-256 is the row
+form with two independent carry chains (MULX + ADCX + ADOX, no
+three-word accumulator); that is the next step for Goldilocks and P-521.

@@ -539,7 +539,7 @@ and the result is below twice the prime."
            (type secp224r1-wide in)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
-  (progn (secp224r1-fe-reduce-limbs-asm out in) out)
+  (progn (secp224r1-fe-reduce-limbs-reg-asm out in) out)
   #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (let ((o (make-array 5 :element-type 'integer :initial-element 0)))
     ;; The multiples of the prime that make the differences positive.
@@ -933,14 +933,27 @@ IN stay below 2^127."
   (declare (type secp224r1-wide w)
            (type (integer 0 65535) k)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  ;; The low word times K is up to 80 bits, which used to be a bignum
+  ;; per coefficient.  Split it in 32-bit halves so every product is a
+  ;; fixnum: the carry into the high word is (xh*K + (xl*K >> 32)) >> 32.
   (dotimes (i 7 w)
     (let* ((j (* 2 i))
-           (p (* (aref w j) k))
-           (l (logand p +secp224r1-u64-mask+)))
-      (setf (aref w j) l
+           (x (aref w j))
+           (xl (ldb (byte 32 0) x))
+           (xh (ash x -32))
+           (lo-part (* xl k))
+           (mid (+ (* xh k) (ash lo-part -32)))
+           (carry (ash mid -32)))
+      (declare (type (unsigned-byte 64) x)
+               (type (unsigned-byte 32) xl xh)
+               (type (unsigned-byte 48) lo-part)
+               (type (unsigned-byte 49) mid)
+               (type (unsigned-byte 17) carry))
+      (setf (aref w j) (logior (ash (ldb (byte 32 0) mid) 32)
+                               (ldb (byte 32 0) lo-part))
             (aref w (1+ j))
-            (logand (+ (* (aref w (1+ j)) k) (ash p -64))
-                    +secp224r1-u64-mask+)))))
+            (ldb (byte 64 0) (+ (ldb (byte 64 0) (* (aref w (1+ j)) k))
+                                carry))))))
 
 (defun secp224r1-wide-from-fe (w a)
   "W := A, as seven wide coefficients; the high words are zero."
@@ -980,14 +993,18 @@ first, so that the subtraction cannot borrow."
 added first, so that every limb of the difference is positive."
   (declare (type secp224r1-fe out in)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (setf (aref out 0) (+ (aref out 0) +secp224r1-two58p2+
-                        (- (aref in 0)))
-        (aref out 1) (+ (aref out 1) +secp224r1-two58m42m2+
-                        (- (aref in 1)))
-        (aref out 2) (+ (aref out 2) +secp224r1-two58m2+
-                        (- (aref in 2)))
-        (aref out 3) (+ (aref out 3) +secp224r1-two58m2+
-                        (- (aref in 3))))
+  ;; The limbs are below 2^57, so every true result fits in a word; the
+  ;; LDB lets SBCL use word arithmetic (without it the sums compiled to
+  ;; generic, possibly-bignum arithmetic, inlined into every point
+  ;; operation).
+  (setf (aref out 0) (ldb (byte 64 0) (- (+ (aref out 0) +secp224r1-two58p2+)
+                                         (aref in 0)))
+        (aref out 1) (ldb (byte 64 0) (- (+ (aref out 1) +secp224r1-two58m42m2+)
+                                         (aref in 1)))
+        (aref out 2) (ldb (byte 64 0) (- (+ (aref out 2) +secp224r1-two58m2+)
+                                         (aref in 2)))
+        (aref out 3) (ldb (byte 64 0) (- (+ (aref out 3) +secp224r1-two58m2+)
+                                         (aref in 3))))
   out)
 
 (defun secp224r1-felem-scalar! (out k)

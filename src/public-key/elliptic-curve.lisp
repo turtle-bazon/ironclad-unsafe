@@ -213,16 +213,21 @@ PZ are Montgomery limb arrays; E is a non-negative integer below
                           (setf (aref ex k) (logior (aref ex k) (logand m (aref sx k)))
                                 (aref ey k) (logior (aref ey k) (logand m (aref sy k)))
                                 (aref ez k) (logior (aref ez k) (logand m (aref sz k)))))))))
-                (take! (m)
-                  ;; R := T when M is all ones, else unchanged.
-                  (declare (type (unsigned-byte 64) m))
+                (take! (bit)
+                  ;; R := T when BIT is 1, else unchanged.  The mask is
+                  ;; built here: passed as an argument, the all-ones
+                  ;; word is not a fixnum and was boxed as a bignum on
+                  ;; every window.
+                  (declare (type bit bit))
+                  (let ((m (ldb (byte 64 0) (- bit))))
+                    (declare (type (unsigned-byte 64) m))
                   (dotimes (k ,limbs)
                     (setf (aref rx k) (logxor (aref rx k)
                                               (logand m (logxor (aref rx k) (aref tx k))))
                           (aref ry k) (logxor (aref ry k)
                                               (logand m (logxor (aref ry k) (aref ty k))))
                           (aref rz k) (logxor (aref rz k)
-                                              (logand m (logxor (aref rz k) (aref tz k))))))))
+                                              (logand m (logxor (aref rz k) (aref tz k)))))))))
            ;; R starts as the point at infinity (all-zero limbs).
            (dotimes (k ,limbs)
              (setf (aref rx k) 0 (aref ry k) 0 (aref rz k) 0))
@@ -232,11 +237,11 @@ PZ are Montgomery limb arrays; E is a non-negative integer below
                  (,double tx ty tz rx ry rz s)
                  (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))
              (let* ((digit (ldb (byte 5 (* wi 5)) e))
-                    (nonzero (ldb (byte 64 0) (- (ash (+ digit 31) -5)))))
+                    (nonzero (ash (+ digit 31) -5)))
                (declare (type (unsigned-byte 5) digit)
-                        (type (unsigned-byte 64) nonzero))
+                        (type bit nonzero))
                ;; Entry DIGIT, or entry 1 for a zero digit (discarded).
-               (select! (logior digit (logxor 1 (logand 1 nonzero))))
+               (select! (logior digit (logxor 1 nonzero)))
                (,add tx ty tz rx ry rz ex ey ez s)
                (take! nonzero))))
          (values rx ry rz)))))

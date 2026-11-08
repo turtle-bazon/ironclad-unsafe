@@ -190,7 +190,8 @@ The result is in the low eight limbs of C; the others are clobbered."
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn
-    (goldilocks-fe-reduce-asm c)
+    ;; Registers, fixed carry passes, no data-dependent branches.
+    (goldilocks-reduce-reg-asm c)
     c)
   #-(and sbcl x86-64 ironclad-unsafe-assembly)
   (progn

@@ -4105,6 +4105,90 @@
           (inst mov (rw 3) t0))))))
 
 
+;;; The same reduction as SECP224R1-FE-REDUCE-LIMBS-ASM, step for step,
+;;; with the wide coefficients C0..C2 held in register pairs.  The old
+;;; VOP did every 128-bit step memory to memory (four loads and two
+;;; stores per step, each step depending on the previous store) and cost
+;;; ~24 ns, more than twice the multiply.  C3..C6 stay in the buffer:
+;;; they take only a few memory-operand additions.
+#+x86-64
+(define-vop (secp224r1-fe-reduce-limbs-reg-asm)
+  (:translate ironclad-unsafe::secp224r1-fe-reduce-limbs-reg-asm)
+  (:policy :fast-safe)
+  (:args (r :scs (descriptor-reg))
+         (c :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg) c0l c0h c1l c1h c2l c2h v0 v1 tmp)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag))
+          (regs (vector (cons c0l c0h) (cons c1l c1h) (cons c2l c2h))))
+      (labels ((cw (k) (ea (+ data-offset (* 8 k)) c))
+               (rw (k) (ea (+ data-offset (* 8 k)) r))
+               (lo (k) (if (< k 3) (car (svref regs k)) (cw (* 2 k))))
+               (hi (k) (if (< k 3) (cdr (svref regs k)) (cw (1+ (* 2 k)))))
+               (radd (k a b) (inst add (lo k) a) (inst adc (hi k) b))
+               (rsub (k a b) (inst sub (lo k) a) (inst sbb (hi k) b))
+               (load-v (k) (inst mov v0 (lo k)) (inst mov v1 (hi k)))
+               (add-const (k clo chi)
+                 (inst mov tmp clo) (inst add (lo k) tmp)
+                 (inst mov tmp chi) (inst adc (hi k) tmp))
+               (add-shifted (dst src shift)
+                 (load-v src)
+                 (inst shrd v0 v1 shift)
+                 (inst shr v1 shift)
+                 (radd dst v0 v1))
+               (add-low16 (dst src)
+                 (inst mov tmp (lo src))
+                 (inst and tmp #xffff)
+                 (inst shl tmp 40)
+                 (inst add (lo dst) tmp)
+                 (inst adc :qword (hi dst) 0))
+               (sub128 (dst src) (load-v src) (rsub dst v0 v1))
+               (out-masked (j k)
+                 (inst mov v0 (lo k))
+                 (inst mov tmp #x00ffffffffffffff)
+                 (inst and v0 tmp)
+                 (inst mov (rw j) v0)))
+        (dotimes (k 3)
+          (inst mov (lo k) (cw (* 2 k)))
+          (inst mov (hi k) (cw (1+ (* 2 k)))))
+        (add-const 0 #x8000 #x8000000000000000)
+        (add-const 1 #xff80000000000000 #x7fffffffffffff7f)
+        (add-const 2 #x0000000000000000 #x7fffffffffffff80)
+        (add-shifted 4 6 16)
+        (add-low16 3 6)
+        (sub128 2 6)
+        (add-shifted 3 5 16)
+        (add-low16 2 5)
+        (sub128 1 5)
+        (add-shifted 2 4 16)
+        (add-low16 1 4)
+        (sub128 0 4)
+        ;; carry two to three; C2 := C2 mod 2^56; C4 := C3 >> 56
+        (add-shifted 3 2 56)
+        (inst mov tmp #x00ffffffffffffff)
+        (inst and c2l tmp)
+        (inst xor c2h c2h)
+        (load-v 3)
+        (inst shrd v0 v1 56)
+        (inst shr v1 56)
+        (inst mov (cw 8) v0)
+        (inst mov (cw 9) v1)
+        ;; eliminate the excess
+        (add-shifted 2 4 16)
+        (add-low16 1 4)
+        (sub128 0 4)
+        ;; carry zero to one to two to three
+        (add-shifted 1 0 56)
+        (out-masked 0 0)
+        (add-shifted 2 1 56)
+        (out-masked 1 1)
+        (add-shifted 3 2 56)
+        (out-masked 2 2)
+        (out-masked 3 3)))))
+
 #+x86-64
 (define-vop (secp224r1-fe-contract-limbs-asm)
   ;; R := IN brought below the prime, after the reference.  IN is
@@ -4457,6 +4541,65 @@
             (inst mov (c64 i) tmp))
           (emit-label done))))))
 
+
+;;; The same reduction as GOLDILOCKS-REDUCE-ASM with the eight limbs in
+;;; registers, and without its data-dependent branches.  The old VOP went
+;;; memory to memory, looped until no carry was left and branched on the
+;;; final comparison; here the carries take a fixed three passes (after
+;;; the first the carry is below 8, after the second at most 1, and the
+;;; third provably carries nothing), and P is subtracted by adding
+;;; F*(2^224 + 1) and dropping 2^448, F being the carry out of V + 2^224 + 1.
+#+x86-64
+(define-vop (goldilocks-reduce-reg-asm)
+  (:translate ironclad-unsafe::goldilocks-reduce-reg-asm)
+  (:policy :fast-safe)
+  (:args (c :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg) v0 v1 v2 v3 v4 v5 v6 v7 tmp carry)
+  (:generator 1000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag))
+          (v (vector v0 v1 v2 v3 v4 v5 v6 v7)))
+      (flet ((c64 (i) (ea (+ data-offset (* 8 i)) c))
+             (mask56 (r) (inst shl r 8) (inst shr r 8)))
+        ;; V_i = C_i + C_(8+i) + C_(12+i); V_(4+i) also + C_(8+i) + C_(12+i).
+        (dotimes (i 8)
+          (inst mov (svref v i) (c64 i))
+          (inst add (svref v i) (c64 (+ 8 i))))
+        (dotimes (i 4)
+          (inst add (svref v i) (c64 (+ 12 i)))
+          (inst add (svref v (+ 4 i)) (c64 (+ 8 i)))
+          (inst add (svref v (+ 4 i)) (c64 (+ 12 i))))
+        ;; Three carry passes, each folding its carry (2^448 = 2^224 + 1).
+        (dotimes (pass 3)
+          (inst xor carry carry)
+          (dotimes (i 8)
+            (let ((r (svref v i)))
+              (inst add r carry)
+              (inst mov carry r)
+              (inst shr carry 56)
+              (mask56 r)))
+          (inst add v0 carry)
+          (inst add v4 carry))
+        ;; F = carry out of V + 2^224 + 1 (V itself unchanged).
+        (inst xor carry carry)
+        (dotimes (i 8)
+          (inst mov tmp (svref v i))
+          (when (or (= i 0) (= i 4)) (inst add tmp 1))
+          (inst add tmp carry)
+          (inst shr tmp 56)
+          (inst mov carry tmp))
+        ;; V += F*(2^224 + 1), dropping 2^448.
+        (inst add v0 carry)
+        (inst add v4 carry)
+        (inst xor carry carry)
+        (dotimes (i 8)
+          (let ((r (svref v i)))
+            (inst add r carry)
+            (inst mov carry r)
+            (inst shr carry 56)
+            (mask56 r)
+            (inst mov (c64 i) r)))))))
 
 #+x86-64
 (define-vop (goldilocks-fe-add-asm)
@@ -8661,7 +8804,7 @@
                ;; Square: the cross products A[i]*A[j], i < j, once into
                ;; (L1 H1 T1), doubled; the diagonal A[k/2]^2 into (L0 H0
                ;; T0).  45 products instead of 81.
-               '(progn
+               `(progn
                   (loop for i from (max 0 (- k 8)) to (min 8 k)
                         for j = (- k i)
                         when (< i j)
@@ -8675,7 +8818,7 @@
                     (inst mul rax-tmp)
                     (inst add l0 rax-tmp) (inst adc h0 rdx-tmp)
                     (inst adc t0 0)))
-               '(loop for i from (max 0 (- k 8)) to (min 8 k)
+               `(loop for i from (max 0 (- k 8)) to (min 8 k)
                       for n from 0
                       do (inst mov rax-tmp (a64 i))
                          (inst mul :qword (b64 (- k i)))
@@ -8765,6 +8908,7 @@
 (define-secp521r1-mersenne-vop secp521r1-mersenne-mul-asm nil)
 #+x86-64
 (define-secp521r1-mersenne-vop secp521r1-mersenne-sqr-asm t)
+
 
 ;;; Goldilocks multiply, Karatsuba over phi = 2^224.
 ;;;
