@@ -693,15 +693,45 @@ additions and no doublings."
           (setf acc (ec-add acc (secp384r1-select-base (aref table j) v))))))
     acc))
 
+(define-limb-window-mult secp384r1-window-mult-limbs
+  :limbs 6 :bits 384
+  :fe-zero secp384r1-fe-zero
+  :make-scratch secp384r1-make-scratch
+  :make-table secp384r1-make-window-table-limbs
+  :double secp384r1-point-double!
+  :add secp384r1-point-add!)
+
+(defun secp384r1-window-mult (p e)
+  "E * P on the limb field with the fixed-schedule window."
+  (declare (type secp384r1-point p)
+           (type (integer 0) e))
+  (with-slots (x y z) p
+    (multiple-value-bind (rx ry rz)
+        (secp384r1-window-mult-limbs (secp384r1-fe-from-int x)
+                                     (secp384r1-fe-from-int y)
+                                     (secp384r1-fe-from-int z)
+                                     e)
+      (if (secp384r1-fe-is-zero rz)
+          +secp384r1-point-at-infinity+
+          (make-instance 'secp384r1-point
+                         :x (secp384r1-fe-to-int rx)
+                         :y (secp384r1-fe-to-int ry)
+                         :z (secp384r1-fe-to-int rz))))))
+
 (defmethod ec-scalar-mult ((p secp384r1-point) e)
-  ;; Secret scalars use the fixed-schedule ladder.  The generator G uses
-  ;; the faster fixed-base comb.  Public-only callers can keep using
-  ;; %EC-WINDOW-MULT or %EC-SHAMIR-MULT directly.
+  ;; The generator G uses the fixed-base positional table; any other point
+  ;; uses the fixed-schedule limb window.  Public-only callers can keep
+  ;; using %EC-WINDOW-MULT or %EC-SHAMIR-MULT directly.
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer e))
-  (if (and (eq p +secp384r1-g+) (not (minusp e)))
-      (secp384r1-base-mult e)
-      (%ec-ladder-mult p e :bits +secp384r1-bits+)))
+  (cond ((minusp e)
+         (%ec-ladder-mult p e :bits +secp384r1-bits+))
+        ((eq p +secp384r1-g+)
+         (secp384r1-base-mult e))
+        ((< e (ash 1 +secp384r1-bits+))
+         (secp384r1-window-mult p e))
+        (t
+         (%ec-ladder-mult p e :bits +secp384r1-bits+))))
 
 (defmethod ec-point-on-curve-p ((p secp384r1-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))

@@ -76,10 +76,49 @@
     (ed25519-fe-mul z5 x3 t14)
     (values x4 z4 x5 z5)))
 
+#+(and sbcl x86-64 ironclad-unsafe-assembly)
+(defun curve25519-ladder-mult (p n)
+  "N * P with the radix-2^51 ladder VOP (src/opt/sbcl/ed25519-comb.lisp).
+Constant schedule: 255 steps over bits 254..0 and a masked swap."
+  (declare (type curve25519-point p)
+           (type (integer 0) n)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  ;; NB: heap allocated on purpose; the VOP assumes a heap vector.
+  (let ((scratch (make-array 366 :element-type '(unsigned-byte 64)
+                                 :initial-element 0)))
+    (declare (type (simple-array (unsigned-byte 64) (366)) scratch))
+    (dotimes (j 255)
+      (setf (aref scratch j) (ldb (byte 1 (- 254 j)) n)))
+    (with-slots (x z) p
+      (declare (type ed25519-fe x z))
+      ;; Affine u = X/Z.  Decoded and generator points have Z = 1.
+      (let ((u (if (ed25519-fe-equal z (ed25519-fe-from-int 1))
+                   (mod (ed25519-fe-to-int x) +curve25519-p+)
+                   (mod (* (ed25519-fe-to-int x)
+                           (ed25519-fe-to-int (ed25519-fe-inv z)))
+                        +curve25519-p+))))
+        (dotimes (i 5)
+          (let ((limb (ldb (byte 51 (* 51 i)) u)))
+            (setf (aref scratch (+ 256 i)) limb      ; x1 = u
+                  (aref scratch (+ 271 i)) limb))))) ; x3 = u
+    (setf (aref scratch 261) 1                         ; x2 = 1
+          (aref scratch 276) 1                         ; z3 = 1
+          (aref scratch 281) 121665)                   ; a24
+    (curve25519-ladder-asm scratch)
+    (flet ((coord (base)
+             (let ((m 0))
+               (declare (type integer m))
+               (dotimes (i 5 (ed25519-fe-from-int (mod m +curve25519-p+)))
+                 (setf m (+ m (ash (aref scratch (+ base i)) (* 51 i))))))))
+      (make-instance 'curve25519-point :x (coord 261) :z (coord 266)))))
+
 (defmethod ec-scalar-mult ((p curve25519-point) n)
   ;; Point multiplication on curve22519 curve using the Montgomery ladder.
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0))
            (type integer n))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (when (and (<= 0 n) (< n (ash 1 255)))
+    (return-from ec-scalar-mult (curve25519-ladder-mult p n)))
   (with-slots (x z) p
     (declare (type ed25519-fe x z))
     (do ((x1 (ed25519-fe-from-int 1))

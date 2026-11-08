@@ -101,23 +101,69 @@ The four coordinates are returned as multiple values."
 
 (defun curve448-ladder-mult-limbs (x n)
   "N times the point (X : 1), in the limb field.
-X is a bignum, and the result is a point."
+X is a bignum, and the result is a point.
+
+The RFC 7748 ladder over bits 447..0 with destination-passing field
+operations on preallocated elements: the old version allocated a fresh
+element for every one of the eighteen operations of each step.  The two
+working points are exchanged with an xor mask rather than a branch on
+the scalar bit."
   (declare (type integer x n)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
-  (let ((x1 (goldilocks-fe-from-int 1))
-        (z1 (goldilocks-fe-from-int 0))
-        (x2 (goldilocks-fe-from-int x))
-        (z2 (goldilocks-fe-from-int 1))
-        (x3 (goldilocks-fe-from-int x)))
-    (loop for i from 447 downto 0 do
-      (if (logbitp i n)
-          (multiple-value-setq (x2 z2 x1 z1)
-            (curve448-double-and-add-limbs x2 z2 x1 z1 x3))
-          (multiple-value-setq (x1 z1 x2 z2)
-            (curve448-double-and-add-limbs x1 z1 x2 z2 x3))))
+  (let ((x1 (goldilocks-fe-from-int x))
+        (x2 (goldilocks-fe-one))
+        (z2 (goldilocks-fe-zero))
+        (x3 (goldilocks-fe-from-int x))
+        (z3 (goldilocks-fe-one))
+        (a24 +curve448-a24-limbs+)
+        (a (goldilocks-fe-zero)) (aa (goldilocks-fe-zero))
+        (b (goldilocks-fe-zero)) (bb (goldilocks-fe-zero))
+        (e (goldilocks-fe-zero)) (c (goldilocks-fe-zero))
+        (d (goldilocks-fe-zero)) (da (goldilocks-fe-zero))
+        (cb (goldilocks-fe-zero)) (u (goldilocks-fe-zero))
+        (buf (make-array 16 :element-type '(unsigned-byte 64) :initial-element 0))
+        (swap 0))
+    (declare (type goldilocks-fe x1 x2 z2 x3 z3 a24 a aa b bb e c d da cb u)
+             (type goldilocks-product buf)
+             (type bit swap))
+    (flet ((cswap (bit)
+             (declare (type bit bit))
+             (let ((m (ldb (byte 64 0) (- bit))))
+               (declare (type (unsigned-byte 64) m))
+               (dotimes (i 16)
+                 (let ((tx (logand m (logxor (aref x2 i) (aref x3 i))))
+                       (tz (logand m (logxor (aref z2 i) (aref z3 i)))))
+                   (setf (aref x2 i) (logxor (aref x2 i) tx)
+                         (aref x3 i) (logxor (aref x3 i) tx)
+                         (aref z2 i) (logxor (aref z2 i) tz)
+                         (aref z3 i) (logxor (aref z3 i) tz)))))))
+      (loop for i of-type fixnum from 447 downto 0 do
+        (let ((bit (ldb (byte 1 i) n)))
+          (declare (type bit bit))
+          (cswap (logxor swap bit))
+          (setf swap bit))
+        (goldilocks-fe-add-buf a x2 z2)          ; A  = x2 + z2
+        (goldilocks-fe-mul-buf aa a a buf)       ; AA = A^2
+        (goldilocks-fe-sub-buf b x2 z2)          ; B  = x2 - z2
+        (goldilocks-fe-mul-buf bb b b buf)       ; BB = B^2
+        (goldilocks-fe-sub-buf e aa bb)          ; E  = AA - BB
+        (goldilocks-fe-add-buf c x3 z3)          ; C  = x3 + z3
+        (goldilocks-fe-sub-buf d x3 z3)          ; D  = x3 - z3
+        (goldilocks-fe-mul-buf da d a buf)       ; DA = D * A
+        (goldilocks-fe-mul-buf cb c b buf)       ; CB = C * B
+        (goldilocks-fe-add-buf u da cb)
+        (goldilocks-fe-mul-buf x3 u u buf)       ; x3 = (DA + CB)^2
+        (goldilocks-fe-sub-buf u da cb)
+        (goldilocks-fe-mul-buf u u u buf)
+        (goldilocks-fe-mul-buf z3 x1 u buf)      ; z3 = x1 * (DA - CB)^2
+        (goldilocks-fe-mul-buf x2 aa bb buf)     ; x2 = AA * BB
+        (goldilocks-fe-mul-buf u a24 e buf)
+        (goldilocks-fe-add-buf u aa u)
+        (goldilocks-fe-mul-buf z2 e u buf))      ; z2 = E * (AA + a24 * E)
+      (cswap swap))
     (make-instance 'curve448-point
-                   :x (goldilocks-fe-to-int x1)
-                   :z (goldilocks-fe-to-int z1))))
+                   :x (goldilocks-fe-to-int x2)
+                   :z (goldilocks-fe-to-int z2))))
 
 (defmethod ec-scalar-mult ((p curve448-point) n)
   ;; Point multiplication on curve448 curve using the Montgomery ladder,

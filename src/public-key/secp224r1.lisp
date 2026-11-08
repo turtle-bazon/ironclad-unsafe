@@ -219,7 +219,17 @@ multiplications, all in the limb field."
             (py (slot-value p 'y))
             (pz (slot-value p 'z)))
         (declare (type integer px py pz))
-        (secp224r1-ladder-mult-limbs px py pz e))))
+        (if (< e (ash 1 224))
+            ;; Fixed-schedule five-bit window (see DEFINE-LIMB-WINDOW-MULT).
+            (multiple-value-bind (rx ry rz)
+                (secp224r1-ct-window-mult-limbs (secp224r1-fe-from-int px)
+                                                (secp224r1-fe-from-int py)
+                                                (secp224r1-fe-from-int pz)
+                                                e)
+              (if (secp224r1-fe-is-zero rz)
+                  +secp224r1-point-at-infinity+
+                  (secp224r1-point-from-limbs rx ry rz)))
+            (secp224r1-ladder-mult-limbs px py pz e)))))
 
 (defmethod ec-point-on-curve-p ((p secp224r1-point))
   (declare (optimize (speed 3) (safety 0) (space 0) (debug 0)))
@@ -1524,3 +1534,38 @@ below the prime."
   (declare (ignore q))
   (secp224r1-felem-reduce r c)
   (secp224r1-felem-contract r r))
+
+
+(defun secp224r1-make-window-table-limbs (bx by bz)
+  "The table V * (BX:BY:BZ) for V in [0, 32), as vectors of three limb
+arrays.  Entry 0 is the point at infinity."
+  (declare (type secp224r1-fe bx by bz)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let ((table (make-array 32))
+        (s (secp224r1-make-scratch)))
+    (declare (type simple-vector table s))
+    (setf (svref table 0) (vector (secp224r1-fe-from-int 1)
+                                  (secp224r1-fe-from-int 1)
+                                  (secp224r1-fe-zero))
+          (svref table 1) (vector (secp224r1-fe-copy! (secp224r1-fe-zero) bx)
+                                  (secp224r1-fe-copy! (secp224r1-fe-zero) by)
+                                  (secp224r1-fe-copy! (secp224r1-fe-zero) bz)))
+    (loop for v of-type fixnum from 2 below 32 do
+      (let ((dx (secp224r1-fe-zero)) (dy (secp224r1-fe-zero))
+            (dz (secp224r1-fe-zero)))
+        (if (evenp v)
+            (let ((e (svref table (ash v -1))))
+              (secp224r1-double! dx dy dz (svref e 0) (svref e 1) (svref e 2) s))
+            (let ((e (svref table (1- v))))
+              (secp224r1-add! dx dy dz (svref e 0) (svref e 1) (svref e 2)
+                              bx by bz s)))
+        (setf (svref table v) (vector dx dy dz))))
+    table))
+
+(define-limb-window-mult secp224r1-ct-window-mult-limbs
+  :limbs 4 :bits 224
+  :fe-zero secp224r1-fe-zero
+  :make-scratch secp224r1-make-scratch
+  :make-table secp224r1-make-window-table-limbs
+  :double secp224r1-double!
+  :add secp224r1-add!)

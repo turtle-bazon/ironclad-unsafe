@@ -127,7 +127,9 @@
   (declare (type (signed-byte 62) a)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let* ((w (ldb (byte 32 0) (* (ldb (byte 32 0) a) 58728449)))
-         (t32 (if (>= w (ash 1 31)) (- w (ash 1 32)) w)))
+         ;; Branch-free sign extension of the low 32 bits (the old IF was
+         ;; an unpredictable, secret-dependent branch per multiply).
+         (t32 (- (logxor w (ash 1 31)) (ash 1 31))))
     (ash (- a (* t32 +ml-dsa-q+)) -32)))
 
 (defun ml-dsa-reduce32 (a)
@@ -139,7 +141,8 @@
 (defun ml-dsa-caddq (a)
   "Add Q if A is negative."
   (declare (type fixnum a))
-  (if (minusp a) (+ a +ml-dsa-q+) a))
+  ;; (ASH A -61) is all ones exactly when A is negative: branch-free.
+  (+ a (logand +ml-dsa-q+ (ash a -61))))
 
 (defun ml-dsa-freeze (a)
   "Standard representative of A in [0, q)."

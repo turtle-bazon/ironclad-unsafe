@@ -746,6 +746,13 @@
   :overwrite-fndb-silently t)
 
 #+x86-64
+(defknown ironclad-unsafe::curve25519-ladder-asm
+  ((simple-array (unsigned-byte 64) (*)))
+  (values)
+  (any)
+  :overwrite-fndb-silently t)
+
+#+x86-64
 (defknown ironclad-unsafe::ed25519-pow22523-asm
   ((simple-array (unsigned-byte 64) (*)))
   (values)

@@ -95,7 +95,10 @@ A * 2^-16 mod q.  A must fit in a signed 32-bit word."
   (declare (type (signed-byte 32) a)
            (optimize (speed 3) (space 0) (safety 0) (debug 0)))
   (let* ((w (ldb (byte 16 0) (* (ldb (byte 16 0) a) -3327)))
-         (t16 (if (>= w 32768) (- w 65536) w)))
+         ;; Branch-free sign extension of the low 16 bits.  The old
+         ;; (IF (>= W 32768) ...) was an unpredictable, secret-dependent
+         ;; branch in every butterfly.
+         (t16 (- (logxor w 32768) 32768)))
     (ash (- a (* t16 +ml-kem-q+)) -16)))
 
 (defun ml-kem-barrett-reduce (a)
@@ -115,7 +118,8 @@ A * 2^-16 mod q.  A must fit in a signed 32-bit word."
 (defun ml-kem-freeze (u)
   "Map a signed representative to the standard [0, q) representative."
   (declare (type fixnum u))
-  (if (minusp u) (+ u +ml-kem-q+) u))
+  ;; (ASH U -61) is all ones exactly when U is negative: branch-free.
+  (+ u (logand +ml-kem-q+ (ash u -61))))
 
 (defun ml-kem-poly-reduce (r)
   (declare (type ml-kem-poly r))
@@ -128,11 +132,56 @@ A * 2^-16 mod q.  A must fit in a signed 32-bit word."
 ;;; Number-theoretic transform (exact translations of ntt.c)
 ;;;
 
+;;; As in ML-DSA, the butterflies are expanded at macroexpansion time with
+;;; constant indices and literal zetas, so both halves of a butterfly stay
+;;; in registers and independent butterflies are scheduled together; the
+;;; loop forms paid index arithmetic and a branch per butterfly.  Allegro
+;;; Express and CLISP cannot compile the expansion in their heaps and keep
+;;; the loop forms.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun ml-kem-zeta-at (k)
+    (aref +ml-kem-zetas+ k)))
+
+(defmacro unrolled-ml-kem-ntt (r)
+  (let ((forms '()) (k 0))
+    (loop for len = 128 then (ash len -1)
+          while (>= len 2)
+          do (loop for start from 0 below 256 by (* 2 len)
+                   do (let ((z (ml-kem-zeta-at (incf k))))
+                        (loop for j from start below (+ start len)
+                              do (push `(let ((u (aref ,r ,j))
+                                              (v (ml-kem-fqmul ,z (aref ,r ,(+ j len)))))
+                                          (setf (aref ,r ,(+ j len)) (- u v)
+                                                (aref ,r ,j) (+ u v)))
+                                       forms)))))
+    `(progn ,@(nreverse forms))))
+
+(defmacro unrolled-ml-kem-invntt (r f)
+  (let ((forms '()) (k 128))
+    (loop for len = 2 then (ash len 1)
+          while (<= len 128)
+          do (loop for start from 0 below 256 by (* 2 len)
+                   do (let ((z (ml-kem-zeta-at (decf k))))
+                        (loop for j from start below (+ start len)
+                              do (push `(let ((tt (aref ,r ,j))
+                                              (uu (aref ,r ,(+ j len))))
+                                          (setf (aref ,r ,j) (ml-kem-barrett-reduce (+ tt uu))
+                                                (aref ,r ,(+ j len)) (ml-kem-fqmul ,z (- uu tt))))
+                                       forms)))))
+    `(progn ,@(nreverse forms)
+            ,@(loop for j below 256
+                    collect `(setf (aref ,r ,j) (ml-kem-fqmul (aref ,r ,j) ,f))))))
+
 (defun ml-kem-ntt (r)
   "In-place NTT (standard order in, bitreversed order out),
 followed by Barrett reduction, like poly_ntt."
   (declare (type ml-kem-poly r)
            (optimize (speed 3) (space 0) (safety 0) (debug 0)))
+  #-(or allegro clisp)
+  (progn
+    (unrolled-ml-kem-ntt r)
+    (ml-kem-poly-reduce r))
+  #+(or allegro clisp)
   (let ((k 1))
     (declare (type fixnum k))
     (dolist (len '(128 64 32 16 8 4 2))
@@ -158,6 +207,9 @@ followed by Barrett reduction, like poly_ntt."
 with output in Montgomery domain, like poly_invntt_tomont."
   (declare (type ml-kem-poly r)
            (optimize (speed 3) (space 0) (safety 0) (debug 0)))
+  #-(or allegro clisp)
+  (unrolled-ml-kem-invntt r #.+ml-kem-invntt-f+)
+  #+(or allegro clisp)
   (let ((k 127)
         (f +ml-kem-invntt-f+))
     (declare (type fixnum k))
@@ -728,6 +780,16 @@ when TRANSPOSED, exactly like the reference gen_matrix."
     (dotimes (j k row)
       (setf (aref row j) (aref a i j)))))
 
+(defun ml-kem-octets-equal-p (copy pk pk-start)
+  "True when COPY equals PK[PK-START, PK-START + (LENGTH COPY)).  A typed
+loop: the generic MISMATCH on these untyped arguments was a tenth of an
+ML-KEM-768 encapsulation."
+  (declare (type (simple-array (unsigned-byte 8) (*)) copy pk)
+           (type fixnum pk-start)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (loop for i of-type fixnum from 0 below (length copy)
+        always (= (aref copy i) (aref pk (+ pk-start i)))))
+
 (defun ml-kem-public-state (key pk pk-start pk-end kp)
   "Return #(SEED HPK PKPV MATRIX) for the public key in PK[PK-START,
 PK-END), cached on KEY when one is supplied.  All four are pure
@@ -742,7 +804,7 @@ state."
     (if (and cache
              (let ((copy (car cache)))
                (and (= (length copy) (- pk-end pk-start))
-                    (not (mismatch copy pk :start2 pk-start :end2 pk-end)))))
+                    (ml-kem-octets-equal-p copy pk pk-start))))
         (cdr cache)
         (let* ((pk-copy (and key (subseq pk pk-start pk-end)))
                (seed (subseq pk (- pk-end 32) pk-end))

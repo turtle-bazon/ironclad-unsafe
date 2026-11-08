@@ -619,6 +619,34 @@ dropped.  Anything else is a genuine failure and is reported."
                   (format nil "encrypt ~D-byte message" *size*)
                   "bytes/s" rate))))))
 
+(defparameter *openssl-ecdh-map*
+  '((:curve25519 . "ecdhx25519")
+    (:curve448 . "ecdhx448")
+    (:secp224r1 . "ecdhp224")
+    (:secp256r1 . "ecdhp256")
+    (:secp384r1 . "ecdhp384")
+    (:secp521r1 . "ecdhp521"))
+  "Key agreement references.  Without them the variable-base scalar
+multiplication of every curve had no C comparison at all.")
+
+(defun openssl-ecdh-rate (algorithm)
+  "Operations per second from `openssl speed -mr ecdh*', whose result
+line is +F5:<index>:<bits>:<ops/s>:<seconds/op>."
+  (dolist (line (openssl-output-lines algorithm))
+    (when (and (>= (length line) 3)
+               (string= "+F5" line :end2 3))
+      (let ((numbers (mapcar #'parse-number (rest (split-colon line)))))
+        (when (and (= (length numbers) 4) (realp (third numbers)))
+          (return (third numbers)))))))
+
+(defun add-openssl-ecdh-results ()
+  (dolist (pair *openssl-ecdh-map*)
+    (let ((rate (openssl-ecdh-rate (cdr pair))))
+      (when rate
+        (record "public-key" (stringify (car pair))
+                (format nil "openssl ~a" (cdr pair))
+                "diffie-hellman" "ops/s" rate)))))
+
 (defun add-openssl-public-key-results (kind)
   (let ((openssl-alg (cdr (assoc kind *openssl-public-key-map*))))
     (when openssl-alg
@@ -659,7 +687,17 @@ dropped.  Anything else is a genuine failure and is reported."
     (:slh-dsa-shake-192f . "slh-dsa-shake-192f")
     (:slh-dsa-shake-256s . "slh-dsa-shake-256s")
     (:slh-dsa-shake-256f . "slh-dsa-shake-256f")
-    (:xmss-sha2-10-256 . "xmss-sha2_10_256")))
+    (:xmss-sha2-10-256 . "xmss-sha2_10_256")
+    (:ml-kem-512 . "ml-kem-512")
+    (:ml-kem-768 . "ml-kem-768")
+    (:ml-kem-1024 . "ml-kem-1024")))
+
+(defparameter *local-c-target-ms* 2000.0d0
+  "Approximate wall time spent per local C reference binary.  A single
+iteration is far too noisy for the randomized signers (ML-DSA, Falcon)
+and for anything under a millisecond, so the binary is first run once
+to estimate its cost and then rerun with enough iterations to fill this
+budget.")
 
 (defun parse-key-value-lines (text)
   (let ((values '()))
@@ -672,12 +710,31 @@ dropped.  Anything else is a genuine failure and is reported."
               (push (cons key number) values))))))
     (nreverse values)))
 
+(defun local-c-iterations (values)
+  "Iterations needed to spend about *LOCAL-C-TARGET-MS* given the
+per-iteration timings from a one-iteration probe run."
+  (let ((total (loop for (key . value) in values
+                     when (and (> (length key) 3)
+                               (string= "_MS" key :start2 (- (length key) 3)))
+                       sum value)))
+    (if (plusp total)
+        (max 1 (min 1000 (floor *local-c-target-ms* total)))
+        1)))
+
 (defun add-local-c-results (kind)
-  (let ((name (cdr (assoc kind *local-c-map*))))
-    (when name
-      (let* ((binary (namestring (merge-pathnames name #P"benchmark/c-bin/")))
-             (text (run-program binary '("1")))
-             (values (parse-key-value-lines text)))
+  (let* ((name (cdr (assoc kind *local-c-map*)))
+         (path (and name (merge-pathnames name #P"benchmark/c-bin/"))))
+    ;; The C references are optional: skip any that were not built
+    ;; instead of losing the whole run at the very end.
+    (when (and path (probe-file path))
+      (let* ((binary (namestring path))
+             (probe (parse-key-value-lines (run-program binary '("1"))))
+             (iterations (local-c-iterations probe))
+             (values (if (> iterations 1)
+                         (parse-key-value-lines
+                          (run-program binary
+                                       (list (princ-to-string iterations))))
+                         probe)))
         (flet ((ms (key)
                  (or (cdr (assoc key values :test #'equal)) 0.0d0))
                (crate (key)
@@ -950,7 +1007,8 @@ dropped.  Anything else is a genuine failure and is reported."
                     (format nil "encrypt ~D-byte buffer" *size*)
                     "bytes/s" rate)))))
     (dolist (pair *openssl-public-key-map*)
-      (add-openssl-public-key-results (car pair))))
+      (add-openssl-public-key-results (car pair)))
+    (add-openssl-ecdh-results))
   (dolist (kind (remove-duplicates (mapcar #'canonical-kind
                                         (ironclad-unsafe:list-all-key-pair-kinds))))
     (add-local-c-results kind))

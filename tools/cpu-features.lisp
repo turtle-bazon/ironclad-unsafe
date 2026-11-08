@@ -8,6 +8,7 @@
 ;;;; does not run any of the assembly.
 
 (require :asdf)
+(load (merge-pathnames "quicklisp/setup.lisp" (user-homedir-pathname)))
 
 (defparameter *source*
   (or (second *posix-argv*)
@@ -19,10 +20,10 @@
 (asdf:load-system :ironclad-unsafe)
 
 (defun probe (name)
-  (let ((sym (find-symbol name "IRONCLAD")))
+  (let ((sym (find-symbol name "CRYPTO-UNSAFE")))
     (and sym (symbol-function sym))))
 
-(format t "~&features: ~A~%" (funcall (probe "IRONCLAD-CPU-FEATURES")))
+(format t "~&features: ~A~%" (funcall (probe "IRONCLAD-UNSAFE-CPU-FEATURES")))
 
 (format t "~&aes=~A pclmulqdq=~A sha-ni=~A bmi2=~A adx=~A avx2=~A avx512=~A amd=~A~%"
         (funcall (probe "AES-NI-SUPPORTED-P"))
@@ -34,7 +35,7 @@
         (funcall (probe "AVX512-SUPPORTED-P"))
         (funcall (probe "AMD-CPU-P")))
 
-(let ((known (probe "IRONCLAD-INSTRUCTION-KNOWN-P")))
+(let ((known (probe "IRONCLAD-UNSAFE-INSTRUCTION-KNOWN-P")))
   (format t "~&assembler: ~{~A~^ ~}~%"
           (loop for name in '("MULX" "ADCX" "ADOX" "VPADDQ" "VPMULLQ" "VPMOVZXDQ"
                               "KMOVQ" "VINSERTI128" "VPCONFLICT" "VPMADD52")

@@ -502,14 +502,19 @@ the content on normal form exit."
     (keccak-rounds keccak-state)
     (setf (sha3-buffer-index state) 0)
 
-    ;; Get output
+    ;; Get output.  The state is permuted only *between* output blocks:
+    ;; no caller squeezes again after finalizing, so a permutation after
+    ;; the last block is dead work.  It used to run unconditionally, which
+    ;; doubled the permutations of every short hash (an SLH-DSA-SHAKE
+    ;; signature made ~211k permutations where ~106k suffice).
     (let ((output-size 0)
           (chunk-size (truncate bit-rate 8)))
       (loop until (= output-size output-byte-length) do
         (let ((n (min (- output-byte-length output-size) chunk-size)))
           (keccak-state-extract-output keccak-state n digest (+ digest-start output-size))
           (incf output-size n)
-          (keccak-rounds keccak-state))))
+          (when (< output-size output-byte-length)
+            (keccak-rounds keccak-state)))))
     digest))
 
 (define-digest-updater sha3

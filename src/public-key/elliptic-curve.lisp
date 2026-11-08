@@ -157,3 +157,86 @@ like the P-224 prime with P = 1 mod 4."
                                     tval (mod (* tval c) p)
                                     m i))))
                  x)))))))
+
+
+;;; Fixed-window scalar multiplication on a limb field.
+;;;
+;;; Variable-base multiplication (key agreement, ECIES) used to fall back
+;;; to %EC-LADDER-MULT, which works on the bignum point classes: two
+;;; generic point operations, with a fresh CLOS point and bignum MODs, per
+;;; scalar bit.  The curves with a limb field (secp384r1, secp521r1) get a
+;;; five-bit fixed window instead:
+;;;
+;;;  * the schedule depends only on the curve size (BITS doublings and
+;;;    CEILING(BITS/5) additions), never on the scalar's value;
+;;;  * every table entry is read by a masked scan over all 32 entries, so
+;;;    the memory access pattern does not depend on the digits;
+;;;  * a zero digit still performs an addition (of entry 1) and the
+;;;    result is discarded with a mask.
+;;;
+;;; The point formulas still take their early exits while the accumulator
+;;; is the point at infinity (the leading window), as the ladder did.
+
+(defmacro define-limb-window-mult (name &key limbs bits fe-zero make-scratch
+                                            make-table double add)
+  "Define (NAME PX PY PZ E) => RX RY RZ, the limb point E*P.  PX, PY and
+PZ are Montgomery limb arrays; E is a non-negative integer below
+2^BITS."
+  (let ((nwin (ceiling bits 5)))
+    `(defun ,name (px py pz e)
+       (declare (type (simple-array (unsigned-byte 64) (,limbs)) px py pz)
+                (type (integer 0) e)
+                (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+       (let ((table (,make-table px py pz))
+             (s (,make-scratch))
+             (rx (,fe-zero)) (ry (,fe-zero)) (rz (,fe-zero))
+             (tx (,fe-zero)) (ty (,fe-zero)) (tz (,fe-zero))
+             (ex (,fe-zero)) (ey (,fe-zero)) (ez (,fe-zero)))
+         (declare (type simple-vector table s)
+                  (type (simple-array (unsigned-byte 64) (,limbs))
+                        rx ry rz tx ty tz ex ey ez))
+         (flet ((select! (index)
+                  ;; E := TABLE[INDEX], reading every entry.
+                  (declare (type (unsigned-byte 5) index))
+                  (dotimes (k ,limbs)
+                    (setf (aref ex k) 0 (aref ey k) 0 (aref ez k) 0))
+                  (dotimes (i 32)
+                    (let ((m (ldb (byte 64 0) (ash (1- (logxor i index)) -63)))
+                          (entry (svref table i)))
+                      (declare (type (unsigned-byte 64) m)
+                               (type simple-vector entry))
+                      (let ((sx (svref entry 0)) (sy (svref entry 1))
+                            (sz (svref entry 2)))
+                        (declare (type (simple-array (unsigned-byte 64) (,limbs))
+                                       sx sy sz))
+                        (dotimes (k ,limbs)
+                          (setf (aref ex k) (logior (aref ex k) (logand m (aref sx k)))
+                                (aref ey k) (logior (aref ey k) (logand m (aref sy k)))
+                                (aref ez k) (logior (aref ez k) (logand m (aref sz k)))))))))
+                (take! (m)
+                  ;; R := T when M is all ones, else unchanged.
+                  (declare (type (unsigned-byte 64) m))
+                  (dotimes (k ,limbs)
+                    (setf (aref rx k) (logxor (aref rx k)
+                                              (logand m (logxor (aref rx k) (aref tx k))))
+                          (aref ry k) (logxor (aref ry k)
+                                              (logand m (logxor (aref ry k) (aref ty k))))
+                          (aref rz k) (logxor (aref rz k)
+                                              (logand m (logxor (aref rz k) (aref tz k))))))))
+           ;; R starts as the point at infinity (all-zero limbs).
+           (dotimes (k ,limbs)
+             (setf (aref rx k) 0 (aref ry k) 0 (aref rz k) 0))
+           (loop for wi of-type fixnum downfrom ,(1- nwin) to 0 do
+             (unless (= wi ,(1- nwin))
+               (loop repeat 5 do
+                 (,double tx ty tz rx ry rz s)
+                 (rotatef rx tx) (rotatef ry ty) (rotatef rz tz)))
+             (let* ((digit (ldb (byte 5 (* wi 5)) e))
+                    (nonzero (ldb (byte 64 0) (- (ash (+ digit 31) -5)))))
+               (declare (type (unsigned-byte 5) digit)
+                        (type (unsigned-byte 64) nonzero))
+               ;; Entry DIGIT, or entry 1 for a zero digit (discarded).
+               (select! (logior digit (logxor 1 (logand 1 nonzero))))
+               (,add tx ty tz rx ry rz ex ey ez s)
+               (take! nonzero))))
+         (values rx ry rz)))))

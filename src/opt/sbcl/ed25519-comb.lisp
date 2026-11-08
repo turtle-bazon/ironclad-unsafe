@@ -463,3 +463,118 @@ five 64-bit limbs at a byte offset from P-SCR."
             (sq t0 t0)
             (sq t0 t0)
             (fe-mul out t0 z)))))))  ; z^(2^252-3)
+
+;;; X25519 Montgomery ladder (RFC 7748, section 5) in one VOP.
+;;;
+;;; The Lisp ladder allocated eighteen field elements per step and ran
+;;; every multiply through the 8 x 32-bit limb layer, so X25519 was an
+;;; order of magnitude behind OpenSSL even though the same field drives
+;;; the fast ed25519 code.  This VOP runs the whole 255-step ladder on
+;;; radix-2^51 limbs with the field routines above, and swaps the two
+;;; working points with an xor mask instead of a branch, so the
+;;; instruction and memory trace do not depend on the scalar bits.
+;;;
+;;; Scratch layout, in bytes:
+;;;
+;;;     0     one 64-bit word per scalar bit, bit 254 first (255 words)
+;;;     2048  x1 (the input u-coordinate)
+;;;     2088  x2, 2128 z2   (contiguous, swapped together)
+;;;     2168  x3, 2208 z3   (contiguous, swapped together)
+;;;     2248  a24 = 121665
+;;;     2288  field temporaries A AA B BB E C D DA CB T
+;;;     2688  multiply working area, the constant 19, the swap state
+
+#+(and x86-64 ironclad-unsafe-assembly)
+(progn
+  (defconstant +x-x1+     2048)
+  (defconstant +x-x2+     2088)
+  (defconstant +x-z2+     2128)
+  (defconstant +x-x3+     2168)
+  (defconstant +x-z3+     2208)
+  (defconstant +x-a24+    2248)
+  (defconstant +x-a+      2288)
+  (defconstant +x-aa+     2328)
+  (defconstant +x-b+      2368)
+  (defconstant +x-bb+     2408)
+  (defconstant +x-e+      2448)
+  (defconstant +x-c+      2488)
+  (defconstant +x-d+      2528)
+  (defconstant +x-da+     2568)
+  (defconstant +x-cb+     2608)
+  (defconstant +x-t+      2648)
+  (defconstant +x-mulacc+ 2688)   ; nine 128-bit columns
+  (defconstant +x-hacc+   2832)   ; five 128-bit accumulators
+  (defconstant +x-c19+    2912)
+  (defconstant +x-swap+   2920)
+  (defconstant +x-scratch-words+ 366))
+
+#+(and x86-64 ironclad-unsafe-assembly)
+(define-vop (curve25519-ladder-asm)
+  (:translate ironclad-unsafe::curve25519-ladder-asm)
+  (:policy :fast-safe)
+  (:args (scratch :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg :offset sb-vm::rdi-offset) p-scr)
+  (:temporary (:sc unsigned-reg :offset sb-vm::rsi-offset) mask)
+  (:temporary (:sc unsigned-reg :offset sb-vm::r8-offset) jj)
+  (:temporary (:sc unsigned-reg :offset sb-vm::r9-offset) tmp3)
+  (:temporary (:sc unsigned-reg :offset sb-vm::r10-offset) tmp1)
+  (:temporary (:sc unsigned-reg :offset sb-vm::r11-offset) tmp2)
+  (:temporary (:sc unsigned-reg :offset sb-vm::rax-offset) rax-tmp)
+  (:temporary (:sc unsigned-reg :offset sb-vm::rdx-offset) rdx-tmp)
+  (:generator 2000
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag))
+          (top (gen-label)))
+      (ed25519-with-fe-ops (p-scr tmp1 tmp2 rax-tmp rdx-tmp
+                                  +x-mulacc+ +x-hacc+ +x-c19+)
+        (labels ((cswap ()
+                   ;; (x2,z2) <-> (x3,z3) when MASK is all ones.
+                   (dotimes (k 10)
+                     (inst mov tmp1 (ea (+ +x-x2+ (* 8 k)) p-scr))
+                     (inst mov tmp2 (ea (+ +x-x3+ (* 8 k)) p-scr))
+                     (inst mov tmp3 tmp1)
+                     (inst xor tmp3 tmp2)
+                     (inst and tmp3 mask)
+                     (inst xor tmp1 tmp3)
+                     (inst xor tmp2 tmp3)
+                     (inst mov (ea (+ +x-x2+ (* 8 k)) p-scr) tmp1)
+                     (inst mov (ea (+ +x-x3+ (* 8 k)) p-scr) tmp2))))
+          (inst lea p-scr (ea data-offset scratch))
+          (inst mov :qword (ea +x-c19+ p-scr) 19)
+          (inst mov :qword (ea +x-swap+ p-scr) 0)
+          (inst xor jj jj)
+          (emit-label top)
+          ;; swap ^= bit; cswap; swap = bit
+          (inst mov mask (ea 0 p-scr jj 8))
+          (inst mov tmp3 mask)
+          (inst xor mask (ea +x-swap+ p-scr))
+          (inst mov (ea +x-swap+ p-scr) tmp3)
+          (inst neg mask)
+          (cswap)
+          ;; One ladder step.
+          (fe-add +x-a+ +x-x2+ +x-z2+)        ; A  = x2 + z2
+          (fe-mul +x-aa+ +x-a+ +x-a+)         ; AA = A^2
+          (fe-sub +x-b+ +x-x2+ +x-z2+)        ; B  = x2 - z2
+          (fe-mul +x-bb+ +x-b+ +x-b+)         ; BB = B^2
+          (fe-sub +x-e+ +x-aa+ +x-bb+)        ; E  = AA - BB
+          (fe-add +x-c+ +x-x3+ +x-z3+)        ; C  = x3 + z3
+          (fe-sub +x-d+ +x-x3+ +x-z3+)        ; D  = x3 - z3
+          (fe-mul +x-da+ +x-d+ +x-a+)         ; DA = D * A
+          (fe-mul +x-cb+ +x-c+ +x-b+)         ; CB = C * B
+          (fe-add +x-t+ +x-da+ +x-cb+)
+          (fe-mul +x-x3+ +x-t+ +x-t+)         ; x3 = (DA + CB)^2
+          (fe-sub +x-t+ +x-da+ +x-cb+)
+          (fe-mul +x-t+ +x-t+ +x-t+)
+          (fe-mul +x-z3+ +x-x1+ +x-t+)        ; z3 = x1 * (DA - CB)^2
+          (fe-mul +x-x2+ +x-aa+ +x-bb+)       ; x2 = AA * BB
+          (fe-mul +x-t+ +x-a24+ +x-e+)
+          (fe-add +x-t+ +x-aa+ +x-t+)
+          (fe-mul +x-z2+ +x-e+ +x-t+)         ; z2 = E * (AA + a24 * E)
+          (inst inc jj)
+          (inst cmp jj 255)
+          (inst jmp :nz top)
+          ;; Final conditional swap.
+          (inst mov mask (ea +x-swap+ p-scr))
+          (inst neg mask)
+          (cswap))))))

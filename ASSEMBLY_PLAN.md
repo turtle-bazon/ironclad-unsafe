@@ -4176,3 +4176,146 @@ the copy can be replaced by swapping the two variables.  Direct
 measurement: verify 107.6 -> 106.8 us, sign 33.2 -> 32.7 us (about 1%,
 inside the host noise but a real removal of 32 to ~380 copies per
 operation).  The full suite passes.
+
+## New host, corrected C references, and what they exposed (2026-11-08)
+
+Benchmarks now run on an AMD Ryzen 7 PRO 4750U (Zen 2, BMI2/ADX/SHA-NI,
+no AVX-512), SBCL 2.6.7, OpenSSL 3.6.3.  Earlier tables came from a
+different host and are not comparable row for row.
+
+### Harness corrections
+
+The C side of the comparison was wrong in ways that flattered Lisp:
+
+- **SPHINCS+ was built with the *robust* tweakable hash.**  FIPS 205
+  SLH-DSA is the *simple* construction, about 2x cheaper.  The
+  SLH-DSA-SHAKE rows went from ~1.7x to ~3.4x once the reference was
+  the right algorithm.  `build-c-benchmarks.sh` now builds upstream
+  PQClean `sphincs-*-simple` (and fetches PQClean / xmss-reference
+  itself; the old script needed hand-patched trees under /tmp).
+- **Each C binary was timed for one iteration.**  ML-DSA signing is a
+  rejection loop, so one sample read 2.85 ms against 0.69 ms averaged
+  over 50.  `add-local-c-results` now probes once and reruns with
+  enough iterations to fill ~2 s.
+- **A missing `benchmark/c-bin` binary killed the whole run** at the
+  very end, discarding every Lisp measurement.  Missing binaries are
+  now skipped.
+- **No C reference existed for X25519, X448, ECDH on any NIST curve, or
+  ML-KEM.**  Those rows were 10-14x behind and invisible.  OpenSSL
+  `speed ecdh*` and PQClean ML-KEM references were added.
+- AVX2 builds of every PQClean scheme are built too (suffix `-avx2`)
+  for a second, tougher comparison; the table uses the clean builds.
+- `benchmark/c-vs-lisp.org` was ~10x stale; regenerate before use.
+
+### CPU feature gating moved to sb-cpu-features
+
+`src/opt/sbcl/cpu-features.lisp` now delegates detection to the
+`sb-cpu-features` library (CPUID + SBCL's XGETBV-backed AVX flags,
+no /proc dependency, re-probed in `*init-hooks*` when an image starts on
+another machine).  The predicate names (`bmi2-supported-p` and so on)
+are unchanged and still read a cached special, refreshed from the new
+`sb-cpu-features:*cpu-features-refresh-hooks*`; while
+`with-cpu-features-disabled` / `-only` is active they bypass the cache,
+so tests can force the portable paths.  `amd-cpu-p` uses the new
+`sb-cpu-features:cpu-vendor` (CPUID) instead of parsing /proc/cpuinfo.
+Previously the cache was filled once at load and never re-probed.
+
+### X25519: one-VOP radix-2^51 ladder (2.8k -> 11.8k ops/s, 4.2x)
+
+`curve25519-ladder-asm` (src/opt/sbcl/ed25519-comb.lisp) runs the whole
+RFC 7748 ladder with the existing `ed25519-with-fe-ops` emitters.  The
+Lisp ladder allocated eighteen field elements per step on the 8x32-bit
+layer.  The swap is an xor mask, not a branch on the scalar bit.
+RFC 7748 vector and 300 random inputs against the old ladder.
+Remaining gap ~2.9x to OpenSSL: the memory-resident `fe-mul` (25
+`mul` with memory accumulation) is now the whole cost; a register
+MULX field multiply would also speed up ed25519.
+
+### X448: allocation-free ladder (1.5k -> 1.9k ops/s)
+
+Same restructuring on the Goldilocks `-buf` operations, masked swap.
+RFC 7748 vector and the 1000-iteration chain pass.  The remaining
+~2.8x is the Goldilocks multiply (~100 ns: raw VOP + reduce + copy).
+
+### Variable-base NIST multiplication: fixed windows on the limb fields
+
+`ec-scalar-mult` for a point other than G used the bignum
+`%ec-ladder-mult` on P-384 and P-521 (a CLOS point and bignum MODs per
+step), and a two-operation-per-bit limb ladder on P-224 and P-256.
+`define-limb-window-mult` (elliptic-curve.lisp) generates a five-bit
+fixed window over the limb field for P-384, P-521 and P-224; P-256 gets
+a four-bit window over its affine table with mixed additions.  The
+schedule depends only on the curve size, each entry is read by a masked
+scan of the whole table, and a zero digit adds entry 1 and discards it.
+
+| DH | before | after | OpenSSL |
+|---|---|---|---|
+| P-384 | 225/s | 1497/s | 2344/s |
+| P-521 | 255/s | 918/s | 3544/s |
+| P-256 | 5.7k/s | 8.5k/s | 23.7k/s |
+| P-224 | 3.6k/s | 5.4k/s | 13.8k/s |
+
+Cross-checked against the previous multiplier on random points and on
+0, 1, n-1, n, n+1 and 2^bits-1.  Inlining the P-256 field multiply into
+the point formulas was tried and was neutral (reverted): the cost is the
+multiply, not the calls.
+
+### SHA-3: no permutation after the last output block (SLH-DSA-SHAKE 1.6x)
+
+`sha3-finalize` permuted after extracting every output block, including
+the last.  No caller squeezes again after finalizing, so that
+permutation was dead: a 64-byte SHAKE256 with a 16-byte output cost two
+permutations instead of one, and an SLH-DSA-SHAKE-128f signature made
+211k permutations.  SLH-DSA-SHAKE-128f sign 8.6 -> 14 ops/s.  (The
+permutation itself is ~1.7x slower than gcc's: 447 vs 262 ns.)
+
+### ML-KEM / ML-DSA: branch-free Montgomery sign extension (~2x)
+
+Both Montgomery reductions sign-extended with
+`(if (>= w 2^(k-1)) (- w 2^k) w)`: an unpredictable, secret-dependent
+branch in every butterfly and pointwise product.  Replaced by
+`(- (logxor w 2^(k-1)) 2^(k-1))`, and the two freeze/caddq helpers by a
+shift mask.
+
+| | before | after | C clean |
+|---|---|---|---|
+| ML-KEM-768 encaps | 7.1k | 14.5k | 13.0k |
+| ML-KEM-768 decaps | 6.2k | 9.5k | 10.0k |
+| ML-DSA-65 sign | 609 | 1554 | 1700 |
+| ML-DSA-65 verify | 6.0k | 10.1k | 6.9k |
+
+ML-KEM's NTTs were also unrolled like ML-DSA's (neutral on its own) and
+the public-key cache check uses a typed byte loop instead of the
+generic MISMATCH (a tenth of an encapsulation).
+
+### Table refresh after these changes (same host, same day)
+
+Rows with a C reference at 2x or more: 36 -> 22 (5x or more: 4 -> 1).
+Faster than C: 33 -> 38.  The PQC rows now compare against correctly
+built, correctly timed C (see above), so several gaps grew on paper
+before they shrank in code; compare ratios only within this snapshot.
+
+Host note: Falcon-512 keygen and McEliece348864 keygen read about half
+their morning rate in this run (6.9 and 9.3 ops/s).  An interleaved A/B
+of hg rev 1223 against the working tree measured both the same (Falcon
+4.1-4.7 vs 4.4-5.6, McEliece 9.1-9.4 vs 8.7-10.9), so it is the host
+(free memory had fallen to ~2.7 GB; both keygens are allocation heavy
+and rejection sampled), not these changes.  Do not read those two rows
+as regressions.
+
+### What is left, by expected value
+
+1. Falcon-512 keygen (13x): the bignum NTRU solve and the sampler
+   (BIGNUM-ASHIFT-RIGHT, GENERIC-*, TWO-ARG-< dominate the profile).
+2. Field multiplies, which now bound every remaining ECC row: a
+   register-resident MULX radix-2^51 multiply for 2^255-19 (X25519 2.9x,
+   also ed25519), the Goldilocks multiply (X448 2.6x, ed448 verify 2.7x),
+   P-521 (DH 3.8x, verify 2.5x), P-256/P-224 (DH 2.75x, verify 2.0x).
+3. ChaCha20-Poly1305 (3.3x): ChaCha core 43%, Poly1305 28%, CLOS setup
+   ~15-20% of an 8 KB message.  An eight-block AVX2 ChaCha, a vector
+   Poly1305 and cheaper mode construction.  GCM (2.5x) shares the setup
+   cost.
+4. Keccak-f itself (447 vs 262 ns): SLH-DSA-SHAKE is now ~2x, SHA-3
+   ~1.6x.  The previous VOP lost to the op cache; a looped VOP can keep
+   the round constants and the counter in the state array.
+5. IDEA (2.55x) and ARIA (1.64x): block VOPs like SM4/Blowfish/CAST5.
