@@ -65,7 +65,9 @@
                                 mulacc hacc c19) &body body)
   "Expand to LABELS defining FE-ADD, FE-SUB and FE-MUL on the scratch
 vector addressed by P-SCR, then evaluate BODY.  Every field element is
-five 64-bit limbs at a byte offset from P-SCR."
+five 64-bit limbs at a byte offset from P-SCR.  C19 is kept for the
+callers' scratch layouts but is no longer read by FE-MUL."
+  (declare (ignorable c19))
   `(labels
        ((fe-add (dst a b)
           ;; dst = a + b, limbwise (lazy reduction).
@@ -88,37 +90,68 @@ five 64-bit limbs at a byte offset from P-SCR."
               (inst add ,tmp1 72))))   ; 4*qi = 2^53 - 4
         (fe-mul (dst a b)
           ;; dst = a * b mod q, radix 2^51, fully unrolled.
-          ;; 1. zero the nine 128-bit columns
-          (inst xor ,rax-tmp ,rax-tmp)
-          (dotimes (k 9)
-            (inst mov :qword (ea (+ ,mulacc (* 16 k)) ,p-scr) ,rax-tmp)
-            (inst mov :qword (ea (+ ,mulacc (* 16 k) 8) ,p-scr) ,rax-tmp))
-          ;; 2. schoolbook 5x5 accumulation
-          (dotimes (i 5)
-            (dotimes (j 5)
-              (inst mov ,rax-tmp (ea (+ a (* 8 i)) ,p-scr))
-              (inst mul :qword (ea (+ b (* 8 j)) ,p-scr))
-              (inst add (ea (+ ,mulacc (* 16 (+ i j))) ,p-scr) ,rax-tmp)
-              (inst adc (ea (+ ,mulacc (* 16 (+ i j)) 8) ,p-scr) ,rdx-tmp)))
-          ;; 3. fold columns 5..8 into 0..3 with 2^255 == 19
-          (dotimes (k 4)
-            (let ((src (+ ,mulacc (* 16 (+ k 5))))
-                  (raw (+ ,mulacc (* 16 k)))
-                  (h (+ ,hacc (* 16 k))))
-              (inst mov ,rax-tmp (ea src ,p-scr))
-              (inst mul :qword (ea ,c19 ,p-scr))
-              (inst imul ,tmp1 (ea (+ src 8) ,p-scr) 19)
-              (inst add ,rdx-tmp ,tmp1)
-              (inst add ,rax-tmp (ea raw ,p-scr))
-              (inst adc ,rdx-tmp (ea (+ raw 8) ,p-scr))
-              (inst mov (ea h ,p-scr) ,rax-tmp)
-              (inst mov (ea (+ h 8) ,p-scr) ,rdx-tmp)))
-          ;; h[4] = raw[4]
-          (inst mov ,rax-tmp (ea (+ ,mulacc (* 16 4)) ,p-scr))
-          (inst mov (ea (+ ,hacc (* 16 4)) ,p-scr) ,rax-tmp)
-          (inst mov ,rax-tmp (ea (+ ,mulacc (* 16 4) 8) ,p-scr))
-          (inst mov (ea (+ ,hacc (* 16 4) 8) ,p-scr) ,rax-tmp)
-          ;; 4. carry chain
+          ;;
+          ;; Column form with the 2^255 == 19 fold applied to the
+          ;; operand: with B19[j] = 19*b[j] (j = 1..4),
+          ;;   h[k] = sum_{i<=k} a[i]*b[k-i] + sum_{i>k} a[i]*B19[k-i+5]
+          ;; and each column is summed in a register pair.  The old form
+          ;; accumulated 25 products into nine 128-bit columns in memory
+          ;; (a read-modify-write add/adc pair per product) and folded the
+          ;; top four columns in a second pass.  Bounds: inputs < 2^54 and
+          ;; B19 < 2^58.3, so a column of five products is < 2^115.
+          ;; DST may alias A or B: every input is read before DST is
+          ;; written.  MULACC now only holds B19.
+          (flet ((column (k terms)
+                   ;; HACC[k] := sum of (X * Y) over TERMS, each X and Y
+                   ;; a byte offset from P-SCR.
+                   (loop for (x y) in terms
+                         for first = t then nil
+                         do (inst mov ,rax-tmp (ea x ,p-scr))
+                            (inst mul :qword (ea y ,p-scr))
+                            (if first
+                                (progn
+                                  (inst mov ,tmp1 ,rax-tmp)
+                                  (inst mov ,tmp2 ,rdx-tmp))
+                                (progn
+                                  (inst add ,tmp1 ,rax-tmp)
+                                  (inst adc ,tmp2 ,rdx-tmp))))
+                   (inst mov (ea (+ ,hacc (* 16 k)) ,p-scr) ,tmp1)
+                   (inst mov (ea (+ ,hacc (* 16 k) 8) ,p-scr) ,tmp2)))
+            (if (eql a b)
+                ;; Square: 15 products.  MULACC holds 2a0 2a1 2a2 2a3
+                ;; 19a3 19a4; bounds as above (2a < 2^55, 19a < 2^58.3).
+                (flet ((av (i) (+ a (* 8 i)))
+                       (d (i) (+ ,mulacc (* 8 i)))
+                       (n19 (i) (+ ,mulacc 32 (* 8 (- i 3)))))
+                  (dotimes (i 4)
+                    (inst mov ,tmp1 (ea (av i) ,p-scr))
+                    (inst add ,tmp1 ,tmp1)
+                    (inst mov (ea (d i) ,p-scr) ,tmp1))
+                  (inst imul ,tmp1 (ea (av 3) ,p-scr) 19)
+                  (inst mov (ea (n19 3) ,p-scr) ,tmp1)
+                  (inst imul ,tmp1 (ea (av 4) ,p-scr) 19)
+                  (inst mov (ea (n19 4) ,p-scr) ,tmp1)
+                  (column 0 (list (list (av 0) (av 0)) (list (d 1) (n19 4))
+                                  (list (d 2) (n19 3))))
+                  (column 1 (list (list (d 0) (av 1)) (list (d 2) (n19 4))
+                                  (list (av 3) (n19 3))))
+                  (column 2 (list (list (d 0) (av 2)) (list (av 1) (av 1))
+                                  (list (d 3) (n19 4))))
+                  (column 3 (list (list (d 0) (av 3)) (list (d 1) (av 2))
+                                  (list (av 4) (n19 4))))
+                  (column 4 (list (list (d 0) (av 4)) (list (d 1) (av 3))
+                                  (list (av 2) (av 2)))))
+                (progn
+                  (dotimes (j 4)
+                    (inst imul ,tmp1 (ea (+ b (* 8 (1+ j))) ,p-scr) 19)
+                    (inst mov (ea (+ ,mulacc (* 8 j)) ,p-scr) ,tmp1))
+                  (dotimes (k 5)
+                    (column k (loop for i below 5
+                                    collect (list (+ a (* 8 i))
+                                                  (if (<= i k)
+                                                      (+ b (* 8 (- k i)))
+                                                      (+ ,mulacc (* 8 (+ (- k i) 4)))))))))))
+          ;; carry chain
           (inst xor ,tmp1 ,tmp1)
           (dotimes (k 5)
             (let ((h (+ ,hacc (* 16 k))))

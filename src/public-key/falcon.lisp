@@ -935,7 +935,50 @@ so results are bit-identical to the reference."
     #x0555555555070F00 #x155555555581FF00 #x400000000002B400 #x7FFFFFFFFFFF4800
     #x8000000000000000))
 
+;;; The sampler used to work on bignums: the 72-bit random value and the
+;;; eighteen 72-bit RCDT entries of BaseSampler, and the 126-bit products
+;;; of ApproxExp, consed on every sample (BIGNUM-ASHIFT-RIGHT, GENERIC-*
+;;; and TWO-ARG-< were the top of the key generation profile).  The
+;;; versions below compute exactly the same values on machine words: the
+;;; 72-bit comparisons on two 36-bit halves with a borrow, and the
+;;; (Z*Y)>>63 products from the high and low words of a 64x64 multiply.
+;;; The original definitions are kept as the reference and as the
+;;; fallback for inputs outside the fast paths' ranges.
+
+;; Each RCDT entry as (HIGH-36-BITS . LOW-36-BITS).
+(defconst +falcon-rcdt-split+
+  (map 'vector (lambda (v) (cons (ash v -36) (ldb (byte 36 0) v))) +falcon-rcdt+))
+
 (defun falcon-basesampler (randbytes)
+  "Number of RCDT entries above a 72-bit little-endian random value.
+Branch-free comparison on 36-bit halves; same value and same byte
+consumption as FALCON-BASESAMPLER-REFERENCE."
+  (declare (type function randbytes)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((raw (funcall randbytes 9))
+         (lo 0) (hi 0) (z0 0))
+    (declare (type (simple-array (unsigned-byte 8) (*)) raw)
+             (type (unsigned-byte 36) lo hi)
+             (type fixnum z0))
+    ;; Bytes 0..3 and the low nibble of byte 4 are LO; the rest is HI.
+    (setf lo (logior (aref raw 0) (ash (aref raw 1) 8) (ash (aref raw 2) 16)
+                     (ash (aref raw 3) 24) (ash (ldb (byte 4 0) (aref raw 4)) 32))
+          hi (logior (ldb (byte 4 4) (aref raw 4)) (ash (aref raw 5) 4)
+                     (ash (aref raw 6) 12) (ash (aref raw 7) 20)
+                     (ash (aref raw 8) 28)))
+    (let ((table +falcon-rcdt-split+))
+      (declare (type simple-vector table))
+      (dotimes (i (length table) z0)
+        (let* ((entry (svref table i))
+               (rhi (car entry)) (rlo (cdr entry))
+               ;; borrow = 1 when LO < RLO; then U < R when HI - RHI - borrow < 0.
+               (borrow (logand 1 (ash (- lo rlo) -40)))
+               (less (logand 1 (ash (- hi rhi borrow) -40))))
+          (declare (type (unsigned-byte 36) rhi rlo)
+                   (type bit borrow less))
+          (incf z0 less))))))
+
+(defun falcon-basesampler-reference (randbytes)
   (let ((u 0))
     (let ((raw (funcall randbytes (ash +falcon-rcdt-prec+ -3))))
       (dotimes (i (length raw))
@@ -945,7 +988,54 @@ so results are bit-identical to the reference."
         (when (< u (aref +falcon-rcdt+ i))
           (incf z0))))))
 
+(declaim (inline falcon-mul63))
+(defun falcon-mul63 (a b)
+  "(A*B) >> 63 for words A and B whose result fits in a word."
+  (declare (type (unsigned-byte 64) a b)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  #+(and sbcl x86-64)
+  (let ((hi (sb-kernel:%multiply-high a b))
+        (lo (ldb (byte 64 0) (* a b))))
+    (declare (type (unsigned-byte 64) hi lo))
+    (logior (ldb (byte 64 0) (ash hi 1)) (ash lo -63)))
+  #-(and sbcl x86-64)
+  (ash (* a b) -63))
+
+(declaim (inline falcon-trunc-2^63))
+(defun falcon-trunc-2^63 (x)
+  "TRUNCATE of X * 2^63 for 0 <= X < 1, without consing a bignum.
+V = X*2^63 is exact (a power-of-two scale); floor(V/2) fits a fixnum and
+the remaining low bit is V - 2*floor(V/2) >= 1, all exact in doubles."
+  (declare (type (double-float 0d0 (1d0)) x)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (let* ((v (* x 9.223372036854775808d18))
+         (h (* v 0.5d0))
+         ;; H < 2^62, and the largest double below 2^62 is 2^62 - 512,
+         ;; so the truncation is a fixnum.
+         (q (truncate (the (double-float 0d0 4.611686018427387392d18) h)))
+         (bit (if (>= (- v (* 2d0 (float q 1d0))) 1d0) 1 0)))
+    (declare (type (unsigned-byte 62) q) (type bit bit))
+    (logior (ash q 1) bit)))
+
 (defun falcon-approxexp (x ccs)
+  "Same value as FALCON-APPROXEXP-REFERENCE, on machine words when
+0 <= X < 1 and 0 <= CCS < 1 (always, for the parameters in use)."
+  (declare (type double-float x ccs)
+           (optimize (speed 3) (safety 0) (space 0) (debug 0)))
+  (if (and (<= 0d0 x) (< x 1d0) (<= 0d0 ccs) (< ccs 1d0))
+      (let ((c +falcon-sampler-c+)
+            (z (falcon-trunc-2^63 x)))
+        (declare (type simple-vector c)
+                 (type (unsigned-byte 64) z))
+        (let ((y (svref c 0)))
+          (declare (type (unsigned-byte 64) y))
+          (loop for i of-type fixnum from 1 below (length c)
+                do (setf y (- (the (unsigned-byte 64) (svref c i))
+                              (falcon-mul63 z y))))
+          (falcon-mul63 (ldb (byte 64 0) (ash (falcon-trunc-2^63 ccs) 1)) y)))
+      (falcon-approxexp-reference x ccs)))
+
+(defun falcon-approxexp-reference (x ccs)
   (declare (type double-float x ccs)
            (optimize (speed 3) (safety 0) (space 0) (debug 0)))
   (let ((y (aref +falcon-sampler-c+ 0))

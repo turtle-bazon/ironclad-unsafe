@@ -10960,9 +10960,26 @@ into O0..O7."
 ;;; four accumulators, two scratch words, and the three live pointers.
 ;;; R0..R3 and RR0..RR3 live in memory and are used directly as IMUL
 ;;; operands.
+;;; Poly1305, radix 2^64 (three limbs), as in OpenSSL's scalar code.
+;;;
+;;; The previous 32-bit-limb loop made 25 IMULs per 16-byte block.  With
+;;; h = h0 + h1*2^64 + h2*2^128 and r = r0 + r1*2^64 (r1's low two bits
+;;; are clamped to zero, so s1 = r1 + (r1 >> 2) = 5*r1/4 exactly):
+;;;   d0 = h0*r0 + h1*s1
+;;;   d1 = h0*r1 + h1*r0 + h2*s1
+;;;   d2 = h2*r0
+;;; then 2^130 = 5 folds d2's bits above 2^130 back into the bottom.
+;;; Four 64x64->128 MULs and two small IMULs per block.  Earlier Lisp
+;;; attempts at this shape lost because SBCL boxes the 128-bit products;
+;;; in a VOP the high halves come for free in RDX.
+;;;
+;;; The state crosses the VOP boundary in the portable 5 x 32-bit form
+;;; (h = sum acc[i]*2^(32i)); R0, R1 and S1 are words 8..10 of RVEC.
+;;; Bounds: h2 <= 4 between blocks, r0, r1 < 2^60, s1 < 2^60.33, so d0
+;;; and d1 are below 2^127 and d2 + hi(d1) below 2^64.
 #+x86-64
-(define-vop (poly1305-blocks)
-  (:translate ironclad-unsafe::poly1305-blocks-asm)
+(define-vop (poly1305-blocks-64)
+  (:translate ironclad-unsafe::poly1305-blocks64-asm)
   (:policy :fast-safe)
   (:args (acc :scs (descriptor-reg))
          (rvec :scs (descriptor-reg))
@@ -10974,17 +10991,16 @@ into O0..O7."
               simple-array-unsigned-byte-8
               unsigned-num
               unsigned-num)
-  ;; The loop counts NBLOCKS down.  Do that on a temporary, not on the
-  ;; argument TN: the register allocator is free to keep a caller value
-  ;; that is live after the VOP (such as the BLOCKS count computed in
-  ;; POLY1305-PROCESS-FULL-BLOCKS) in the argument's register when it
-  ;; believes the argument is unchanged.  SBCL 2.6.9 does exactly that
-  ;; coalescing, which made POLY1305 get zero BLOCKS back and never
-  ;; process the message.
+  ;; The loop counts NBLOCKS down on a temporary, not on the argument
+  ;; TN: the register allocator may keep a caller value that is live
+  ;; after the VOP in the argument's register (SBCL 2.6.9 does, and the
+  ;; caller then saw zero blocks processed).
   (:temporary (:sc descriptor-reg :from (:argument 2)) data-ptr)
   (:temporary (:sc unsigned-reg :from (:argument 4)) blocks-left)
-  (:temporary (:sc unsigned-reg) h0 h1 h2 h3 h4 t0 t1)
-  (:temporary (:sc double-reg) x0 x1 x2 x3)
+  (:temporary (:sc unsigned-reg :offset rax-offset) rax-tmp)
+  (:temporary (:sc unsigned-reg :offset rdx-offset) rdx-tmp)
+  (:temporary (:sc unsigned-reg) h0 h1 h2 d1lo d1hi)
+  (:temporary (:sc double-reg) xd0hi)
   (:generator 1000
     (let ((disp (- (* n-word-bytes vector-data-offset) other-pointer-lowtag))
           (loop (gen-label))
@@ -10994,121 +11010,75 @@ into O0..O7."
              (d (i) (ea (+ disp i) data-ptr)))
         (move data-ptr data)
         (move blocks-left nblocks)
-        (inst mov :dword h0 (a 0))
-        (inst mov :dword h1 (a 1))
-        (inst mov :dword h2 (a 2))
-        (inst mov :dword h3 (a 3))
-        (inst mov :dword h4 (a 4))
-        ;; Fold the starting byte offset into the data pointer.
         (inst add data-ptr offset)
+        ;; h0 = acc0 | acc1<<32, h1 = acc2 | acc3<<32, h2 = acc4.
+        (inst mov :dword h0 (a 0))
+        (inst mov :dword rax-tmp (a 1))
+        (inst shl rax-tmp 32)
+        (inst or h0 rax-tmp)
+        (inst mov :dword h1 (a 2))
+        (inst mov :dword rax-tmp (a 3))
+        (inst shl rax-tmp 32)
+        (inst or h1 rax-tmp)
+        (inst mov :dword h2 (a 4))
         (inst test blocks-left blocks-left)
         (inst jmp :z done)
         (emit-label loop)
-        ;; s_i = h_i + message word; s4 = h4 + hibit (hibit is 1 here).
-        (inst mov :dword t0 (d 0))  (inst add h0 t0)
-        (inst mov :dword t0 (d 4))  (inst add h1 t0)
-        (inst mov :dword t0 (d 8))  (inst add h2 t0)
-        (inst mov :dword t0 (d 12)) (inst add h3 t0)
-        (inst add h4 1)
-        (inst mov :dword h4 h4)
-        ;; x_j = sum_i s_i * r[(j-i) mod 4], with the high terms folded
-        ;; through RR; every sum is modulo 2^64.
-        (inst mov t1 h0) (inst imul t1 (r 0))
-        (inst mov t0 h1) (inst imul t0 (r 7)) (inst add t1 t0)
-        (inst mov t0 h2) (inst imul t0 (r 6)) (inst add t1 t0)
-        (inst mov t0 h3) (inst imul t0 (r 5)) (inst add t1 t0)
-        (inst mov t0 h4) (inst imul t0 (r 4)) (inst add t1 t0)
-        (inst movq x0 t1)
-
-        (inst mov t1 h0) (inst imul t1 (r 1))
-        (inst mov t0 h1) (inst imul t0 (r 0)) (inst add t1 t0)
-        (inst mov t0 h2) (inst imul t0 (r 7)) (inst add t1 t0)
-        (inst mov t0 h3) (inst imul t0 (r 6)) (inst add t1 t0)
-        (inst mov t0 h4) (inst imul t0 (r 5)) (inst add t1 t0)
-        (inst movq x1 t1)
-
-        (inst mov t1 h0) (inst imul t1 (r 2))
-        (inst mov t0 h1) (inst imul t0 (r 1)) (inst add t1 t0)
-        (inst mov t0 h2) (inst imul t0 (r 0)) (inst add t1 t0)
-        (inst mov t0 h3) (inst imul t0 (r 7)) (inst add t1 t0)
-        (inst mov t0 h4) (inst imul t0 (r 6)) (inst add t1 t0)
-        (inst movq x2 t1)
-
-        (inst mov t1 h0) (inst imul t1 (r 3))
-        (inst mov t0 h1) (inst imul t0 (r 2)) (inst add t1 t0)
-        (inst mov t0 h2) (inst imul t0 (r 1)) (inst add t1 t0)
-        (inst mov t0 h3) (inst imul t0 (r 0)) (inst add t1 t0)
-        (inst mov t0 h4) (inst imul t0 (r 7)) (inst add t1 t0)
-        (inst movq x3 t1)
-
-        ;; x4 = (h4 + 1) * (r0 & 3), as a 32-bit value.
-        (inst mov t1 (r 0))
-        (inst and t1 3)
-        (inst imul t1 h4)
-        (inst mov :dword t1 t1)
-        ;; u5 = x4 + (x3 >> 32), as a 32-bit value.
-        (inst movq h0 x3)
-        (inst shr h0 32)
-        (inst add t1 h0)
-        (inst mov :dword t1 t1)
-        ;; u0 = 5 * (u5 >> 2) + (x0 & #xffffffff)
-        (inst mov h0 t1)
-        (inst shr h0 2)
-        (inst lea h0 (ea h0 h0 4))
-        (inst movq h1 x0)
-        (inst mov :dword h1 h1)
-        (inst add h0 h1)
-        ;; The two independent halves of each input word are summed
-        ;; before the carry from the previous limb is added, so the
-        ;; serial part of the carry chain is one add and one shift per
-        ;; limb instead of three dependent adds.
-        ;; u1 = (u0 >> 32) + ((x1 & #xffffffff) + (x0 >> 32))
-        (inst movq h1 x1)
-        (inst mov :dword h1 h1)
-        (inst movq h2 x0)
-        (inst shr h2 32)
-        (inst add h1 h2)
-        (inst mov t0 h0)
-        (inst shr t0 32)
-        (inst add h1 t0)
-        ;; u2 = (u1 >> 32) + ((x2 & #xffffffff) + (x1 >> 32))
-        (inst movq h2 x2)
-        (inst mov :dword h2 h2)
-        (inst movq h3 x1)
-        (inst shr h3 32)
-        (inst add h2 h3)
-        (inst mov t0 h1)
-        (inst shr t0 32)
-        (inst add h2 t0)
-        ;; u3 = (u2 >> 32) + ((x3 & #xffffffff) + (x2 >> 32))
-        (inst movq h3 x3)
-        (inst mov :dword h3 h3)
-        (inst movq h4 x2)
-        (inst shr h4 32)
-        (inst add h3 h4)
-        (inst mov t0 h2)
-        (inst shr t0 32)
-        (inst add h3 t0)
-        ;; u4 = (u3 >> 32) + (u5 & 3)
-        (inst mov h4 h3)
-        (inst shr h4 32)
-        (inst and t1 3)
-        (inst add h4 t1)
-        ;; keep the low 32 bits of every limb
-        (inst mov :dword h0 h0)
-        (inst mov :dword h1 h1)
-        (inst mov :dword h2 h2)
-        (inst mov :dword h3 h3)
-        (inst mov :dword h4 h4)
+        ;; h += m + 2^128
+        (inst add h0 (d 0))
+        (inst adc h1 (d 8))
+        (inst adc h2 1)
+        ;; d1 = h0*r1 + h1*r0 + h2*s1
+        (inst mov rax-tmp h0)
+        (inst mul :qword (r 9))
+        (inst mov d1lo rax-tmp)
+        (inst mov d1hi rdx-tmp)
+        (inst mov rax-tmp h1)
+        (inst mul :qword (r 8))
+        (inst add d1lo rax-tmp)
+        (inst adc d1hi rdx-tmp)
+        (inst mov rax-tmp h2)
+        (inst imul rax-tmp (r 10))
+        (inst add d1lo rax-tmp)
+        (inst adc d1hi 0)
+        ;; d0 = h0*r0 + h1*s1, low word into h0, high word parked in XMM
+        (inst mov rax-tmp h0)
+        (inst mul :qword (r 8))
+        (inst mov h0 rax-tmp)
+        (inst movq xd0hi rdx-tmp)
+        (inst mov rax-tmp h1)
+        (inst mul :qword (r 10))
+        (inst add h0 rax-tmp)
+        (inst movq rax-tmp xd0hi)
+        (inst adc rdx-tmp rax-tmp)              ; rdx = hi(d0)
+        ;; d2 = h2*r0
+        (inst imul h2 (r 8))
+        ;; h1 = lo(d1) + hi(d0); h2 = d2 + hi(d1) + carry
+        (inst add d1lo rdx-tmp)
+        (inst adc d1hi 0)
+        (inst mov h1 d1lo)
+        (inst add h2 d1hi)
+        ;; Fold bits >= 2^130: h += 5 * (h2 >> 2), h2 &= 3.
+        (inst mov rax-tmp h2)
+        (inst and rax-tmp -4)                   ; 4 * (h2 >> 2)
+        (inst and h2 3)
+        (inst mov rdx-tmp rax-tmp)
+        (inst shr rdx-tmp 2)                    ; h2 >> 2
+        (inst add rax-tmp rdx-tmp)              ; 5 * (h2 >> 2)
+        (inst add h0 rax-tmp)
+        (inst adc h1 0)
+        (inst adc h2 0)
         (inst add data-ptr 16)
         (inst sub blocks-left 1)
         (inst jmp :nz loop)
         (emit-label done)
         (inst mov :dword (a 0) h0)
-        (inst mov :dword (a 1) h1)
-        (inst mov :dword (a 2) h2)
-        (inst mov :dword (a 3) h3)
-        (inst mov :dword (a 4) h4)))))
+        (inst shr h0 32)
+        (inst mov :dword (a 1) h0)
+        (inst mov :dword (a 2) h1)
+        (inst shr h1 32)
+        (inst mov :dword (a 3) h1)
+        (inst mov :dword (a 4) h2)))))
 
 ;;; SM4: one 16-byte block, all 32 rounds.  The portable body is 76
 ;;; instructions per round because every 32-bit word is a tagged fixnum

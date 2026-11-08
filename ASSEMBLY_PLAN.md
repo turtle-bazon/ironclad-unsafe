@@ -4319,3 +4319,63 @@ as regressions.
    ~1.6x.  The previous VOP lost to the op cache; a looped VOP can keep
    the round constants and the counter in the state array.
 5. IDEA (2.55x) and ARIA (1.64x): block VOPs like SM4/Blowfish/CAST5.
+
+## Second round (2026-11-08): field multiply, Falcon sampler, Poly1305
+
+### Radix-2^51 multiply in column form, and a dedicated square
+
+`ed25519-with-fe-ops`' FE-MUL accumulated its 25 products into nine
+128-bit columns in memory (an add/adc read-modify-write per product)
+and then folded the top four columns.  It now precomputes 19*b[1..4]
+and sums each of the five output columns in a register pair; when both
+operands are the same slot it emits a 15-product square (2a_i and
+19a_3, 19a_4 precomputed).  Every VOP built on the macro benefits.
+
+| | before | after | OpenSSL |
+|---|---|---|---|
+| X25519 | 12.0k/s | 17.7k/s | 34.8k/s |
+| Ed25519 verify | ~8.8k/s | ~10.8k/s | 9.96k/s |
+
+Tried and reverted: summing two columns at once in two register pairs
+(the ladder VOP has two spare registers).  Neutral: the multiply is
+bound by MUL throughput, not by the add/adc chains.
+
+### Falcon: the sampler on machine words (keygen ~1.7x)
+
+BaseSampler built a 72-bit bignum from nine bytes and compared it with
+eighteen 72-bit bignums; ApproxExp formed 126-bit bignum products.  They
+now use two 36-bit halves with a borrow, and the high and low words of
+a 64x64 multiply (`sb-kernel:%multiply-high`), with trunc(x*2^63)
+computed exactly from floor(v/2) and the remaining bit.  Bit-exact
+against the kept reference functions on 220k ApproxExp and 200k
+BaseSampler inputs (including every RCDT boundary); Falcon KATs pass.
+
+Negative: Kronecker substitution for the NTRU-solve polynomial
+products (pack each polynomial into one integer, one bignum multiply,
+balanced unpack).  Correct on 120 cases, but no width threshold helped
+keygen and always-on was 4x slower: SBCL's bignum multiply is quadratic
+and the Karatsuba time is in the deep levels with very wide
+coefficients.  The remaining keygen gap needs the reference's
+word-based (RNS) NTRU solve.
+
+### AEAD construction: constant-class constructors
+
+MAKE-AUTHENTICATED-ENCRYPTION-MODE used APPLY of MAKE-INSTANCE on a
+variable class, which misses SBCL's optimized constructor.  GCM,
+ChaCha20-Poly1305 and XChaCha20-Poly1305 register exact-shape
+constructors (DEFINE-AEAD-FAST-CONSTRUCTOR); other initarg shapes fall
+back.  Construction: chacha-poly 2.45 -> 1.62 us, GCM 4.40 -> 3.50 us.
+The same idea for MAKE-CIPHER was neutral (the key schedule dominates)
+and was not kept.
+
+### Poly1305: radix-2^64 block VOP (8 KB MAC 5.5 -> 3.6 us)
+
+The 32-bit-limb block loop (25 IMULs per block) is replaced by the
+OpenSSL scalar shape: three 64-bit limbs, four 64x64->128 MULs and two
+small IMULs per block, s1 = r1 + (r1 >> 2).  The state still crosses
+the VOP in the portable 5 x 32-bit form, so the tail and finalization
+are unchanged.  The earlier attempts at this shape were in Lisp, where
+the 128-bit products box.  Matches an independent bignum Poly1305 on
+921 messages (all lengths 0-300, all-0xFF keys and messages, chunked
+updates).  chacha-poly 8 KB ~600-640 -> 682 MB/s; the rest of that row
+is now the four-block ChaCha core and the per-message setup.

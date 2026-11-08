@@ -16,12 +16,12 @@
       :initform (make-array 4 :element-type '(unsigned-byte 32))
       :type (simple-array (unsigned-byte 32) (4)))
    ;; R0..R3 followed by the precomputed RR0..RR3 (the 5*r>>2 folding
-   ;; terms) as 64-bit words.  The x86-64 block VOP uses them directly
-   ;; as IMUL memory operands, which avoids the tag shifts the portable
-   ;; (unsigned-byte 32) representation implies.
+   ;; terms) as 64-bit words, then the radix-2^64 key R0 | R1<<32,
+   ;; R2 | R3<<32 and S1 = that second word * 5/4 for the x86-64 block
+   ;; VOP, which uses them directly as MUL/IMUL memory operands.
    (r64 :accessor poly1305-r64
-        :initform (make-array 8 :element-type '(unsigned-byte 64))
-        :type (simple-array (unsigned-byte 64) (8)))
+        :initform (make-array 11 :element-type '(unsigned-byte 64))
+        :type (simple-array (unsigned-byte 64) (11)))
    (buffer :accessor poly1305-buffer
            :initform (make-array 16 :element-type '(unsigned-byte 8))
            :type (simple-array (unsigned-byte 8) (16)))
@@ -46,7 +46,7 @@
         (r64 (poly1305-r64 mac)))
     (declare (type (simple-array (unsigned-byte 32) (5)) accumulator)
              (type (simple-array (unsigned-byte 32) (4)) r s)
-             (type (simple-array (unsigned-byte 64) (8)) r64))
+             (type (simple-array (unsigned-byte 64) (11)) r64))
     (fill accumulator 0)
     (setf (aref r 0) (logand (ub32ref/le key 0) #x0fffffff)
           (aref r 1) (logand (ub32ref/le key 4) #x0ffffffc)
@@ -66,7 +66,13 @@
             (aref r64 4) (mod32* (mod32ash r0 -2) 5)
             (aref r64 5) (mod32+ (mod32ash r1 -2) r1)
             (aref r64 6) (mod32+ (mod32ash r2 -2) r2)
-            (aref r64 7) (mod32+ (mod32ash r3 -2) r3)))
+            (aref r64 7) (mod32+ (mod32ash r3 -2) r3))
+      (let ((k0 (logior r0 (ash r1 32)))
+            (k1 (logior r2 (ash r3 32))))
+        (declare (type (unsigned-byte 64) k0 k1))
+        (setf (aref r64 8) k0
+              (aref r64 9) k1
+              (aref r64 10) (+ k1 (ash k1 -2)))))
     (setf (poly1305-buffer-length mac) 0)
     mac))
 
@@ -77,14 +83,14 @@
            (type (simple-array (unsigned-byte 8) (*)) data)
            (type index start remaining)
            (type boolean final)
-           (type (or null (simple-array (unsigned-byte 64) (8))) r64)
+           (type (or null (simple-array (unsigned-byte 64) (11))) r64)
            (optimize (speed 3) (space 0) (safety 0) (debug 0)))
   ;; The VOP path handles the bulk of a message: whole blocks, hibit set.
   ;; FINAL blocks (the padded tail) still use the portable code below.
   #+(and sbcl x86-64 ironclad-unsafe-assembly)
   (when (and r64 (not final) (>= remaining 16))
     (let ((blocks (floor remaining 16)))
-      (poly1305-blocks-asm accumulator r64 data start blocks)
+      (poly1305-blocks64-asm accumulator r64 data start blocks)
       (return-from poly1305-process-full-blocks
         (values (+ start (* blocks 16)) (- remaining (* blocks 16))))))
   (let* ((hibit (if final 0 1))
@@ -177,7 +183,7 @@
              (type (integer 0 16) buffer-length)
              (type (simple-array (unsigned-byte 32) (5)) accumulator)
              (type (simple-array (unsigned-byte 32) (4)) r)
-             (type (simple-array (unsigned-byte 64) (8)) r64)
+             (type (simple-array (unsigned-byte 64) (11)) r64)
              (type fixnum remaining))
 
     ;; Fill the buffer with new data if necessary
