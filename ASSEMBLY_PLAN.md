@@ -4446,3 +4446,76 @@ only 2-7%.
 - Falcon keygen: word-based (RNS) NTRU solve.
 - Poly1305: four-way AVX2 (powers of r) for the remaining chacha-poly gap.
 - ARIA (1.75x) and SHA-512 (1.7x).
+
+### Negative: a looped Keccak-f VOP (3%, reverted)
+
+The unrolled VOP of an earlier session lost to the op cache; this one
+looped over a single round: C in registers, D and B on the machine stack
+(`sub rsp`), rho/pi fused with theta's application, chi a row at a time,
+iota through a counter on the stack.  Bit-exact on 20000 random states,
+about 230 instructions per round against the Lisp loop's 370 -- and only
+3% faster (470 vs 485 ns).  The permutation is instruction-throughput
+bound at a lower IPC for the VOP, and SBCL's assembler has no ANDN, so
+chi stays at five instructions per lane; a ping-pong layout (B rows
+computed straight into registers, chi into a second buffer) removes the
+B stores and loads but not instructions.  SBCL also gives a two-argument
+VOP only twelve registers, which is why D had to go to the stack.
+Closing the remaining 1.7x to gcc needs ANDN (a raw VEX encoding) or the
+lane-complementing transform, and is not worth it at this size.
+
+## Fourth round (2026-11-08)
+
+### GCM: one key schedule per mode
+
+A fresh GCM mode keyed two AES ciphers (GMAC's ECB cipher for H and
+E(J0), and the CTR cipher).  It now keys one ECB cipher, hands it to
+GMAC through the internal initarg %BLOCK-CIPHER, and switches it to CTR
+(a mode change does not re-run the key schedule).  J0 for a 96-bit IV
+is built without CONCATENATE.  Construction 3.50 -> 3.06 us, 8 KB
+message ~8.2 -> ~7.9 us (*GCM-SHARE-KEY-SCHEDULE* toggles it).
+
+### P-256: point double and mixed add as VOPs (3%)
+
+WITH-P256-FIELD-OPS wraps the unchanged bodies of the field multiply,
+add and subtract VOPs with workspace-relative operands, and
+SECP256R1-POINT-DOUBLE-ASM / -MADD-ASM emit SECP256R1-DOUBLE! and
+-MIXED-ADD! inline; SECP256R1-WINDOW-MULT-ASM drives them (exceptional
+additions fall back to the Lisp formula).  Correct on 209 cases, but
+ECDH only 8.5k -> 8.7k/s: profiling puts 72% of the time inside the
+inlined code, about 27 ns per field multiply with no calls left.  The
+remaining P-256 gap is the multiply itself: ~160 instructions of
+generic MULX/ADCX/ADOX CIOS against ~70 for a multiply that exploits
+p = 2^256 - 2^224 + 2^192 + 2^96 - 1 (shift-based reduction, as in
+OpenSSL's ecp_nistz256).  That rewrite drops straight into these VOPs.
+
+## Fifth round (2026-11-09)
+
+### P-256: Montgomery multiply that uses the shape of the prime (1.39x)
+
+P = (2^64-1, 2^32-1, 0, 2^64-2^32+1), so P' = 1, the reduction word is
+T0, and m*P = m*2^96 - m + m*P3*2^192: T0 cancels, T1 += m<<32,
+T2 += m>>32, and only the top word needs a multiply.
+P256-MONT-MULX-BODY keeps the MULX/ADCX/ADOX row multiply and uses that
+one-MULX reduction, renaming the six-word accumulator at expansion time
+instead of shifting it.  12.3 ns against 17.1 ns for
+SECP256R1-FE-MONT-MUL-ASM; verified on 200k random and edge inputs.  A
+plain-MUL row version measured 15.0 ns (the row cost six instructions per
+product) and was dropped.  It is used by SECP256R1-FE-MONT-MUL and inside
+the point VOPs, and the fixed-base and joint multiplications now run on
+the point VOPs too.  ECDH 8.7k -> 11.0k/s, verify 8.9k -> 11.0k/s, sign
+27.4k -> 28.4k/s (sign is now spread over the scalar inversion, the
+field inversion and RFC 6979).
+
+### Keccak-f with ANDN: 474 -> 349 ns (supersedes the negative note above)
+
+SBCL's assembler has no ANDN, so EMIT-ANDN64 writes the VEX encoding by
+hand (C4, [~R ~X ~B 00010], [W=1 ~vvvv 0 00], F2, ModRM 11 dst src2;
+TN-OFFSET is the hardware register number).  KECCAK-F1600-ANDN-ASM
+ping-pongs the state between the caller's array and a stack buffer (two
+rounds per loop iteration, fixed addresses), builds each output row of
+B directly in five registers (x = 3(Y - 3X) mod 5 inverts pi), and does
+chi as ANDN + XOR + store, so B never touches memory: about 200
+instructions per round.  Bit-exact on 20000 random states; all
+SHA-3/SHAKE/cSHAKE/KMAC/SLH-DSA/ML-KEM/ML-DSA/X-Wing KATs pass.  Gated on
+BMI1 (new cached BMI1-SUPPORTED-P).  SLH-DSA-SHAKE-128f sign 13.4 ->
+16.6/s, SHA3-256 241 -> 311 MB/s.

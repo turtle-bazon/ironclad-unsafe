@@ -234,10 +234,18 @@ the content on normal form exit."
                             (eval (trivial-macroexpand-all x env))))))
          ,@body))))
 
+#+(and sbcl x86-64 ironclad-unsafe-assembly)
+(defvar *keccak-asm-enabled* t
+  "Use KECCAK-F1600-ANDN-ASM for the permutation when the CPU has BMI1.")
+
 (declaim (ftype (function (keccak-state)) keccak-rounds))
 (defun keccak-rounds (state)
   (declare (type keccak-state state)
            (optimize (speed 3) (space 0) (safety 0) (debug 0)))
+  #+(and sbcl x86-64 ironclad-unsafe-assembly)
+  (when (and *keccak-asm-enabled* (bmi1-supported-p))
+    (keccak-f1600-andn-asm state +keccak-round-constants+)
+    (return-from keccak-rounds (values)))
   (with-keccak-state-accessors (state)
     (with-temp-keccak-state (b)
       (with-temp-keccak-rows (c d)

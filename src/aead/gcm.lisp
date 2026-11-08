@@ -18,27 +18,51 @@
                           :initform 0
                           :type (integer 0 *))))
 
+(defvar *gcm-share-key-schedule* t
+  "Key the cipher once and share it between GMAC and the CTR payload.")
+
 (defmethod shared-initialize :after ((mode gcm) slot-names &rest initargs &key key cipher-name initialization-vector &allow-other-keys)
   (declare (ignore slot-names initargs)
            (type simple-octet-vector key initialization-vector))
-  (let* ((mac (if (or (null (gcm-mac mode)) cipher-name)
-                  (make-mac :gmac key cipher-name initialization-vector)
-                  (reinitialize-instance (gcm-mac mode)
-                                         :key key
-                                         :initialization-vector initialization-vector)))
+  (let* ((fresh (or (null (gcm-mac mode)) cipher-name))
+         ;; A fresh mode keys one cipher: GMAC uses it in ECB form for H and
+         ;; E(J0), then it is switched to CTR for the payload (a mode change
+         ;; does not re-run the key schedule).  It used to key two.
+         (shared (and fresh *gcm-share-key-schedule*
+                      #+(and sbcl x86-64 ironclad-unsafe-assembly)
+                      (pclmulqdq-supported-p)
+                      #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
+                      (= (block-length cipher-name) 16)
+                      (member (length key) (key-lengths cipher-name))
+                      (make-cipher cipher-name :key key :mode :ecb)))
+         (mac (cond (shared
+                     (make-instance 'gmac :key key
+                                          :initialization-vector initialization-vector
+                                          :%block-cipher shared))
+                    (fresh
+                     (make-mac :gmac key cipher-name initialization-vector))
+                    (t
+                     (reinitialize-instance (gcm-mac mode)
+                                            :key key
+                                            :initialization-vector initialization-vector))))
          (iv (let* ((iv (gmac-j0 mac))
                     (counter (subseq iv 12)))
                (increment-counter-block-1 4 counter)
                (replace iv counter :start1 12)))
-         (cipher (if (or (null (gcm-cipher mode)) cipher-name)
-                     (make-cipher cipher-name
-                                  :key key
-                                  :mode :ctr
-                                  :initialization-vector iv)
-                     (reinitialize-instance (gcm-cipher mode)
-                                            :key key
-                                            :mode :ctr
-                                            :initialization-vector iv))))
+         (cipher (cond (shared
+                        (reinitialize-instance shared
+                                               :mode :ctr
+                                               :initialization-vector iv))
+                       (fresh
+                        (make-cipher cipher-name
+                                     :key key
+                                     :mode :ctr
+                                     :initialization-vector iv))
+                       (t
+                        (reinitialize-instance (gcm-cipher mode)
+                                               :key key
+                                               :mode :ctr
+                                               :initialization-vector iv)))))
     (setf (gcm-mac mode) mac
           (gcm-cipher mode) cipher
           (gcm-ad-length mode) 0

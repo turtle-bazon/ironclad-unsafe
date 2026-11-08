@@ -110,7 +110,12 @@
            (n*8 (* 8 n)))
       (cond
         ((= 12 n)
-         (concatenate '(simple-array (unsigned-byte 8) (16)) iv #(0 0 0 1)))
+         ;; IV || 0^31 || 1, without CONCATENATE's generic dispatch.
+         (let ((j0 (make-array 16 :element-type '(unsigned-byte 8)
+                                  :initial-element 0)))
+           (replace j0 iv)
+           (setf (aref j0 15) 1)
+           j0))
         ((< 0 n*8 #.(expt 2 64))
          (ghash h (ac nil iv)))
         (t
@@ -118,7 +123,7 @@
                 :mac-name 'gmac
                 :message "iv size not in range 0<|iv|<2^64 bits"))))))
 
-(defmethod shared-initialize :after ((mac gmac) slot-names &rest initargs &key key cipher-name initialization-vector &allow-other-keys)
+(defmethod shared-initialize :after ((mac gmac) slot-names &rest initargs &key key cipher-name initialization-vector %block-cipher &allow-other-keys)
   (declare (ignore slot-names initargs)
            (type (simple-array (unsigned-byte 8) (*)) key))
   (when (and cipher-name (/= (block-length cipher-name) 16))
@@ -127,9 +132,13 @@
            :message "GMAC only supports 128-bit block ciphers"))
   (if #+(and sbcl x86-64 ironclad-unsafe-assembly) (pclmulqdq-supported-p)
       #-(and sbcl x86-64 ironclad-unsafe-assembly) nil
-      (let ((cipher (if (or cipher-name (null (gmac-cipher mac)))
-                        (make-cipher cipher-name :key key :mode :ecb)
-                        (reinitialize-instance (gmac-cipher mac) :key key :mode :ecb)))
+      ;; %BLOCK-CIPHER is an already keyed ECB cipher supplied by GCM, so
+      ;; that the two share one key schedule.
+      (let ((cipher (cond (%block-cipher %block-cipher)
+                          ((or cipher-name (null (gmac-cipher mac)))
+                           (make-cipher cipher-name :key key :mode :ecb))
+                          (t (reinitialize-instance (gmac-cipher mac)
+                                                    :key key :mode :ecb))))
             (hkey (make-array 16 :element-type '(unsigned-byte 8)))
             (iv (gmac-iv mac)))
         (declare (type (simple-array (unsigned-byte 8) (16)) hkey))

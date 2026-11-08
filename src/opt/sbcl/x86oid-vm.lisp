@@ -8882,6 +8882,364 @@
         (loop for i from 10 below 16 do (inst mov (buf64 i) tmp))
         (loop for i from 8 below 16 do (inst mov (r64 i) tmp))))))
 
+;;; P-256 Montgomery multiply exploiting the shape of the prime.
+;;;
+;;; P = (2^64-1, 2^32-1, 0, 2^64-2^32+1) in 64-bit words, so P' = 1 and
+;;; the reduction word is m = T0, and m*P = m*2^96 - m + m*P3*2^192:
+;;; T0 cancels exactly, T1 += m << 32, T2 += m >> 32, and only the top
+;;; word needs a multiply.  The row A[i]*B uses MULX with two carry chains,
+;;; and the reduction one MULX and shifts, against two MULX and two carry
+;;; chains per reduction in SECP256R1-FE-MONT-MUL-ASM (12.3 vs 17.1 ns).  The six-word
+;;; accumulator is renamed at expansion time instead of shifted.
+;;; Needs BMI2 and ADX.  Expects registers T0..T5, HI, LO and RD (RDX) in
+;;; scope, and operand accessors (R64 i), (A64 i), (B64 i).
+;;; Inputs below P; the result is below P.
+#+x86-64
+(defmacro p256-mont-mulx-body ()
+  "As P256-MONT-MUL-BODY, with the row A[i]*B in MULX and two carry
+chains (ADCX for the low halves, ADOX for the high halves).  Needs
+BMI2 and ADX.  Expects T0..T5, HI, LO and RD (RDX) in scope."
+  (let ((tt (list 't0 't1 't2 't3 't4 't5))
+        (forms '()))
+    (flet ((put (&rest f) (push (cons 'inst f) forms)))
+      (dolist (r tt) (put 'xor r r))
+      (dotimes (i 4)
+        (destructuring-bind (w0 w1 w2 w3 w4 w5) tt
+          ;; (W0..W5) += A[i] * B
+          (put 'mov 'rd `(a64 ,i))
+          (put 'xor 'hi 'hi)                    ; CF = OF = 0
+          (loop for j from 0 to 3
+                for (wl wh) in (list (list w0 w1) (list w1 w2)
+                                     (list w2 w3) (list w3 w4))
+                do (put 'mulx 'hi 'lo `(b64 ,j))
+                   (put 'adcx wl 'lo)
+                   (put 'adox wh 'hi))
+          (put 'mov 'rd 0)
+          (put 'adcx w4 'rd)
+          (put 'adox w5 'rd)
+          (put 'adcx w5 'rd)
+          ;; Reduce: m = W0; (HI:LO) = m * P3; W1 += m<<32, W2 += m>>32.
+          (put 'mov 'rd #xffffffff00000001)
+          (put 'mulx 'hi 'lo w0)
+          (put 'mov 'rd w0)
+          (put 'shl 'rd 32)
+          (put 'shr w0 32)
+          (put 'add w1 'rd)
+          (put 'adc w2 w0)
+          (put 'adc w3 'lo)
+          (put 'adc w4 'hi)
+          (put 'adc w5 0)
+          (put 'xor w0 w0)
+          (setf tt (list w1 w2 w3 w4 w5 w0))))
+      (destructuring-bind (w0 w1 w2 w3 w4 w5) tt
+        (declare (ignore w5))
+        (put 'mov 'hi -1)
+        (put 'sub w0 'hi)
+        (put 'mov 'hi #x00000000ffffffff)
+        (put 'sbb w1 'hi)
+        (put 'sbb w2 0)
+        (put 'mov 'hi #xffffffff00000001)
+        (put 'sbb w3 'hi)
+        (put 'sbb w4 0)
+        (put 'sbb 'rd 'rd)
+        (put 'mov 'lo #x00000000ffffffff)
+        (put 'and 'lo 'rd)
+        (put 'mov 'hi #xffffffff00000001)
+        (put 'and 'hi 'rd)
+        (put 'add w0 'rd)
+        (put 'adc w1 'lo)
+        (put 'adc w2 0)
+        (put 'adc w3 'hi)
+        (put 'mov '(r64 0) w0)
+        (put 'mov '(r64 1) w1)
+        (put 'mov '(r64 2) w2)
+        (put 'mov '(r64 3) w3)))
+    `(progn ,@(nreverse forms))))
+
+#+x86-64
+(define-vop (secp256r1-fe-mont-mulx-p-asm)
+  (:translate ironclad-unsafe::secp256r1-fe-mont-mulx-p-asm)
+  (:policy :fast-safe)
+  (:args (r :scs (descriptor-reg))
+         (a :scs (descriptor-reg))
+         (b :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg) t0 t1 t2 t3 t4 t5 hi lo)
+  (:temporary (:sc unsigned-reg :offset rdx-offset) rd)
+  (:generator 900
+    (let ((data-offset (- (* n-word-bytes vector-data-offset)
+                           other-pointer-lowtag)))
+      (flet ((a64 (i) (ea (+ data-offset (* 8 i)) a))
+             (b64 (i) (ea (+ data-offset (* 8 i)) b))
+             (r64 (i) (ea (+ data-offset (* 8 i)) r)))
+        (p256-mont-mulx-body)))))
+
+;;; P-256 point operations in one VOP each.
+;;;
+;;; The field multiply VOP is register-resident and fast, but a point
+;;; double or mixed addition made some twenty Lisp calls into it and into
+;;; the add/subtract VOPs.  WITH-P256-FIELD-OPS emits P256-MONT-MULX-BODY
+;;; and the bodies of SECP256R1-FE-ADD64-ASM and -FE-SUB64-ASM, unchanged
+;;; except that the operands are byte offsets into one workspace vector
+;;; WS, so a whole point formula is emitted inline.  Every operation reads
+;;; all its inputs before it writes its result, so a destination may be
+;;; one of the inputs.  The VOP using it must name its temporaries WS, T0
+;;; .. T5, HI, LO and RD (RDX), as the copied bodies do.
+#+x86-64
+(defmacro with-p256-field-ops (() &body body)
+  `(let ((data-offset (- (* n-word-bytes vector-data-offset)
+                         other-pointer-lowtag)))
+     (labels ((fe-mul (r a b)
+                (flet ((a64 (i) (ea (+ data-offset a (* 8 i)) ws))
+                       (b64 (i) (ea (+ data-offset b (* 8 i)) ws))
+                       (r64 (i) (ea (+ data-offset r (* 8 i)) ws)))
+                  (p256-mont-mulx-body)))
+              (fe-add (r a b)
+                (flet ((a64 (i) (ea (+ data-offset a (* 8 i)) ws))
+                       (b64 (i) (ea (+ data-offset b (* 8 i)) ws))
+                       (r64 (i) (ea (+ data-offset r (* 8 i)) ws)))
+        (inst mov t0 (a64 0))
+        (inst add t0 (b64 0))
+        (inst mov t1 (a64 1))
+        (inst adc t1 (b64 1))
+        (inst mov t2 (a64 2))
+        (inst adc t2 (b64 2))
+        (inst mov t3 (a64 3))
+        (inst adc t3 (b64 3))
+        (inst mov t4 0)
+        (inst adc t4 0)
+        ;; The difference between the sum and P.
+        (inst mov hi -1)
+        (inst sub t0 hi)
+        (inst mov hi #x00000000ffffffff)
+        (inst sbb t1 hi)
+        (inst mov hi 0)
+        (inst sbb t2 hi)
+        (inst mov hi #xffffffff00000001)
+        (inst sbb t3 hi)
+        (inst sbb t4 0)
+        ;; A borrow means the sum was below P; add P back.  P[0] is
+        ;; all ones, so its masked form is the mask itself.
+        (inst sbb t5 t5)
+        (inst mov lo #x00000000ffffffff)
+        (inst and lo t5)
+        (inst mov hi #xffffffff00000001)
+        (inst and hi t5)
+        (inst add t0 t5)
+        (inst adc t1 lo)
+        (inst adc t2 0)
+        (inst adc t3 hi)
+        (inst adc t4 0)
+        (inst mov (r64 0) t0)
+        (inst mov (r64 1) t1)
+        (inst mov (r64 2) t2)
+        (inst mov (r64 3) t3)))
+              (fe-sub (r a b)
+                (flet ((a64 (i) (ea (+ data-offset a (* 8 i)) ws))
+                       (b64 (i) (ea (+ data-offset b (* 8 i)) ws))
+                       (r64 (i) (ea (+ data-offset r (* 8 i)) ws)))
+        (inst mov t0 (a64 0))
+        (inst sub t0 (b64 0))
+        (inst mov t1 (a64 1))
+        (inst sbb t1 (b64 1))
+        (inst mov t2 (a64 2))
+        (inst sbb t2 (b64 2))
+        (inst mov t3 (a64 3))
+        (inst sbb t3 (b64 3))
+        (inst sbb t5 t5)
+        (inst mov lo #x00000000ffffffff)
+        (inst and lo t5)
+        (inst mov hi #xffffffff00000001)
+        (inst and hi t5)
+        (inst add t0 t5)
+        (inst adc t1 lo)
+        (inst adc t2 0)
+        (inst adc t3 hi)
+        (inst mov (r64 0) t0)
+        (inst mov (r64 1) t1)
+        (inst mov (r64 2) t2)
+        (inst mov (r64 3) t3))))
+       (declare (ignorable #'fe-mul #'fe-add #'fe-sub))
+       ,@body)))
+
+;;; Workspace layout (byte offsets, 32 bytes per field element):
+;;;   0 X1, 32 Y1, 64 Z1   the accumulator, Jacobian, Montgomery form
+;;;   96 X2, 128 Y2        the affine point added by the mixed addition
+;;;   160 X3, 192 Y3, 224 Z3   the mixed addition's result
+;;;   256 + 32k            temporaries
+#+x86-64
+(defmacro define-p256-point-vop (name &body body)
+  `(define-vop (,name)
+     (:translate ,(intern (symbol-name name) :ironclad-unsafe))
+     (:policy :fast-safe)
+     (:args (ws :scs (descriptor-reg)))
+     (:arg-types simple-array-unsigned-byte-64)
+     (:temporary (:sc unsigned-reg) t0 t1 t2 t3 t4 t5 hi lo)
+     (:temporary (:sc unsigned-reg :offset rdx-offset) rd)
+     (:generator 2000
+       (with-p256-field-ops ()
+         (macrolet ((tmp (k) `(+ 256 (* 32 ,k))))
+           ,@body)))))
+
+;;; Doubling, the formula of SECP256R1-DOUBLE! (a = -3), in place.
+;;; The accumulator must not be the point at infinity.
+#+x86-64
+(define-p256-point-vop secp256r1-point-double-asm
+  (let ((x1 0) (y1 32) (z1 64)
+        (xx (tmp 0)) (yy (tmp 1)) (yyyy (tmp 2)) (zz (tmp 3))
+        (x1+yy (tmp 4)) (y1+z1 (tmp 5)) (t1 (tmp 6)) (ss (tmp 7))
+        (mm (tmp 8)) (t7 (tmp 9)) (t8 (tmp 10)) (t9 (tmp 11))
+        (t10 (tmp 12)) (e8 (tmp 13)) (t11 (tmp 14)))
+    (fe-mul xx x1 x1)
+    (fe-mul yy y1 y1)
+    (fe-mul yyyy yy yy)
+    (fe-mul zz z1 z1)
+    (fe-add x1+yy x1 yy)
+    (fe-add y1+z1 y1 z1)
+    (fe-mul t1 x1+yy x1+yy)
+    (fe-sub t1 t1 xx)
+    (fe-sub t1 t1 yyyy)
+    (fe-add ss t1 t1)                   ; s = 2((x+yy)^2 - xx - yyyy)
+    (fe-mul t7 zz zz)
+    (fe-sub t7 xx t7)                   ; xx - zz^2
+    (fe-add mm t7 t7)
+    (fe-add mm mm t7)                   ; m = 3(xx - zz^2)
+    (fe-mul t7 mm mm)
+    (fe-add t8 ss ss)
+    (fe-sub x1 t7 t8)                   ; X3 = m^2 - 2s
+    (fe-sub t9 ss x1)
+    (fe-mul t10 mm t9)
+    (fe-add e8 yyyy yyyy)
+    (fe-add e8 e8 e8)
+    (fe-add e8 e8 e8)
+    (fe-sub y1 t10 e8)                  ; Y3 = m(s - X3) - 8yyyy
+    (fe-mul t11 y1+z1 y1+z1)
+    (fe-sub t11 t11 yy)
+    (fe-sub z1 t11 zz)))                ; Z3 = (y+z)^2 - yy - zz
+
+;;; Mixed addition, the formula of SECP256R1-MIXED-ADD!: (X3,Y3,Z3) :=
+;;; (X1,Y1,Z1) + (X2,Y2,1).  The caller handles an accumulator at
+;;; infinity, and treats Z3 = 0 (equal x coordinates) by redoing the
+;;; addition with the general Lisp code.
+#+x86-64
+(define-p256-point-vop secp256r1-point-madd-asm
+  (let ((x1 0) (y1 32) (z1 64) (x2 96) (y2 128) (x3 160) (y3 192) (z3 224)
+        (z1z1 (tmp 0)) (u2 (tmp 1)) (s2 (tmp 2)) (hh (tmp 3)) (ii (tmp 4))
+        (jj (tmp 5)) (rr (tmp 6)) (vv (tmp 7)) (h (tmp 8)) (t6 (tmp 9)))
+    (fe-mul z1z1 z1 z1)
+    (fe-mul u2 x2 z1z1)
+    (fe-mul s2 y2 z1)
+    (fe-mul s2 s2 z1z1)
+    (fe-sub h u2 x1)                    ; H = u2 - u1
+    (fe-mul hh h h)
+    (fe-add ii hh hh)
+    (fe-add ii ii ii)                   ; I = 4 HH
+    (fe-mul jj h ii)                    ; J = H I
+    (fe-sub rr s2 y1)
+    (fe-add rr rr rr)                   ; r = 2 (s2 - s1)
+    (fe-mul vv x1 ii)                   ; V = u1 I
+    (fe-mul t6 rr rr)
+    (fe-sub t6 t6 jj)
+    (fe-sub t6 t6 vv)
+    (fe-sub x3 t6 vv)                   ; X3 = r^2 - J - 2V
+    (fe-sub t6 vv x3)
+    (fe-mul t6 rr t6)
+    (fe-mul y3 y1 jj)
+    (fe-add y3 y3 y3)
+    (fe-sub y3 t6 y3)                   ; Y3 = r(V - X3) - 2 s1 J
+    (fe-add z3 z1 z1)
+    (fe-mul z3 z3 h)))                  ; Z3 = 2 Z1 H
+
+;;; ANDN (BMI1), which this SBCL's assembler does not define: DST :=
+;;; (NOT SRC1) AND SRC2 for 64-bit registers, emitted as raw bytes.
+;;; VEX.LZ.0F38.W1 F2 /r: C4, [~R ~X ~B 00010], [W=1 ~vvvv L=0 pp=00],
+;;; F2, ModRM 11 dst src2.  TN-OFFSET is the hardware register number.
+#+x86-64
+(defun emit-andn64 (dst src1 src2)
+  (let ((d (sb-c:tn-offset dst))
+        (v (sb-c:tn-offset src1))
+        (b (sb-c:tn-offset src2)))
+    (inst byte #xc4)
+    (inst byte (logior (if (logbitp 3 d) 0 #x80)
+                       #x40
+                       (if (logbitp 3 b) 0 #x20)
+                       #x02))
+    (inst byte (logior #x80 (ash (logand (lognot v) 15) 3)))
+    (inst byte #xf2)
+    (inst byte (logior #xc0 (ash (logand d 7) 3) (logand b 7)))))
+
+;;; Keccak-f[1600] with ANDN, two rounds per loop iteration.
+;;;
+;;; The state ping-pongs between STATE and a 25-lane buffer on the
+;;; machine stack, so each round reads one copy and writes the other at
+;;; fixed addresses.  Theta's parities go through five registers into D on
+;;; the stack; then each output row Y is built directly in five registers
+;;; (B[X,Y] = rol(A[x,X] ^ D[x], r[x,X]) with x = 3(Y - 3X) mod 5, which is
+;;; rho and pi), and chi is ANDN + XOR + store per lane.  B is never
+;;; stored.  About 200 instructions per round against 370 for the Lisp
+;;; loop.  Needs BMI1.  Stack: 0..199 the second state, 200..239 D, 240
+;;; the iteration counter.
+#+x86-64
+(define-vop (keccak-f1600-andn-asm)
+  (:translate ironclad-unsafe::keccak-f1600-andn-asm)
+  (:policy :fast-safe)
+  (:args (state :scs (descriptor-reg))
+         (rc :scs (descriptor-reg)))
+  (:arg-types simple-array-unsigned-byte-64
+              simple-array-unsigned-byte-64)
+  (:temporary (:sc unsigned-reg) b0 b1 b2 b3 b4 tmp)
+  (:generator 1000
+    (let* ((disp (- (* n-word-bytes vector-data-offset) other-pointer-lowtag))
+           (rot #2A((0 36 3 41 18) (1 44 10 45 2) (62 6 43 15 61)
+                    (28 55 25 21 56) (27 20 39 8 14)))
+           (bs (vector b0 b1 b2 b3 b4))
+           (top (gen-label)))
+      (labels ((st (i) (ea (+ disp (* 8 i)) state))
+               (sk (i) (ea (* 8 i) sb-vm::rsp-tn))
+               (dd (x) (ea (+ 200 (* 8 x)) sb-vm::rsp-tn))
+               (ctr () (ea 240 sb-vm::rsp-tn))
+               (keccak-round (src dst rc-index-offset)
+                 ;; theta: parities into B0..B4, then D on the stack
+                 (dotimes (x 5)
+                   (let ((c (svref bs x)))
+                     (inst mov c (funcall src x))
+                     (loop for y from 1 below 5
+                           do (inst xor c (funcall src (+ x (* 5 y)))))))
+                 (dotimes (x 5)
+                   (inst mov tmp (svref bs (mod (1+ x) 5)))
+                   (inst rol tmp 1)
+                   (inst xor tmp (svref bs (mod (+ x 4) 5)))
+                   (inst mov (dd x) tmp))
+                 ;; rho, pi, chi a row at a time
+                 (dotimes (yy 5)
+                   (dotimes (xx 5)
+                     (let* ((x (mod (* 3 (- yy (* 3 xx))) 5))
+                            (b (svref bs xx))
+                            (r (aref rot x xx)))
+                       (inst mov b (funcall src (+ x (* 5 xx))))
+                       (inst xor b (dd x))
+                       (unless (zerop r) (inst rol b r))))
+                   (dotimes (xx 5)
+                     (emit-andn64 tmp (svref bs (mod (+ xx 1) 5))
+                                  (svref bs (mod (+ xx 2) 5)))
+                     (inst xor tmp (svref bs xx))
+                     (inst mov (funcall dst (+ xx (* 5 yy))) tmp)))
+                 ;; iota: RC[2*counter + RC-INDEX-OFFSET]
+                 (inst mov tmp (ctr))
+                 (inst mov b0 (ea (+ disp (* 8 rc-index-offset)) rc tmp 8))
+                 (inst xor (funcall dst 0) b0)))
+        (inst sub sb-vm::rsp-tn 256)
+        (inst mov :qword (ctr) 0)
+        (emit-label top)
+        (keccak-round #'st #'sk 0)
+        (keccak-round #'sk #'st 1)
+        (inst add :qword (ctr) 2)
+        (inst cmp :qword (ctr) 24)
+        (inst jmp :ne top)
+        (inst add sb-vm::rsp-tn 256)))))
+
 #+x86-64
 (define-vop (mce-xor-words)
   ;; DST[START .. START+COUNT) ^= SRC[START .. START+COUNT), word by word.

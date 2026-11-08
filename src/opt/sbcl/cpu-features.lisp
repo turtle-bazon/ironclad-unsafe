@@ -25,6 +25,7 @@
 (defvar *ironclad-unsafe-aes-ni-p* nil)
 (defvar *ironclad-unsafe-pclmulqdq-p* nil)
 (defvar *ironclad-unsafe-sha-ni-p* nil)
+(defvar *ironclad-unsafe-bmi1-p* nil)
 (defvar *ironclad-unsafe-bmi2-p* nil)
 (defvar *ironclad-unsafe-adx-p* nil)
 (defvar *ironclad-unsafe-avx2-p* nil)
@@ -41,6 +42,7 @@ and after every SB-CPU-FEATURES re-probe."
     (setf *ironclad-unsafe-aes-ni-p* (has :aes)
           *ironclad-unsafe-pclmulqdq-p* (has :pclmulqdq)
           *ironclad-unsafe-sha-ni-p* (has :sha-ni)
+          *ironclad-unsafe-bmi1-p* (has :bmi1)
           *ironclad-unsafe-bmi2-p* (has :bmi2)
           *ironclad-unsafe-adx-p* (has :adx)
           *ironclad-unsafe-avx2-p* (has :avx2)
@@ -80,6 +82,8 @@ not masked."
   "True when the CPU implements the PCLMULQDQ instruction.")
 (define-cached-cpu-predicate sha-ni-supported-p :sha-ni *ironclad-unsafe-sha-ni-p*
   "True when the CPU implements the SHA-NI instruction set.")
+(define-cached-cpu-predicate bmi1-supported-p :bmi1 *ironclad-unsafe-bmi1-p*
+  "True when the CPU implements the BMI1 instruction set (ANDN, ...).")
 (define-cached-cpu-predicate bmi2-supported-p :bmi2 *ironclad-unsafe-bmi2-p*
   "True when the CPU implements the BMI2 instruction set (MULX, RORX, ...).")
 (define-cached-cpu-predicate adx-supported-p :adx *ironclad-unsafe-adx-p*
