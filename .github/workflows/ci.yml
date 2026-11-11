@@ -36,6 +36,14 @@ jobs:
           LISP: ${{matrix.lisp}}
         run: curl -L https://raw.githubusercontent.com/roswell/roswell/master/scripts/install-for-ci.sh | sh -x
 
+      - name: Install bazon-lisp dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mercurial
+          mkdir -p "$HOME/common-lisp"
+          hg clone https://developer.bazon.ru/common-lisp/sb-cpu-features "$HOME/common-lisp/sb-cpu-features"
+
       - name: Get Lisp info
         continue-on-error: true
         shell: bash
@@ -58,8 +66,8 @@ jobs:
         # the work in two as a possible workaround...
         if: ${{matrix.lisp == 'allegro/11.0express'}}
         shell: bash
-        run: ros -e '(push (uiop:getcwd) asdf:*central-registry*)' -e '(setf *debugger-hook* (lambda (&rest ignorable) (declare (ignore ignorable)) (uiop:quit 0)))' -e '(ql:quickload "ironclad-unsafe/tests")'
+        run: ros -e '(push (uiop:getcwd) asdf:*central-registry*)' -e '(pushnew (merge-pathnames "common-lisp/" (user-homedir-pathname)) asdf:*central-registry*)' -e '(setf *debugger-hook* (lambda (&rest ignorable) (declare (ignore ignorable)) (uiop:quit 0)))' -e '(ql:quickload "ironclad-unsafe/tests")'
 
       - name: Run tests
         shell: bash
-        run: ros -e '(push (uiop:getcwd) asdf:*central-registry*)' -e '(setf *debugger-hook* (lambda (&rest ignorable) (declare (ignore ignorable)) (uiop:quit -1)))' -e '(when (plusp (length (or (uiop:getenv "READTABLE_CASE_INVERT") ""))) (format t "changing readtable-case to :invert~%") (setq *readtable* (let ((rt (copy-readtable))) (setf (readtable-case rt) :invert) rt)))' -e '(ql:quickload "ironclad-unsafe/tests")' -e '(unless (rt:do-tests) (uiop:quit -1))'
+        run: ros -e '(push (uiop:getcwd) asdf:*central-registry*)' -e '(pushnew (merge-pathnames "common-lisp/" (user-homedir-pathname)) asdf:*central-registry*)' -e '(setf *debugger-hook* (lambda (&rest ignorable) (declare (ignore ignorable)) (uiop:quit -1)))' -e '(when (plusp (length (or (uiop:getenv "READTABLE_CASE_INVERT") ""))) (format t "changing readtable-case to :invert~%") (setq *readtable* (let ((rt (copy-readtable))) (setf (readtable-case rt) :invert) rt)))' -e '(ql:quickload "ironclad-unsafe/tests")' -e '(unless (rt:do-tests) (uiop:quit -1))'
