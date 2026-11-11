@@ -32,6 +32,13 @@
 (defvar *ironclad-unsafe-avx512-p* nil)
 (defvar *amd-cpu-p* nil)
 
+(defun sb-cpu-features-symbol (name)
+  (find-symbol name "SB-CPU-FEATURES"))
+
+(defun ironclad-unsafe-cpu-vendor ()
+  (let ((f (sb-cpu-features-symbol "CPU-VENDOR")))
+    (and f (fboundp f) (funcall f))))
+
 (defun ironclad-unsafe-initialize-cpu-features ()
   "Recompute the cached answers from SB-CPU-FEATURES.  Runs at load time
 and after every SB-CPU-FEATURES re-probe."
@@ -47,7 +54,7 @@ and after every SB-CPU-FEATURES re-probe."
           *ironclad-unsafe-adx-p* (has :adx)
           *ironclad-unsafe-avx2-p* (has :avx2)
           *ironclad-unsafe-avx512-p* (has :avx512f)
-          *amd-cpu-p* (and (member (sb-cpu-features:cpu-vendor) '(:amd :hygon)) t)))
+          *amd-cpu-p* (and (member (ironclad-unsafe-cpu-vendor) '(:amd :hygon)) t)))
   (ironclad-unsafe-cpu-features))
 
 (defun ironclad-unsafe-cpu-features ()
@@ -65,13 +72,17 @@ not masked."
 ;;; plus one more for the mask, which is NIL outside tests.
 ;;; ------------------------------------------------------------------
 
+(defun ironclad-unsafe-cpu-masked-p ()
+  (let ((v (sb-cpu-features-symbol "*DISABLED-CPU-FEATURES*")))
+    (and v (boundp v) (symbol-value v))))
+
 (defmacro define-cached-cpu-predicate (name feature cache documentation)
   `(progn
      (declaim (inline ,name))
      (defun ,name ()
        ,documentation
        (declare (optimize (speed 3) (space 0) (debug 0) (safety 0)))
-       (if sb-cpu-features:*disabled-cpu-features*
+       (if (ironclad-unsafe-cpu-masked-p)
            (sb-cpu-features:cpu-feature-p ,feature)
            ,cache))))
 
@@ -116,6 +127,7 @@ NAME is a string, e.g. \"MULX\" or \"VPADDQ\"."
 ;;; Load-time initialization and re-probing
 ;;; ------------------------------------------------------------------
 
-(pushnew 'ironclad-unsafe-initialize-cpu-features
-         sb-cpu-features:*cpu-features-refresh-hooks*)
+(let ((hooks (sb-cpu-features-symbol "*CPU-FEATURES-REFRESH-HOOKS*")))
+  (when (and hooks (boundp hooks))
+    (pushnew 'ironclad-unsafe-initialize-cpu-features (symbol-value hooks))))
 (ironclad-unsafe-initialize-cpu-features)
