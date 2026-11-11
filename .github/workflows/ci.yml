@@ -39,10 +39,7 @@ jobs:
       - name: Install bazon-lisp dependencies
         shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y mercurial
-          mkdir -p "$HOME/common-lisp"
-          hg clone https://developer.bazon.ru/common-lisp/sb-cpu-features "$HOME/common-lisp/sb-cpu-features"
+          ros -e '(ql-dist:install-dist "http://packages.bazon.ru/ql/bazon-public.txt" :prompt nil)'
 
       - name: Get Lisp info
         continue-on-error: true
