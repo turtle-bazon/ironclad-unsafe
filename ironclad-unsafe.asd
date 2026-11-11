@@ -39,9 +39,6 @@
   :class ironclad-unsafe-system
   :depends-on (#+sbcl "sb-rotate-byte"
                #+sbcl "sb-posix"
-               ;; CPU feature detection, re-probed at image startup; the
-               ;; assembly paths are gated on it (src/opt/sbcl/cpu-features).
-               #+sbcl "sb-cpu-features"
                ;; BORDEAUX-THREADS signals an error at system-definition
                ;; time on an implementation it does not support (CLISP
                ;; without MT, for instance).  Depend on it only where it
