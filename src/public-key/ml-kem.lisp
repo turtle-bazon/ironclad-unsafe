@@ -137,8 +137,8 @@ A * 2^-16 mod q.  A must fit in a signed 32-bit word."
 ;;; constant indices and literal zetas, so both halves of a butterfly stay
 ;;; in registers and independent butterflies are scheduled together; the
 ;;; loop forms paid index arithmetic and a branch per butterfly.  Allegro
-;;; Express and CLISP cannot compile the expansion in their heaps and keep
-;;; the loop forms.
+;;; Express, CLISP and ABCL cannot compile the expansion in their heaps and
+;;; keep the loop forms.
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun ml-kem-zeta-at (k)
     (aref +ml-kem-zetas+ k)))
@@ -179,11 +179,11 @@ A * 2^-16 mod q.  A must fit in a signed 32-bit word."
 followed by Barrett reduction, like poly_ntt."
   (declare (type ml-kem-poly r)
            (optimize (speed 3) (space 0) (safety 0) (debug 0)))
-  #-(or allegro clisp)
+  #-(or allegro clisp abcl)
   (progn
     (unrolled-ml-kem-ntt r)
     (ml-kem-poly-reduce r))
-  #+(or allegro clisp)
+  #+(or allegro clisp abcl)
   (let ((k 1))
     (declare (type fixnum k))
     (dolist (len '(128 64 32 16 8 4 2))
@@ -209,9 +209,9 @@ followed by Barrett reduction, like poly_ntt."
 with output in Montgomery domain, like poly_invntt_tomont."
   (declare (type ml-kem-poly r)
            (optimize (speed 3) (space 0) (safety 0) (debug 0)))
-  #-(or allegro clisp)
+  #-(or allegro clisp abcl)
   (unrolled-ml-kem-invntt r +ml-kem-invntt-f+)
-  #+(or allegro clisp)
+  #+(or allegro clisp abcl)
   (let ((k 127)
         (f +ml-kem-invntt-f+))
     (declare (type fixnum k))
