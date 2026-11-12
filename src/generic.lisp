@@ -40,6 +40,9 @@ as accepted by MAKE-CIPHER or a cipher object as returned by
 MAKE-CIPHER.  NIL is returned if CIPHER does not name a known
 cipher or is not a cipher object."))
 
+(defmethod block-length ((condition invalid-initialization-vector))
+  (invalid-initialization-vector-block-length condition))
+
 (defgeneric encrypted-message-length (cipher mode length &optional handle-final-block)
   (:documentation "Return the length a message of LENGTH would be if it
 were to be encrypted (decrypted) with CIPHER in MODE.  HANDLE-FINAL-BLOCK

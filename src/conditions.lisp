@@ -23,11 +23,12 @@ for a particular mode of operation but not supplied."))
 
 (define-condition invalid-initialization-vector (ironclad-unsafe-error)
   ((cipher :initarg :cipher :reader cipher)
-   (block-length :initarg :block-length :reader block-length))
+   (block-length :initarg :block-length
+                 :reader invalid-initialization-vector-block-length))
   (:report (lambda (condition stream)
              (format stream "Cipher ~A requires an initialization vector of length ~D."
                      (cipher condition)
-                     (block-length condition))))
+                     (invalid-initialization-vector-block-length condition))))
   (:documentation "Signaled when an invalid initialization vector is supplied to MAKE-CIPHER."))
 
 (define-condition invalid-key-length (ironclad-unsafe-error)
