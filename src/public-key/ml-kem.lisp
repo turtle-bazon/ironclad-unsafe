@@ -68,9 +68,10 @@
                     -108 -308 996 991 958 -1460 1522 1628)))
 
 ;;; 2^32 mod q, Montgomery-domain conversion factor (poly_tomont).
-(defconstant +ml-kem-mont-f+ 1353)
-;;; mont^2/128 mod q, final scale of the inverse NTT (invntt_tomont).
-(defconstant +ml-kem-invntt-f+ 1441)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconstant +ml-kem-mont-f+ 1353)
+  ;;; mont^2/128 mod q, final scale of the inverse NTT (invntt_tomont).
+  (defconstant +ml-kem-invntt-f+ 1441))
 
 (deftype ml-kem-poly () '(simple-array fixnum (256)))
 (declaim (inline ml-kem-poly-reduce ml-kem-poly-add ml-kem-poly-sub ml-kem-poly-shiftl))
@@ -157,7 +158,8 @@ A * 2^-16 mod q.  A must fit in a signed 32-bit word."
     `(progn ,@(nreverse forms))))
 
 (defmacro unrolled-ml-kem-invntt (r f)
-  (let ((forms '()) (k 128))
+  (let ((forms '()) (k 128)
+        (fv (if (symbolp f) (symbol-value f) f)))
     (loop for len = 2 then (ash len 1)
           while (<= len 128)
           do (loop for start from 0 below 256 by (* 2 len)
@@ -170,7 +172,7 @@ A * 2^-16 mod q.  A must fit in a signed 32-bit word."
                                        forms)))))
     `(progn ,@(nreverse forms)
             ,@(loop for j below 256
-                    collect `(setf (aref ,r ,j) (ml-kem-fqmul (aref ,r ,j) ,f))))))
+                    collect `(setf (aref ,r ,j) (ml-kem-fqmul (aref ,r ,j) ,fv))))))
 
 (defun ml-kem-ntt (r)
   "In-place NTT (standard order in, bitreversed order out),
@@ -208,7 +210,7 @@ with output in Montgomery domain, like poly_invntt_tomont."
   (declare (type ml-kem-poly r)
            (optimize (speed 3) (space 0) (safety 0) (debug 0)))
   #-(or allegro clisp)
-  (unrolled-ml-kem-invntt r #.+ml-kem-invntt-f+)
+  (unrolled-ml-kem-invntt r +ml-kem-invntt-f+)
   #+(or allegro clisp)
   (let ((k 127)
         (f +ml-kem-invntt-f+))
