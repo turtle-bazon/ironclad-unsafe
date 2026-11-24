@@ -276,7 +276,8 @@
   ("xmss" :depends-on ("ironclad-unsafe/digest/sha256"))
   ("x-wing" :depends-on ("ironclad-unsafe/public-key/ml-kem"
                          "ironclad-unsafe/public-key/curve25519"
-                         "ironclad-unsafe/digest/sha3")))
+                         "ironclad-unsafe/digest/sha3"))
+  ("sntrup761" :depends-on ("ironclad-unsafe/digest/sha512")))
 
 (defsystem "ironclad-unsafe"
   :class ironclad-unsafe-system
@@ -516,6 +517,7 @@
                                            (:test-vector-file "hss-2xh5w8")
                                            (:test-vector-file "xmss-h10")
                                            (:test-vector-file "x-wing")
+                                           (:test-vector-file "sntrup761")
                                            (:test-vector-file "hpke")
                                            (:test-vector-file "ml-dsa")
                                            (:test-vector-file "slh-dsa")

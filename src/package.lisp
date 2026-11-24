@@ -127,6 +127,10 @@
    #:ml-dsa-87-public-key #:ml-dsa-87-private-key
    #:ml-dsa-key-bytes
    #:x-wing-public-key #:x-wing-private-key #:x-wing-key-bytes
+   #:sntrup761-public-key #:sntrup761-private-key #:sntrup761-key-bytes
+   #:sntrup761-keypair #:sntrup761-encapsulate #:sntrup761-decapsulate
+   #:sntrup761-public-key-bytes #:sntrup761-secret-key-bytes
+   #:sntrup761-ciphertext-bytes #:sntrup761-shared-secret-bytes
    #:mceliece348864-public-key #:mceliece348864-private-key #:mceliece-key-bytes
    #:mceliece460896-public-key #:mceliece460896-private-key
    #:mceliece6688128-public-key #:mceliece6688128-private-key

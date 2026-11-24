@@ -17,6 +17,7 @@
 (rtest:deftest :bike-l3-encapsulation (run-test-vector-file :bike-l3 *public-key-encryption-tests*) t)
 (rtest:deftest :bike-l5-encapsulation (run-test-vector-file :bike-l5 *public-key-encryption-tests*) t)
 (rtest:deftest :x-wing-encapsulation (run-test-vector-file :x-wing *public-key-encryption-tests*) t)
+(rtest:deftest :sntrup761-encapsulation (run-test-vector-file :sntrup761 *public-key-encryption-tests*) t)
 (rtest:deftest :xmss (run-test-vector-file :xmss-h10 *public-key-encryption-tests*) t)
 
 (defun kem-roundtrip-test (kind keys trials)

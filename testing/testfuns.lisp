@@ -1066,6 +1066,66 @@
       (when (equalp (ironclad-unsafe:decapsulate-key sk bad) ss)
         (error "X-Wing tampered ciphertext accepted for ~A" name)))))
 
+(defun sntrup761-test-random (seed)
+  "The deterministic stream the sntrup761 vectors were generated with.
+
+Block i is SHA-512(seed || be64(i)); calls take consecutive octets from
+the stream, so key generation and encapsulation consume it in order."
+  (let ((counter 0)
+        (pos 64)
+        (block (make-array 64 :element-type '(unsigned-byte 8))))
+    (flet ((refill ()
+             (let ((input (make-array 40 :element-type '(unsigned-byte 8))))
+               (replace input seed)
+               (loop for k from 0 below 8
+                     do (setf (aref input (+ 32 k))
+                              (ldb (byte 8 (* 8 (- 7 k))) counter)))
+               (incf counter)
+               (replace block (ironclad-unsafe:digest-sequence :sha512 input))
+               (setf pos 0))))
+      (lambda (n)
+        (let ((out (make-array n :element-type '(unsigned-byte 8))))
+          (loop with start = 0
+                while (< start n)
+                do (when (= pos 64) (refill))
+                   (let ((take (min (- 64 pos) (- n start))))
+                     (replace out block :start1 start :start2 pos
+                              :end2 (+ pos take))
+                     (incf pos take)
+                     (incf start take)))
+          out)))))
+
+(defun sntrup761-test (file name seed pk-bytes sk-bytes ct ss)
+  (declare (ignore file))
+  (let* ((random (sntrup761-test-random seed))
+         (pk (ironclad-unsafe:make-public-key :sntrup761 :bytes pk-bytes))
+         (sk (ironclad-unsafe:make-private-key :sntrup761 :bytes sk-bytes)))
+    ;; KAT: decapsulation of the reference ciphertext reproduces the secret.
+    (unless (equalp (ironclad-unsafe:decapsulate-key sk ct) ss)
+      (error "sntrup761 decapsulation failed for ~A" name))
+    ;; KAT: key generation and encapsulation reproduce the reference bytes.
+    (multiple-value-bind (pk2 sk2)
+        (ironclad-unsafe:sntrup761-keypair :random random)
+      (unless (equalp pk2 pk-bytes)
+        (error "sntrup761 public key mismatch for ~A" name))
+      (unless (equalp sk2 sk-bytes)
+        (error "sntrup761 secret key mismatch for ~A" name))
+      (multiple-value-bind (ct2 ss2)
+          (ironclad-unsafe:sntrup761-encapsulate pk2 :random random)
+        (unless (equalp ct2 ct)
+          (error "sntrup761 ciphertext mismatch for ~A" name))
+        (unless (equalp ss2 ss)
+          (error "sntrup761 shared secret mismatch for ~A" name))))
+    ;; Roundtrip with fresh randomness.
+    (multiple-value-bind (ct3 ss3) (ironclad-unsafe:encapsulate-key pk)
+      (unless (equalp (ironclad-unsafe:decapsulate-key sk ct3) ss3)
+        (error "sntrup761 roundtrip failed for ~A" name)))
+    ;; A tampered ciphertext must not reproduce the real secret.
+    (let ((bad (copy-seq ct)))
+      (setf (aref bad 0) (logxor (aref bad 0) 1))
+      (when (equalp (ironclad-unsafe:decapsulate-key sk bad) ss)
+        (error "sntrup761 tampered ciphertext accepted for ~A" name)))))
+
 (defun hpke-test (file kem-id kdf-id aead-id mode-id info ikmR ikmE psk psk-id ikmS
                  enc key nonce exp aad pt ct exports)
   (declare (ignore file))
@@ -1159,7 +1219,8 @@
         (cons :lms-test 'lms-test)
         (cons :hss-test 'hss-test)
         (cons :xmss-test 'xmss-test)
-        (cons :x-wing-test 'x-wing-test)))
+        (cons :x-wing-test 'x-wing-test)
+        (cons :sntrup761-test 'sntrup761-test)))
 
 (defparameter *public-key-signature-tests*
   (list (cons :rsa-pss-signature-test 'rsa-pss-signature-test)
